@@ -196,5 +196,48 @@ export async function POST(req: NextRequest) {
     `Rialto : commande ${order.order_number} reçue ! Nous vous confirmons la prise en charge dans quelques instants.`,
   );
 
+  // Push dashboard (non-blocking, best-effort). Le secret + l'URL sont
+  // configurés côté Vercel. Si indisponibles en dev, on skip.
+  void notifyDashboard({
+    restaurant_id: body.restaurant_id,
+    order_number: order.order_number,
+    customer_name: body.customer_name,
+    total: total,
+    pickup_time_hhmm: pickupHHMM,
+  });
+
   return NextResponse.json({ order });
+}
+
+async function notifyDashboard(input: {
+  restaurant_id: string;
+  order_number: string;
+  customer_name: string;
+  total: number;
+  pickup_time_hhmm: string;
+}): Promise<void> {
+  const url = process.env.LOYALTY_CARDS_WEBHOOK_URL;
+  const secret = process.env.ORDER_WEBHOOK_SECRET;
+  if (!url || !secret) {
+    console.log("[webhook] skipped (LOYALTY_CARDS_WEBHOOK_URL or ORDER_WEBHOOK_SECRET missing)");
+    return;
+  }
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-webhook-secret": secret,
+      },
+      body: JSON.stringify({
+        restaurant_id: input.restaurant_id,
+        title: `Nouvelle commande ${input.order_number}`,
+        body: `${input.customer_name} · ${input.total.toFixed(2)} CHF · Retrait ${input.pickup_time_hhmm}`,
+        url: "/dashboard/commandes",
+        tag: `order-${input.order_number}`,
+      }),
+    });
+  } catch (err) {
+    console.error("[webhook] dashboard push failed", err);
+  }
 }

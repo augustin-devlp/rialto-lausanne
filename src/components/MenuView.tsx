@@ -117,6 +117,18 @@ export default function MenuView({
 
   const missingMin = Math.max(0, restaurant.order_min_amount - subtotal);
 
+  // Message explicite si le bouton checkout est bloqué, pour ne jamais
+  // laisser un user taper "Passer la commande" sans retour visible.
+  const blockReason: string | null = !restaurant.accepting_orders
+    ? "Rialto ne prend plus de commandes pour le moment."
+    : !openNow
+      ? `Commandes ouvertes de ${restaurant.order_open_time.slice(0, 5)} à ${restaurant.order_close_time.slice(0, 5)}.`
+      : cart.length === 0
+        ? "Ajoutez au moins un plat à votre panier."
+        : subtotal < restaurant.order_min_amount
+          ? `Panier minimum ${formatCHF(restaurant.order_min_amount)} (il manque ${formatCHF(missingMin)}).`
+          : null;
+
   const handleAdd = (item: MenuItem) => {
     if (item.has_options) {
       setOpenedItem(item);
@@ -289,6 +301,7 @@ export default function MenuView({
               minAmount={restaurant.order_min_amount}
               missingMin={missingMin}
               canCheckout={canCheckout}
+              blockReason={blockReason}
               onIncrement={(k) => updateQty(k, +1)}
               onDecrement={(k) => updateQty(k, -1)}
               onCheckout={() => setCheckoutOpen(true)}
@@ -302,7 +315,11 @@ export default function MenuView({
         <button
           type="button"
           onClick={() => setMobileCartOpen(true)}
-          className="fixed bottom-4 left-4 right-4 z-30 flex items-center justify-between rounded-full bg-rialto px-5 py-4 text-white shadow-pop lg:hidden"
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+            WebkitTapHighlightColor: "transparent",
+          }}
+          className="fixed left-4 right-4 z-30 flex items-center justify-between rounded-full bg-rialto px-5 py-4 text-white shadow-pop lg:hidden active:scale-[0.98]"
         >
           <span className="flex items-center gap-3 text-sm font-semibold">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-xs">
@@ -315,8 +332,17 @@ export default function MenuView({
       )}
 
       {mobileCartOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 lg:hidden">
-          <div className="absolute bottom-0 left-0 right-0 max-h-[90vh] overflow-auto rounded-t-3xl bg-white p-4">
+        <div
+          className="fixed inset-0 z-50 bg-black/40 lg:hidden"
+          onClick={() => setMobileCartOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+            }}
+            className="absolute bottom-0 left-0 right-0 max-h-[90vh] overflow-auto rounded-t-3xl bg-white p-4"
+          >
             <div className="mb-2 flex justify-between">
               <h3 className="text-lg font-bold">Votre commande</h3>
               <button
@@ -332,6 +358,7 @@ export default function MenuView({
               minAmount={restaurant.order_min_amount}
               missingMin={missingMin}
               canCheckout={canCheckout}
+              blockReason={blockReason}
               onIncrement={(k) => updateQty(k, +1)}
               onDecrement={(k) => updateQty(k, -1)}
               onCheckout={() => {

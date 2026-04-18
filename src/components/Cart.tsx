@@ -9,6 +9,8 @@ type Props = {
   minAmount: number;
   missingMin: number;
   canCheckout: boolean;
+  /** Raison lisible si !canCheckout (panier vide, horaires, etc.). */
+  blockReason?: string | null;
   onIncrement: (key: string) => void;
   onDecrement: (key: string) => void;
   onCheckout: () => void;
@@ -21,11 +23,21 @@ export default function Cart({
   minAmount,
   missingMin,
   canCheckout,
+  blockReason,
   onIncrement,
   onDecrement,
   onCheckout,
   compact,
 }: Props) {
+  const handleClick = () => {
+    // Ne JAMAIS laisser le bouton silencieusement désactivé : toujours
+    // cliquable, on explique simplement la raison si besoin.
+    if (!canCheckout) {
+      alert(blockReason ?? "Impossible de commander pour le moment.");
+      return;
+    }
+    onCheckout();
+  };
   return (
     <div
       className={`rounded-2xl bg-white ${
@@ -101,13 +113,24 @@ export default function Cart({
         </div>
       )}
 
+      {!canCheckout && blockReason && (
+        <div className="mb-3 rounded-lg bg-red-50 p-3 text-xs text-red-900">
+          ⚠️ {blockReason}
+        </div>
+      )}
+
       <button
         type="button"
-        disabled={!canCheckout}
-        onClick={onCheckout}
-        className="btn-primary w-full"
+        onClick={handleClick}
+        style={{ WebkitTapHighlightColor: "transparent" }}
+        className={`w-full rounded-full px-5 py-4 text-sm font-semibold text-white shadow-sm transition ${
+          canCheckout
+            ? "bg-rialto hover:bg-rialto-dark active:scale-[0.98]"
+            : "bg-gray-400 cursor-not-allowed"
+        }`}
       >
         Passer la commande
+        {items.length > 0 && ` · ${formatCHF(subtotal)}`}
       </button>
 
       <p className="mt-3 text-center text-xs text-mute">

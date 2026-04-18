@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+html,
+body {
+  background: #ffffff;
+  color: #1a1a1a;
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-full bg-rialto px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-rialto-dark disabled:cursor-not-allowed disabled:bg-gray-300;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-ink transition hover:bg-surface;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-ink transition;
+}
+.chip-active {
+  @apply border-rialto bg-rialto text-white;
+}

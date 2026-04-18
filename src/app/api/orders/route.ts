@@ -16,16 +16,19 @@ type Payload = {
   restaurant_id: string;
   customer_name: string;
   customer_phone: string;
-  requested_pickup_time: string; // "HH:MM"
+  /**
+   * Full ISO 8601 timestamp (e.g. "2026-04-18T19:15:00.000Z").
+   * Constructed client-side from the user's local time zone so it reflects
+   * the actual pickup instant. Stored as-is in Supabase.
+   */
+  requested_pickup_time: string;
   notes: string | null;
   items: IncomingItem[];
 };
 
-function buildPickupTimestamp(hhmm: string): string {
-  const [h, m] = hhmm.split(":").map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1);
+function parsePickupISO(value: string): string | null {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
 }
 
@@ -67,6 +70,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const pickupISO = parsePickupISO(body.requested_pickup_time);
+  if (!pickupISO) {
+    return NextResponse.json(
+      { error: "Heure de retrait invalide" },
+      { status: 400 },
+    );
+  }
+
   const { data: nbData, error: nbErr } = await sb.rpc("generate_order_number", {
     p_restaurant: body.restaurant_id,
   });
@@ -79,7 +90,7 @@ export async function POST(req: NextRequest) {
       order_number: orderNumber,
       customer_name: body.customer_name,
       customer_phone: body.customer_phone,
-      requested_pickup_time: buildPickupTimestamp(body.requested_pickup_time),
+      requested_pickup_time: pickupISO,
       status: "new",
       total_amount: total,
       notes: body.notes,

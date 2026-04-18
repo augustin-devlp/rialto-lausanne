@@ -172,7 +172,11 @@ export default function StatusTracker({ order, items, restaurant }: Props) {
             <strong>
               {new Date(order.requested_pickup_time).toLocaleTimeString(
                 "fr-CH",
-                { hour: "2-digit", minute: "2-digit" },
+                {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "Europe/Zurich",
+                },
               )}
             </strong>
           </p>

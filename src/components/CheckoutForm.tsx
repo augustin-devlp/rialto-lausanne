@@ -48,6 +48,18 @@ export default function CheckoutForm({
     setError(null);
     try {
       const cleanPhone = sanitizePhoneCH(phone);
+
+      // Construit l'instant de retrait dans la timezone LOCALE du navigateur
+      // (pour un client en Suisse : CEST). toISOString() convertit ensuite
+      // correctement en UTC avant l'envoi au serveur.
+      const [ph, pm] = pickup.split(":").map(Number);
+      const pickupDate = new Date();
+      pickupDate.setHours(ph, pm, 0, 0);
+      if (pickupDate.getTime() < Date.now()) {
+        pickupDate.setDate(pickupDate.getDate() + 1);
+      }
+      const pickupISO = pickupDate.toISOString();
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -55,7 +67,7 @@ export default function CheckoutForm({
           restaurant_id: restaurant.id,
           customer_name: `${firstName.trim()} ${lastName.trim()}`,
           customer_phone: cleanPhone,
-          requested_pickup_time: pickup,
+          requested_pickup_time: pickupISO,
           notes: notes.trim() || null,
           items: cart.map((c) => ({
             menu_item_id: c.menu_item_id,

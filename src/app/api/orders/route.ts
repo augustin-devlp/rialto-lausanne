@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { sendSMS } from "@/lib/brevo";
+import {
+  hhmmToMinutes,
+  toZurichDate,
+  toZurichHHMM,
+} from "@/lib/timezone";
 
 type IncomingItem = {
   menu_item_id: string;
@@ -49,7 +54,9 @@ export async function POST(req: NextRequest) {
 
   const { data: restaurant, error: rErr } = await sb
     .from("restaurants")
-    .select("id, name, order_min_amount, accepting_orders, phone, address")
+    .select(
+      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes",
+    )
     .eq("id", body.restaurant_id)
     .single();
   if (rErr || !restaurant) {
@@ -76,6 +83,55 @@ export async function POST(req: NextRequest) {
       { error: "Heure de retrait invalide" },
       { status: 400 },
     );
+  }
+
+  // --- Validation horaires / prep time, en Europe/Zurich ---
+  const pickupDate = new Date(pickupISO);
+  const now = new Date();
+
+  const pickupHHMM = toZurichHHMM(pickupDate);
+  const pickupDateZurich = toZurichDate(pickupDate);
+  const nowDateZurich = toZurichDate(now);
+  const earliestHHMM = toZurichHHMM(
+    new Date(now.getTime() + restaurant.prep_time_minutes * 60_000),
+  );
+
+  const openHHMM = String(restaurant.order_open_time).slice(0, 5);
+  const closeHHMM = String(restaurant.order_close_time).slice(0, 5);
+
+  const pickupMin = hhmmToMinutes(pickupHHMM);
+  const openMin = hhmmToMinutes(openHHMM);
+  const closeMin = hhmmToMinutes(closeHHMM);
+
+  if (pickupMin < openMin) {
+    return NextResponse.json(
+      {
+        error: `Les commandes sont acceptées à partir de ${openHHMM}. Choisissez une heure plus tardive.`,
+      },
+      { status: 400 },
+    );
+  }
+  if (pickupMin > closeMin) {
+    return NextResponse.json(
+      {
+        error: `Les commandes sont acceptées jusqu'à ${closeHHMM}. Choisissez une heure plus tôt.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  // Contrainte "au moins prep_time_minutes" seulement si le retrait est
+  // aujourd'hui (Zurich). Pour demain, pas de contrainte prep.
+  if (pickupDateZurich === nowDateZurich) {
+    const earliestMin = hhmmToMinutes(earliestHHMM);
+    if (pickupMin < earliestMin) {
+      return NextResponse.json(
+        {
+          error: `Prévoyez au moins ${restaurant.prep_time_minutes} min de préparation. Plus tôt possible : ${earliestHHMM}.`,
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const { data: nbData, error: nbErr } = await sb.rpc("generate_order_number", {

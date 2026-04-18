@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CartItem, Restaurant } from "@/lib/types";
 import { buildPickupTimeSlots, formatCHF, sanitizePhoneCH } from "@/lib/format";
+import { pickupFromZurichHHMM } from "@/lib/timezone";
 
 type Props = {
   restaurant: Restaurant;
@@ -49,16 +50,10 @@ export default function CheckoutForm({
     try {
       const cleanPhone = sanitizePhoneCH(phone);
 
-      // Construit l'instant de retrait dans la timezone LOCALE du navigateur
-      // (pour un client en Suisse : CEST). toISOString() convertit ensuite
-      // correctement en UTC avant l'envoi au serveur.
-      const [ph, pm] = pickup.split(":").map(Number);
-      const pickupDate = new Date();
-      pickupDate.setHours(ph, pm, 0, 0);
-      if (pickupDate.getTime() < Date.now()) {
-        pickupDate.setDate(pickupDate.getDate() + 1);
-      }
-      const pickupISO = pickupDate.toISOString();
+      // Construit l'instant UTC correspondant à l'heure "HH:MM" interprétée
+      // dans la timezone Europe/Zurich (peu importe où se trouve le client).
+      // Si l'heure est déjà passée aujourd'hui, on bascule à demain.
+      const pickupISO = pickupFromZurichHHMM(pickup).toISOString();
 
       const res = await fetch("/api/orders", {
         method: "POST",

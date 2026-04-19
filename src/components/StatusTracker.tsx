@@ -9,6 +9,8 @@ type Props = {
   order: Order;
   items: OrderItemRow[];
   restaurant: Pick<Restaurant, "name" | "address" | "phone">;
+  /** Slot rendu entre la card "ready" et le récap (pour la carte fidélité). */
+  loyaltySlot?: React.ReactNode;
 };
 
 const STAGES: { key: OrderStatus; label: string; icon: string }[] = [
@@ -23,7 +25,7 @@ function stageIndex(status: OrderStatus): number {
   return i < 0 ? 0 : i;
 }
 
-export default function StatusTracker({ order, items, restaurant }: Props) {
+export default function StatusTracker({ order, items, restaurant, loyaltySlot }: Props) {
   const [status, setStatus] = useState<OrderStatus>(order.status);
 
   useEffect(() => {
@@ -115,6 +117,8 @@ export default function StatusTracker({ order, items, restaurant }: Props) {
         </div>
       )}
 
+      {/* Slot fidélité visible en permanence (juste après la timeline ou
+          la card ready, avant le récap) */}
       {/* Card "prête" */}
       {status === "ready" && (
         <div className="mt-6 rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-6 text-center shadow-card">
@@ -144,6 +148,9 @@ export default function StatusTracker({ order, items, restaurant }: Props) {
           )}
         </div>
       )}
+
+      {/* Fidélité (visible dès l'arrivée sur la page) */}
+      {loyaltySlot}
 
       {/* Récap */}
       <div className="mt-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-card">

@@ -36,8 +36,10 @@ export default async function OrderPage({
     .eq("id", order.restaurant_id)
     .single();
 
+  // www.stampify.ch direct (pas d'apex) pour éviter le 307 qui casserait
+  // le preflight CORS depuis le browser.
   const stampifyBase =
-    process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://stampify.ch";
+    process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://www.stampify.ch";
 
   // Noms par défaut pour pré-remplir le formulaire fidélité
   const [firstName, ...rest] = (order.customer_name ?? "").split(" ");
@@ -67,17 +69,18 @@ export default async function OrderPage({
             phone: null,
           }) as Pick<Restaurant, "name" | "address" | "phone">
         }
+        loyaltySlot={
+          <div className="mx-auto max-w-2xl">
+            <LoyaltyCardSignup
+              restaurantId={order.restaurant_id}
+              stampifyBaseUrl={stampifyBase}
+              defaultFirstName={firstName ?? ""}
+              defaultLastName={lastName ?? ""}
+              phone={order.customer_phone}
+            />
+          </div>
+        }
       />
-
-      <div className="mx-auto max-w-2xl px-4 pb-10">
-        <LoyaltyCardSignup
-          restaurantId={order.restaurant_id}
-          stampifyBaseUrl={stampifyBase}
-          defaultFirstName={firstName ?? ""}
-          defaultLastName={lastName ?? ""}
-          phone={order.customer_phone}
-        />
-      </div>
     </main>
   );
 }

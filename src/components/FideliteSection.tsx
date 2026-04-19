@@ -10,12 +10,14 @@ type RialtoCustomer = {
   first_name: string;
   last_name: string | null;
   email: string | null;
+  phone?: string | null;
   stamps_count: number;
 };
 
 const STAMPS_REQUIRED = 10;
+// www.stampify.ch direct (évite le 307 stampify.ch → www qui casse CORS)
 const STAMPIFY_BASE =
-  process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://stampify.ch";
+  process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://www.stampify.ch";
 const STORAGE_PHONE_KEY = "rialto:loyalty:phone";
 
 export default function FideliteSection() {
@@ -152,7 +154,7 @@ function LookupForm({
 }
 
 function SignupForm({
-  phone,
+  phone: initialPhone,
   onCreated,
 }: {
   phone: string;
@@ -160,34 +162,43 @@ function SignupForm({
 }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState(initialPhone);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim()) return;
-    setBusy(true);
     setErr(null);
+    const cleanPhone = sanitizePhoneCH(phone);
+    if (!firstName.trim()) {
+      setErr("Prénom obligatoire.");
+      return;
+    }
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setErr("Numéro de téléphone invalide.");
+      return;
+    }
+    setBusy(true);
     try {
       const res = await fetch(`${STAMPIFY_BASE}/api/rialto/customers/signup`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           restaurant_id: RESTAURANT_ID,
-          phone,
+          phone: cleanPhone,
           first_name: firstName.trim(),
           last_name: lastName.trim() || null,
-          email: email.trim() || null,
         }),
       });
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
-        setErr((b as { error?: string }).error ?? "Erreur");
+        setErr((b as { error?: string }).error ?? `Erreur serveur (${res.status})`);
         return;
       }
       const body = (await res.json()) as { customer: RialtoCustomer };
       onCreated(body.customer);
+    } catch (e) {
+      setErr(e instanceof Error ? `Erreur réseau : ${e.message}` : "Erreur réseau");
     } finally {
       setBusy(false);
     }
@@ -199,7 +210,7 @@ function SignupForm({
       className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-6"
     >
       <div className="mb-1 text-sm font-semibold text-emerald-900">
-        Aucune carte trouvée pour {phone}
+        Aucune carte trouvée pour {initialPhone}
       </div>
       <div className="mb-4 text-xs text-emerald-900/70">
         Créez votre carte fidélité gratuite en 10 secondes.
@@ -215,28 +226,25 @@ function SignupForm({
             className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
           />
           <input
+            required
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            placeholder="Nom"
+            placeholder="Nom *"
             className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
           />
         </div>
         <input
+          required
+          type="tel"
           value={phone}
-          disabled
-          className="w-full rounded-lg border border-emerald-200 bg-white/70 px-3 py-2 text-sm text-gray-500"
-        />
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email (optionnel)"
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+41 79 123 45 67"
           className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
         />
       </div>
 
       {err && (
-        <div className="mt-3 rounded-md bg-red-50 p-2 text-xs text-red-700">
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
           {err}
         </div>
       )}
@@ -244,21 +252,27 @@ function SignupForm({
       <button
         type="submit"
         disabled={busy}
-        className="mt-4 w-full rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
       >
-        {busy ? "…" : "Créer ma carte fidélité"}
+        {busy ? "Activation en cours…" : "Créer ma carte fidélité"}
       </button>
+
+      <p className="mt-3 text-center text-[11px] text-emerald-900/70">
+        ✓ Informations modifiables à tout moment
+      </p>
     </form>
   );
 }
 
 function CustomerCard({
-  customer,
+  customer: initialCustomer,
   onSwitchAccount,
 }: {
   customer: RialtoCustomer;
   onSwitchAccount: () => void;
 }) {
+  const [customer, setCustomer] = useState(initialCustomer);
+  const [editOpen, setEditOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrValue = useMemo(
     () =>
@@ -339,7 +353,28 @@ function CustomerCard({
             Montrez ce QR en caisse pour valider vos tampons.
           </p>
         </div>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="text-xs text-mute underline-offset-2 hover:text-ink hover:underline"
+          >
+            Mes infos sont incorrectes ? Modifier
+          </button>
+        </div>
       </article>
+
+      {editOpen && (
+        <EditProfileModal
+          customer={customer}
+          onClose={() => setEditOpen(false)}
+          onSaved={(next) => {
+            setCustomer(next);
+            setEditOpen(false);
+          }}
+        />
+      )}
 
       {/* Actions secondaires */}
       <div className="grid grid-cols-2 gap-3">
@@ -366,6 +401,147 @@ function CustomerCard({
           <div className="mt-1 text-sm font-bold">🎁 Mes récompenses</div>
         </button>
       </div>
+    </div>
+  );
+}
+
+function EditProfileModal({
+  customer,
+  onClose,
+  onSaved,
+}: {
+  customer: RialtoCustomer;
+  onClose: () => void;
+  onSaved: (next: RialtoCustomer) => void;
+}) {
+  const [firstName, setFirstName] = useState(customer.first_name);
+  const [lastName, setLastName] = useState(customer.last_name ?? "");
+  const [phone, setPhone] = useState(customer.phone ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const cleanPhone = phone ? sanitizePhoneCH(phone) : undefined;
+    if (!firstName.trim()) {
+      setErr("Prénom obligatoire.");
+      return;
+    }
+    if (cleanPhone && cleanPhone.length < 10) {
+      setErr("Téléphone invalide.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `${STAMPIFY_BASE}/api/rialto/customers/${customer.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            first_name: firstName.trim(),
+            last_name: lastName.trim() || null,
+            ...(cleanPhone ? { phone: cleanPhone } : {}),
+          }),
+        },
+      );
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        setErr((b as { error?: string }).error ?? `Erreur ${res.status}`);
+        return;
+      }
+      const body = (await res.json()) as { customer: RialtoCustomer };
+      // Persist le nouveau tel localement pour que le lookup ultérieur marche
+      if (cleanPhone) localStorage.setItem(STORAGE_PHONE_KEY, cleanPhone);
+      onSaved(body.customer);
+    } catch (e) {
+      setErr(e instanceof Error ? `Erreur réseau : ${e.message}` : "Erreur réseau");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <form
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={save}
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl"
+      >
+        <header className="flex items-start justify-between border-b border-gray-100 p-5">
+          <h3 className="text-lg font-bold">Modifier mes infos</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-2 -mt-2 rounded-full p-2 text-gray-400 hover:bg-gray-50"
+          >
+            ✕
+          </button>
+        </header>
+
+        <div className="space-y-3 p-5">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-700">
+              Prénom *
+            </label>
+            <input
+              required
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-700">
+              Nom
+            </label>
+            <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-700">
+              Téléphone
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+41 79 123 45 67"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+
+          {err && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+              {err}
+            </div>
+          )}
+        </div>
+
+        <footer className="flex gap-2 border-t border-gray-100 p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 rounded-full px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex-1 rounded-full bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
+          >
+            {busy ? "…" : "Enregistrer"}
+          </button>
+        </footer>
+      </form>
     </div>
   );
 }

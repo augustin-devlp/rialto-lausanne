@@ -5,7 +5,7 @@ import type {
   MenuItem,
   MenuItemOption,
 } from "@/lib/types";
-import MenuView from "@/components/MenuView";
+import RialtoHome from "@/components/RialtoHome";
 
 export const revalidate = 60;
 
@@ -65,7 +65,7 @@ export default async function HomePage() {
   }
 
   return (
-    <MenuView
+    <RialtoHome
       restaurant={restaurant}
       categories={categories}
       items={items}

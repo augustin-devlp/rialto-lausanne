@@ -6,6 +6,7 @@ import { normalizePhone } from "@/lib/phone";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import SpinWheel from "./SpinWheel";
 import LotteryEntry from "./LotteryEntry";
+import ReviewGateModal from "./ReviewGateModal";
 
 type Customer = {
   id: string;
@@ -30,6 +31,7 @@ type Wheel = {
   segments: { label: string; color?: string }[];
   can_spin: boolean;
   last_reward: string | null;
+  require_google_review?: boolean;
 };
 type Lottery = {
   id: string;
@@ -41,6 +43,7 @@ type Lottery = {
   is_active: boolean;
   is_permanent: boolean;
   already_entered: boolean;
+  require_google_review?: boolean;
 };
 type Order = {
   id: string;
@@ -49,12 +52,17 @@ type Order = {
   total_amount: number | string;
   created_at: string;
 };
+type ReviewGate = {
+  place_id: string | null;
+  active_claim: { id: string; expires_at: string } | null;
+};
 type LookupPayload = {
   customer: Customer | null;
   card: Card | null;
   spin_wheel: Wheel | null;
   lottery: Lottery | null;
   orders: Order[];
+  review_gate?: ReviewGate;
 };
 
 const STORAGE_PHONE_KEY = "rialto:loyalty:phone";
@@ -323,6 +331,29 @@ function CardView({
 
   const [spinOpen, setSpinOpen] = useState(false);
   const [lotteryOpen, setLotteryOpen] = useState(false);
+  const [reviewGate, setReviewGate] = useState<
+    null | { purpose: "spin" | "lottery" }
+  >(null);
+
+  const reviewGateData = (payload as { review_gate?: ReviewGate } | null)
+    ?.review_gate;
+  const placeId = reviewGateData?.place_id ?? null;
+  const hasActiveClaim = !!reviewGateData?.active_claim;
+
+  const openSpin = () => {
+    if (spin_wheel?.require_google_review && !hasActiveClaim) {
+      setReviewGate({ purpose: "spin" });
+    } else {
+      setSpinOpen(true);
+    }
+  };
+  const openLottery = () => {
+    if (lottery?.require_google_review && !hasActiveClaim) {
+      setReviewGate({ purpose: "lottery" });
+    } else {
+      setLotteryOpen(true);
+    }
+  };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const complete = card.current_stamps >= card.stamps_required;
   const qrValue = useMemo(
@@ -414,7 +445,7 @@ function CardView({
         <button
           type="button"
           disabled={!spin_wheel?.is_active}
-          onClick={() => setSpinOpen(true)}
+          onClick={openSpin}
           className="rounded-xl border border-rialto bg-white p-4 text-left transition hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
@@ -432,7 +463,7 @@ function CardView({
         <button
           type="button"
           disabled={!lottery?.is_active}
-          onClick={() => setLotteryOpen(true)}
+          onClick={openLottery}
           className="rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <div className="text-xs font-semibold uppercase tracking-wider text-gray-700">
@@ -498,6 +529,48 @@ function CardView({
             void onRefresh();
           }}
         />
+      )}
+
+      {reviewGate && placeId && (
+        <ReviewGateModal
+          customerId={customer.id}
+          placeId={placeId}
+          purpose={reviewGate.purpose}
+          onClose={() => setReviewGate(null)}
+          onVerified={async () => {
+            const purpose = reviewGate.purpose;
+            setReviewGate(null);
+            // Rafraîchit le payload pour que has_active_claim passe à true
+            await onRefresh();
+            if (purpose === "spin") setSpinOpen(true);
+            else setLotteryOpen(true);
+          }}
+        />
+      )}
+      {reviewGate && !placeId && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setReviewGate(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
+          >
+            <div className="text-3xl">⚠️</div>
+            <h3 className="mt-2 font-bold">Configuration incomplète</h3>
+            <p className="mt-1 text-sm text-mute">
+              L&apos;avis Google n&apos;est pas encore configuré pour ce
+              restaurant. Contactez l&apos;équipe.
+            </p>
+            <button
+              type="button"
+              onClick={() => setReviewGate(null)}
+              className="mt-4 rounded-full bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

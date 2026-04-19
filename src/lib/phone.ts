@@ -28,6 +28,16 @@ export function normalizePhone(raw: string): string | null {
 }
 
 /**
+ * Format Brevo pour SMS : E.164 sans le "+" (ex: "41791234567").
+ * Fallback : raw nettoyé et "+" retiré si la validation échoue.
+ */
+export function toBrevoPhone(raw: string): string {
+  const e164 = normalizePhone(raw);
+  if (e164 && e164.startsWith("+")) return e164.slice(1);
+  return raw.trim().replace(/[\s\-().]/g, "").replace(/^\+/, "");
+}
+
+/**
  * Format d'affichage joli pour un numéro E.164.
  * Ex: "+41791234567" → "+41 79 123 45 67"
  */

@@ -63,10 +63,13 @@ export default function OptionsModal({
     return out;
   }, [selected, options]);
 
-  const requiredOk = groups.every(([group, opts]) => {
-    const required = opts.some((o) => o.is_required);
-    return !required || (selected[group]?.length ?? 0) > 0;
-  });
+  const missingRequiredGroups = groups
+    .filter(([group, opts]) => {
+      const required = opts.some((o) => o.is_required);
+      return required && (selected[group]?.length ?? 0) === 0;
+    })
+    .map(([group]) => group);
+  const requiredOk = missingRequiredGroups.length === 0;
 
   const extras = flatSelected.reduce((s, o) => s + o.extra_price, 0);
   const total = (Number(item.price) + extras) * qty;
@@ -185,13 +188,25 @@ export default function OptionsModal({
         </div>
 
         <footer className="border-t border-gray-100 p-4">
+          {!requiredOk && (
+            <div className="mb-3 rounded-lg bg-red-50 p-3 text-xs text-red-800">
+              ⚠️ Veuillez choisir :{" "}
+              <strong>{missingRequiredGroups.join(", ")}</strong>
+            </div>
+          )}
           <button
             type="button"
             disabled={!requiredOk}
             onClick={() => onConfirm(flatSelected, qty, notes)}
-            className="btn-primary w-full"
+            className={`w-full rounded-full px-5 py-4 text-sm font-semibold text-white shadow-sm transition ${
+              requiredOk
+                ? "bg-rialto hover:bg-rialto-dark active:scale-[0.98]"
+                : "bg-gray-300 cursor-not-allowed"
+            }`}
           >
-            Ajouter — {formatCHF(total)}
+            {requiredOk
+              ? `Ajouter — ${formatCHF(total)}`
+              : "Choisissez les options requises"}
           </button>
         </footer>
       </div>

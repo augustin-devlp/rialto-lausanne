@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabase";
 import StatusTracker from "@/components/StatusTracker";
+import LoyaltyCardSignup from "@/components/LoyaltyCardSignup";
 import type { Order, OrderItemRow, Restaurant } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,17 @@ export default async function OrderPage({
     .eq("id", order.restaurant_id)
     .single();
 
+  // URL du webhook scan côté Stampify (pour le QR)
+  const stampifyBase =
+    process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://stampify.ch";
+  const scanUrl = `${stampifyBase}/api/orders/scan?number=${encodeURIComponent(
+    order.order_number,
+  )}`;
+
+  // Noms par défaut pour pré-remplir le formulaire fidélité
+  const [firstName, ...rest] = (order.customer_name ?? "").split(" ");
+  const lastName = rest.join(" ");
+
   return (
     <main className="min-h-screen bg-surface">
       <header className="border-b border-gray-100 bg-white px-4 py-4">
@@ -48,6 +60,7 @@ export default async function OrderPage({
           <div className="text-base font-bold">{restaurant?.name ?? "Rialto"}</div>
         </div>
       </header>
+
       <StatusTracker
         order={order as Order}
         items={(items ?? []) as OrderItemRow[]}
@@ -58,7 +71,18 @@ export default async function OrderPage({
             phone: null,
           }) as Pick<Restaurant, "name" | "address" | "phone">
         }
+        scanUrl={scanUrl}
       />
+
+      <div className="mx-auto max-w-2xl px-4 pb-10">
+        <LoyaltyCardSignup
+          restaurantId={order.restaurant_id}
+          stampifyBaseUrl={stampifyBase}
+          defaultFirstName={firstName ?? ""}
+          defaultLastName={lastName ?? ""}
+          phone={order.customer_phone}
+        />
+      </div>
     </main>
   );
 }

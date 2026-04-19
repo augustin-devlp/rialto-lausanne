@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import type { Order, OrderItemRow, OrderStatus, Restaurant } from "@/lib/types";
 import { supabaseBrowser } from "@/lib/supabase";
 import { formatCHF } from "@/lib/format";
+import QRPickup from "./QRPickup";
 
 type Props = {
   order: Order;
   items: OrderItemRow[];
   restaurant: Pick<Restaurant, "name" | "address" | "phone">;
+  /** URL scan pour le QR code à afficher quand la commande est prête. */
+  scanUrl?: string;
 };
 
 const STAGES: { key: OrderStatus; label: string; icon: string }[] = [
@@ -23,7 +26,7 @@ function stageIndex(status: OrderStatus): number {
   return i < 0 ? 0 : i;
 }
 
-export default function StatusTracker({ order, items, restaurant }: Props) {
+export default function StatusTracker({ order, items, restaurant, scanUrl }: Props) {
   const [status, setStatus] = useState<OrderStatus>(order.status);
 
   useEffect(() => {
@@ -113,6 +116,11 @@ export default function StatusTracker({ order, items, restaurant }: Props) {
             })}
           </div>
         </div>
+      )}
+
+      {/* QR de retrait */}
+      {status === "ready" && scanUrl && (
+        <QRPickup orderNumber={order.order_number} scanUrl={scanUrl} />
       )}
 
       {/* Récap */}

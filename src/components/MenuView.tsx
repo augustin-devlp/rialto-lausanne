@@ -16,6 +16,8 @@ import Cart from "./Cart";
 import OptionsModal from "./OptionsModal";
 import CheckoutForm from "./CheckoutForm";
 import Filters, { FilterKind } from "./Filters";
+import Hero from "./Hero";
+import FloatingCallButton from "./FloatingCallButton";
 
 type Props = {
   restaurant: Restaurant;
@@ -204,6 +206,9 @@ export default function MenuView({
 
   return (
     <div className="min-h-screen bg-white pb-40 lg:pb-0">
+      {/* Hero accueil */}
+      <Hero restaurant={restaurant} />
+
       {/* Header */}
       <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
@@ -240,7 +245,7 @@ export default function MenuView({
       </header>
 
       {/* Body */}
-      <div className="mx-auto max-w-6xl px-4 pt-6 lg:grid lg:grid-cols-3 lg:gap-8">
+      <div id="menu-start" className="mx-auto max-w-6xl px-4 pt-6 lg:grid lg:grid-cols-3 lg:gap-8">
         <main className="lg:col-span-2">
           <Filters
             value={filter}
@@ -394,6 +399,8 @@ export default function MenuView({
           }}
         />
       )}
+
+      <FloatingCallButton phone={restaurant.phone} />
     </div>
   );
 }

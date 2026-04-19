@@ -6,6 +6,11 @@ import {
   toZurichDate,
   toZurichHHMM,
 } from "@/lib/timezone";
+import {
+  buildConfirmationContext,
+  getConfirmationTemplate,
+  renderConfirmationTemplate,
+} from "@/lib/smsTemplate";
 
 type IncomingItem = {
   menu_item_id: string;
@@ -190,11 +195,52 @@ export async function POST(req: NextRequest) {
     changed_by: "customer",
   });
 
-  // SMS confirmation (non-blocking)
-  void sendSMS(
-    body.customer_phone,
-    `Rialto : commande ${order.order_number} reçue ! Nous vous confirmons la prise en charge dans quelques instants.`,
-  );
+  // Upsert rialto_customer (1 ligne par phone) et attache l'order
+  const [firstName, ...rest] = body.customer_name.split(" ");
+  const lastName = rest.join(" ") || null;
+  const { data: customer } = await sb
+    .from("rialto_customers")
+    .upsert(
+      {
+        restaurant_id: body.restaurant_id,
+        phone: body.customer_phone,
+        first_name: firstName || null,
+        last_name: lastName,
+      },
+      { onConflict: "restaurant_id,phone", ignoreDuplicates: false },
+    )
+    .select("id")
+    .single();
+  if (customer) {
+    await sb.from("orders").update({ customer_id: customer.id }).eq("id", order.id);
+  }
+
+  // SMS confirmation templaté (non-blocking)
+  void (async () => {
+    try {
+      const tmpl = await getConfirmationTemplate(body.restaurant_id);
+      if (!tmpl.enabled) return;
+      const ctx = buildConfirmationContext({
+        order: {
+          id: order.id,
+          order_number: order.order_number,
+          customer_name: body.customer_name,
+          total_amount: total,
+          requested_pickup_time: pickupISO,
+        },
+        restaurant: {
+          name: restaurant.name,
+          phone: restaurant.phone,
+          address: restaurant.address,
+        },
+        siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://rialto-lausanne.ch",
+      });
+      const content = renderConfirmationTemplate(tmpl.content, ctx);
+      await sendSMS(body.customer_phone, content);
+    } catch (err) {
+      console.error("[sms] confirmation failed", err);
+    }
+  })();
 
   // Push dashboard (non-blocking, best-effort). Le secret + l'URL sont
   // configurés côté Vercel. Si indisponibles en dev, on skip.

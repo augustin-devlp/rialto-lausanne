@@ -2,31 +2,69 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { RESTAURANT_ID } from "@/lib/supabase";
 import { sanitizePhoneCH } from "@/lib/format";
+import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
+import SpinWheel from "./SpinWheel";
+import LotteryEntry from "./LotteryEntry";
 
-type RialtoCustomer = {
+type Customer = {
   id: string;
   first_name: string;
   last_name: string | null;
+  phone: string;
   email: string | null;
-  phone?: string | null;
-  stamps_count: number;
+};
+type Card = {
+  id: string;
+  current_stamps: number;
+  stamps_required: number;
+  reward_description: string;
+  card_name: string;
+  qr_code_value: string;
+  rewards_claimed: number;
+};
+type Wheel = {
+  id: string;
+  is_active: boolean;
+  frequency: string;
+  segments: { label: string; color?: string }[];
+  can_spin: boolean;
+  last_reward: string | null;
+};
+type Lottery = {
+  id: string;
+  title: string;
+  reward_description: string;
+  draw_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
+  is_permanent: boolean;
+  already_entered: boolean;
+};
+type Order = {
+  id: string;
+  order_number: string;
+  status: string;
+  total_amount: number | string;
+  created_at: string;
+};
+type LookupPayload = {
+  customer: Customer | null;
+  card: Card | null;
+  spin_wheel: Wheel | null;
+  lottery: Lottery | null;
+  orders: Order[];
 };
 
-const STAMPS_REQUIRED = 10;
-// www.stampify.ch direct (évite le 307 stampify.ch → www qui casse CORS)
-const STAMPIFY_BASE =
-  process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://www.stampify.ch";
 const STORAGE_PHONE_KEY = "rialto:loyalty:phone";
 
 export default function FideliteSection() {
   const [phone, setPhone] = useState("");
   const [searching, setSearching] = useState(false);
-  const [customer, setCustomer] = useState<RialtoCustomer | null>(null);
+  const [data, setData] = useState<LookupPayload | null>(null);
   const [notFoundPhone, setNotFoundPhone] = useState<string | null>(null);
 
-  // Restore last used phone
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_PHONE_KEY);
     if (stored) {
@@ -42,18 +80,16 @@ export default function FideliteSection() {
     if (!opts?.silent) setSearching(true);
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/customers/signup?restaurant_id=${RESTAURANT_ID}&phone=${encodeURIComponent(
-          clean,
-        )}`,
+        `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(clean)}`,
       );
       if (res.ok) {
-        const body = (await res.json()) as { customer: RialtoCustomer | null };
-        if (body.customer) {
-          setCustomer(body.customer);
+        const body = (await res.json()) as LookupPayload;
+        if (body.customer && body.card) {
+          setData(body);
           setNotFoundPhone(null);
           localStorage.setItem(STORAGE_PHONE_KEY, clean);
         } else {
-          setCustomer(null);
+          setData(null);
           setNotFoundPhone(clean);
         }
       }
@@ -66,13 +102,13 @@ export default function FideliteSection() {
     <section className="mx-auto max-w-2xl px-4 py-12">
       <header className="text-center">
         <div className="mb-2 text-4xl">🎁</div>
-        <h2 className="text-3xl font-bold tracking-tight">Carte de fidélité</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Carte Rialto Club</h2>
         <p className="mt-2 text-sm text-mute">
-          10 commandes = 1 plat offert. Simple, gratuit, sans compte à créer.
+          10 commandes = 1 pizza offerte. Plus la roue et la loterie mensuelle.
         </p>
       </header>
 
-      {!customer && (
+      {!data && (
         <LookupForm
           phone={phone}
           onChange={setPhone}
@@ -81,25 +117,30 @@ export default function FideliteSection() {
         />
       )}
 
-      {!customer && notFoundPhone && (
+      {!data && notFoundPhone && (
         <SignupForm
           phone={notFoundPhone}
-          onCreated={(c) => {
-            setCustomer(c);
+          onCreated={(payload) => {
+            setData(payload);
             setNotFoundPhone(null);
             localStorage.setItem(STORAGE_PHONE_KEY, notFoundPhone);
+            // Re-lookup pour avoir roue/loterie/orders
+            void lookup(notFoundPhone, { silent: true });
           }}
         />
       )}
 
-      {customer && (
-        <CustomerCard
-          customer={customer}
+      {data && data.customer && data.card && (
+        <CardView
+          payload={data}
           onSwitchAccount={() => {
             localStorage.removeItem(STORAGE_PHONE_KEY);
-            setCustomer(null);
+            setData(null);
             setPhone("");
             setNotFoundPhone(null);
+          }}
+          onRefresh={async () => {
+            if (data.customer) await lookup(data.customer.phone, { silent: true });
           }}
         />
       )}
@@ -158,7 +199,7 @@ function SignupForm({
   onCreated,
 }: {
   phone: string;
-  onCreated: (c: RialtoCustomer) => void;
+  onCreated: (payload: LookupPayload) => void;
 }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -180,11 +221,10 @@ function SignupForm({
     }
     setBusy(true);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/customers/signup`, {
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          restaurant_id: RESTAURANT_ID,
           phone: cleanPhone,
           first_name: firstName.trim(),
           last_name: lastName.trim() || null,
@@ -195,8 +235,17 @@ function SignupForm({
         setErr((b as { error?: string }).error ?? `Erreur serveur (${res.status})`);
         return;
       }
-      const body = (await res.json()) as { customer: RialtoCustomer };
-      onCreated(body.customer);
+      const body = (await res.json()) as {
+        customer: Customer;
+        card: Card;
+      };
+      onCreated({
+        customer: body.customer,
+        card: body.card,
+        spin_wheel: null,
+        lottery: null,
+        orders: [],
+      });
     } catch (e) {
       setErr(e instanceof Error ? `Erreur réseau : ${e.message}` : "Erreur réseau");
     } finally {
@@ -213,7 +262,7 @@ function SignupForm({
         Aucune carte trouvée pour {initialPhone}
       </div>
       <div className="mb-4 text-xs text-emerald-900/70">
-        Créez votre carte fidélité gratuite en 10 secondes.
+        Créez votre carte Rialto Club gratuite en 10 secondes.
       </div>
 
       <div className="space-y-3">
@@ -254,30 +303,31 @@ function SignupForm({
         disabled={busy}
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
       >
-        {busy ? "Activation en cours…" : "Créer ma carte fidélité"}
+        {busy ? "Activation en cours…" : "Créer ma carte Rialto Club"}
       </button>
-
-      <p className="mt-3 text-center text-[11px] text-emerald-900/70">
-        ✓ Informations modifiables à tout moment
-      </p>
     </form>
   );
 }
 
-function CustomerCard({
-  customer: initialCustomer,
+function CardView({
+  payload,
   onSwitchAccount,
+  onRefresh,
 }: {
-  customer: RialtoCustomer;
+  payload: LookupPayload;
   onSwitchAccount: () => void;
+  onRefresh: () => Promise<void>;
 }) {
-  const [customer, setCustomer] = useState(initialCustomer);
-  const [editOpen, setEditOpen] = useState(false);
+  const { customer, card, spin_wheel, lottery, orders } = payload;
+  if (!customer || !card) return null;
+
+  const [spinOpen, setSpinOpen] = useState(false);
+  const [lotteryOpen, setLotteryOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const complete = card.current_stamps >= card.stamps_required;
   const qrValue = useMemo(
-    () =>
-      `${STAMPIFY_BASE}/api/rialto/customers/${customer.id}/check-in`,
-    [customer.id],
+    () => `STAMPIFY:${card.qr_code_value}`,
+    [card.qr_code_value],
   );
 
   useEffect(() => {
@@ -290,8 +340,6 @@ function CustomerCard({
     );
   }, [qrValue]);
 
-  const complete = customer.stamps_count >= STAMPS_REQUIRED;
-
   return (
     <div className="mt-8 space-y-4">
       {/* Carte principale */}
@@ -299,7 +347,7 @@ function CustomerCard({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
-              Carte fidélité Rialto
+              {card.card_name}
             </div>
             <h3 className="mt-1 text-2xl font-black tracking-tight">
               {customer.first_name}{" "}
@@ -307,6 +355,7 @@ function CustomerCard({
                 <span className="text-gray-500">{customer.last_name}</span>
               )}
             </h3>
+            <p className="mt-1 text-xs text-mute">{card.reward_description}</p>
           </div>
           <button
             type="button"
@@ -320,7 +369,7 @@ function CustomerCard({
         <div className="mt-6">
           <div className="mb-2 flex items-baseline justify-between text-sm">
             <span className="font-semibold text-emerald-900">
-              {customer.stamps_count} / {STAMPS_REQUIRED} tampons
+              {card.current_stamps} / {card.stamps_required} tampons
             </span>
             {complete && (
               <span className="text-xs font-bold text-emerald-700">
@@ -329,17 +378,22 @@ function CustomerCard({
             )}
           </div>
           <div className="flex gap-1">
-            {Array.from({ length: STAMPS_REQUIRED }).map((_, i) => (
+            {Array.from({ length: card.stamps_required }).map((_, i) => (
               <div
                 key={i}
                 className={`h-10 flex-1 rounded-md transition-colors ${
-                  i < customer.stamps_count
+                  i < card.current_stamps
                     ? "bg-emerald-600"
                     : "bg-white border border-emerald-200"
                 }`}
               />
             ))}
           </div>
+          {card.rewards_claimed > 0 && (
+            <p className="mt-2 text-xs text-emerald-700">
+              🎉 {card.rewards_claimed} récompense{card.rewards_claimed > 1 ? "s" : ""} déjà gagnée{card.rewards_claimed > 1 ? "s" : ""}
+            </p>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col items-center rounded-xl bg-white p-5 shadow-sm">
@@ -353,195 +407,98 @@ function CustomerCard({
             Montrez ce QR en caisse pour valider vos tampons.
           </p>
         </div>
-
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            className="text-xs text-mute underline-offset-2 hover:text-ink hover:underline"
-          >
-            Mes infos sont incorrectes ? Modifier
-          </button>
-        </div>
       </article>
 
-      {editOpen && (
-        <EditProfileModal
-          customer={customer}
-          onClose={() => setEditOpen(false)}
-          onSaved={(next) => {
-            setCustomer(next);
-            setEditOpen(false);
+      {/* Actions : Roue + Loterie */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          disabled={!spin_wheel?.is_active}
+          onClick={() => setSpinOpen(true)}
+          className="rounded-xl border border-rialto bg-white p-4 text-left transition hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
+            🎰 Roue
+          </div>
+          <div className="mt-1 text-sm font-bold">Tenter votre chance</div>
+          <div className="mt-1 text-[11px] text-mute">
+            {spin_wheel?.can_spin
+              ? "Un tour disponible !"
+              : spin_wheel?.last_reward
+                ? `Gagné : ${spin_wheel.last_reward}`
+                : "Pas disponible"}
+          </div>
+        </button>
+        <button
+          type="button"
+          disabled={!lottery?.is_active}
+          onClick={() => setLotteryOpen(true)}
+          className="rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <div className="text-xs font-semibold uppercase tracking-wider text-gray-700">
+            🎁 Loterie
+          </div>
+          <div className="mt-1 text-sm font-bold">
+            {lottery?.title ?? "Loterie mensuelle"}
+          </div>
+          <div className="mt-1 text-[11px] text-mute">
+            {lottery?.already_entered
+              ? "Vous participez ✓"
+              : "Participer (gratuit)"}
+          </div>
+        </button>
+      </div>
+
+      {/* Historique */}
+      {orders.length > 0 && (
+        <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-card">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-mute">
+            Mes dernières commandes
+          </h4>
+          <ul className="space-y-2 text-sm">
+            {orders.slice(0, 5).map((o) => (
+              <li key={o.id} className="flex items-center justify-between">
+                <span className="font-medium">{o.order_number}</span>
+                <span className="text-xs text-mute">
+                  {new Date(o.created_at).toLocaleDateString("fr-CH")}
+                </span>
+                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                  {o.status}
+                </span>
+                <span className="font-semibold">
+                  {Number(o.total_amount).toFixed(2)} CHF
+                </span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      )}
+
+      {spinOpen && spin_wheel && (
+        <SpinWheel
+          phone={customer.phone}
+          firstName={customer.first_name}
+          segments={spin_wheel.segments}
+          canSpin={spin_wheel.can_spin}
+          lastReward={spin_wheel.last_reward}
+          onClose={() => {
+            setSpinOpen(false);
+            void onRefresh();
           }}
         />
       )}
 
-      {/* Actions secondaires */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          disabled
-          className="rounded-xl border border-gray-200 bg-white p-4 text-left opacity-60 cursor-not-allowed"
-          title="Bientôt disponible"
-        >
-          <div className="text-xs font-semibold uppercase tracking-wider text-mute">
-            Bientôt
-          </div>
-          <div className="mt-1 text-sm font-bold">🎰 Roue de la chance</div>
-        </button>
-        <button
-          type="button"
-          disabled
-          className="rounded-xl border border-gray-200 bg-white p-4 text-left opacity-60 cursor-not-allowed"
-          title="Bientôt disponible"
-        >
-          <div className="text-xs font-semibold uppercase tracking-wider text-mute">
-            Bientôt
-          </div>
-          <div className="mt-1 text-sm font-bold">🎁 Mes récompenses</div>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function EditProfileModal({
-  customer,
-  onClose,
-  onSaved,
-}: {
-  customer: RialtoCustomer;
-  onClose: () => void;
-  onSaved: (next: RialtoCustomer) => void;
-}) {
-  const [firstName, setFirstName] = useState(customer.first_name);
-  const [lastName, setLastName] = useState(customer.last_name ?? "");
-  const [phone, setPhone] = useState(customer.phone ?? "");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    const cleanPhone = phone ? sanitizePhoneCH(phone) : undefined;
-    if (!firstName.trim()) {
-      setErr("Prénom obligatoire.");
-      return;
-    }
-    if (cleanPhone && cleanPhone.length < 10) {
-      setErr("Téléphone invalide.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/customers/${customer.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            first_name: firstName.trim(),
-            last_name: lastName.trim() || null,
-            ...(cleanPhone ? { phone: cleanPhone } : {}),
-          }),
-        },
-      );
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        setErr((b as { error?: string }).error ?? `Erreur ${res.status}`);
-        return;
-      }
-      const body = (await res.json()) as { customer: RialtoCustomer };
-      // Persist le nouveau tel localement pour que le lookup ultérieur marche
-      if (cleanPhone) localStorage.setItem(STORAGE_PHONE_KEY, cleanPhone);
-      onSaved(body.customer);
-    } catch (e) {
-      setErr(e instanceof Error ? `Erreur réseau : ${e.message}` : "Erreur réseau");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={save}
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl"
-      >
-        <header className="flex items-start justify-between border-b border-gray-100 p-5">
-          <h3 className="text-lg font-bold">Modifier mes infos</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="-mr-2 -mt-2 rounded-full p-2 text-gray-400 hover:bg-gray-50"
-          >
-            ✕
-          </button>
-        </header>
-
-        <div className="space-y-3 p-5">
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700">
-              Prénom *
-            </label>
-            <input
-              required
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700">
-              Nom
-            </label>
-            <input
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-gray-700">
-              Téléphone
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+41 79 123 45 67"
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-
-          {err && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-              {err}
-            </div>
-          )}
-        </div>
-
-        <footer className="flex gap-2 border-t border-gray-100 p-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-full px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-          >
-            Annuler
-          </button>
-          <button
-            type="submit"
-            disabled={busy}
-            className="flex-1 rounded-full bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60"
-          >
-            {busy ? "…" : "Enregistrer"}
-          </button>
-        </footer>
-      </form>
+      {lotteryOpen && lottery && (
+        <LotteryEntry
+          lottery={lottery}
+          phone={customer.phone}
+          firstName={customer.first_name}
+          onClose={() => {
+            setLotteryOpen(false);
+            void onRefresh();
+          }}
+        />
+      )}
     </div>
   );
 }

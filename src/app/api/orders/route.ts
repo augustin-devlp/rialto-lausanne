@@ -195,24 +195,50 @@ export async function POST(req: NextRequest) {
     changed_by: "customer",
   });
 
-  // Upsert rialto_customer (1 ligne par phone) et attache l'order
+  // Lie la commande à un customer Stampify natif (customers +
+  // customer_cards pour le programme Rialto). Si aucun compte n'existe
+  // encore, on en crée un vide pour garder le lien — la carte fidélité
+  // pourra être "activée" plus tard par le client sur /order/[id] ou
+  // l'onglet Fidélité.
+  const RIALTO_CARD_ID = "f4cb1a3f-fc5c-40eb-87db-8d2c2b0a8b5f";
   const [firstName, ...rest] = body.customer_name.split(" ");
-  const lastName = rest.join(" ") || null;
-  const { data: customer } = await sb
-    .from("rialto_customers")
-    .upsert(
-      {
-        restaurant_id: body.restaurant_id,
-        phone: body.customer_phone,
-        first_name: firstName || null,
+  const lastName = rest.join(" ") || "";
+
+  const { data: existingCards } = await sb
+    .from("customer_cards")
+    .select("id, customer_id, customers!inner (id, phone)")
+    .eq("card_id", RIALTO_CARD_ID)
+    .eq("customers.phone", body.customer_phone)
+    .limit(1);
+
+  let customerId: string | null = null;
+  if (existingCards && existingCards.length > 0) {
+    customerId = existingCards[0].customer_id as string;
+  } else {
+    // Crée un customer + customer_card vide
+    const { data: newCustomer } = await sb
+      .from("customers")
+      .insert({
+        first_name: firstName || "Client",
         last_name: lastName,
-      },
-      { onConflict: "restaurant_id,phone", ignoreDuplicates: false },
-    )
-    .select("id")
-    .single();
-  if (customer) {
-    await sb.from("orders").update({ customer_id: customer.id }).eq("id", order.id);
+        phone: body.customer_phone,
+      })
+      .select("id")
+      .single();
+    if (newCustomer) {
+      customerId = newCustomer.id;
+      await sb.from("customer_cards").insert({
+        customer_id: newCustomer.id,
+        card_id: RIALTO_CARD_ID,
+        current_stamps: 0,
+        qr_code_value: crypto.randomUUID(),
+        rewards_claimed: 0,
+      });
+    }
+  }
+
+  if (customerId) {
+    await sb.from("orders").update({ customer_id: customerId }).eq("id", order.id);
   }
 
   // SMS confirmation templaté (non-blocking)

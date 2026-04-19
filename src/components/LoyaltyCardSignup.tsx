@@ -2,42 +2,46 @@
 
 import { useEffect, useState } from "react";
 import { sanitizePhoneCH } from "@/lib/format";
+import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
-type RialtoCustomer = {
+type StampifyCard = {
+  id: string;
+  current_stamps: number;
+  stamps_required: number;
+  reward_description: string;
+  card_name: string;
+  qr_code_value: string;
+  rewards_claimed: number;
+};
+
+type StampifyCustomer = {
   id: string;
   first_name: string;
   last_name: string | null;
+  phone: string;
   email: string | null;
-  stamps_count: number;
 };
 
 type Props = {
   restaurantId: string;
-  stampifyBaseUrl: string;
+  stampifyBaseUrl?: string;
   defaultFirstName: string;
   defaultLastName: string;
   phone: string;
 };
 
-const STAMPS_REQUIRED = 10;
-
 /**
  * Carte fidélité Rialto affichée sur /order/[id].
+ * Utilise le système Stampify natif (customers + customer_cards).
  * Visible dès l'arrivée sur la page, quel que soit le statut de la commande.
- *
- * États :
- *   - lookup initial : pendant que le hook vérifie si le tel est déjà inscrit
- *   - form inscription (si pas encore de carte)
- *   - carte active avec progression 10 tampons (si déjà inscrit)
  */
 export default function LoyaltyCardSignup({
-  restaurantId,
-  stampifyBaseUrl,
   defaultFirstName,
   defaultLastName,
   phone: initialPhone,
 }: Props) {
-  const [customer, setCustomer] = useState<RialtoCustomer | null>(null);
+  const [customer, setCustomer] = useState<StampifyCustomer | null>(null);
+  const [card, setCard] = useState<StampifyCard | null>(null);
   const [loading, setLoading] = useState(true);
   const [firstName, setFirstName] = useState(defaultFirstName);
   const [lastName, setLastName] = useState(defaultLastName);
@@ -45,18 +49,25 @@ export default function LoyaltyCardSignup({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check si le client est déjà enregistré pour ce téléphone
+  // Lookup initial par téléphone
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const url = `${stampifyBaseUrl}/api/rialto/customers/signup?restaurant_id=${encodeURIComponent(
-          restaurantId,
-        )}&phone=${encodeURIComponent(initialPhone)}`;
-        const res = await fetch(url);
+        const res = await fetch(
+          `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(
+            initialPhone,
+          )}`,
+        );
         if (res.ok) {
-          const body = (await res.json()) as { customer: RialtoCustomer | null };
-          if (!cancelled && body.customer) setCustomer(body.customer);
+          const body = (await res.json()) as {
+            customer: StampifyCustomer | null;
+            card: StampifyCard | null;
+          };
+          if (!cancelled && body.customer && body.card) {
+            setCustomer(body.customer);
+            setCard(body.card);
+          }
         }
       } catch (err) {
         console.error("[loyalty] lookup failed", err);
@@ -66,12 +77,11 @@ export default function LoyaltyCardSignup({
     return () => {
       cancelled = true;
     };
-  }, [restaurantId, initialPhone, stampifyBaseUrl]);
+  }, [initialPhone]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-
     const cleanPhone = sanitizePhoneCH(phone);
     if (!firstName.trim()) {
       setError("Prénom obligatoire.");
@@ -81,37 +91,37 @@ export default function LoyaltyCardSignup({
       setError("Numéro de téléphone invalide (format +41…).");
       return;
     }
-
     setSubmitting(true);
     try {
-      const res = await fetch(`${stampifyBaseUrl}/api/rialto/customers/signup`, {
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          restaurant_id: restaurantId,
           phone: cleanPhone,
           first_name: firstName.trim(),
           last_name: lastName.trim() || null,
         }),
       });
-
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}) as { error?: string });
+        const body = await res.json().catch(() => ({}));
         setError(
           (body as { error?: string }).error ??
             `Erreur serveur (${res.status}). Réessayez ou appelez Rialto.`,
         );
         return;
       }
-
-      const body = (await res.json()) as { customer: RialtoCustomer };
+      const body = (await res.json()) as {
+        customer: StampifyCustomer;
+        card: StampifyCard;
+      };
       setCustomer(body.customer);
+      setCard(body.card);
     } catch (err) {
       console.error("[loyalty] submit failed", err);
       setError(
         err instanceof Error
           ? `Erreur réseau : ${err.message}`
-          : "Erreur réseau inconnue. Vérifiez votre connexion.",
+          : "Erreur réseau inconnue.",
       );
     } finally {
       setSubmitting(false);
@@ -119,7 +129,6 @@ export default function LoyaltyCardSignup({
   }
 
   if (loading) {
-    // petit placeholder pendant le lookup initial
     return (
       <section className="mt-6 rounded-2xl border border-gray-100 bg-white p-6 text-center text-sm text-mute">
         Chargement de votre carte fidélité…
@@ -127,8 +136,8 @@ export default function LoyaltyCardSignup({
     );
   }
 
-  if (customer) {
-    return <ActiveCard customer={customer} />;
+  if (customer && card) {
+    return <ActiveCard customer={customer} card={card} />;
   }
 
   return (
@@ -140,59 +149,41 @@ export default function LoyaltyCardSignup({
             Gagnez votre prochaine commande
           </h3>
           <p className="mt-1 text-sm text-emerald-900/80">
-            Chaque commande = 1 tampon. À {STAMPS_REQUIRED} tampons, recevez
-            un plat de votre choix offert.
+            Chaque commande = 1 tampon. À 10 tampons, recevez un plat de votre
+            choix offert.
           </p>
         </div>
       </div>
 
       <form onSubmit={submit} className="mt-4 space-y-3">
         <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-emerald-900/80">
-              Prénom *
-            </label>
-            <input
-              required
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Prénom"
-              className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold text-emerald-900/80">
-              Nom *
-            </label>
-            <input
-              required
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Nom"
-              className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="mb-1 block text-[11px] font-semibold text-emerald-900/80">
-            Téléphone *
-          </label>
           <input
             required
-            type="tel"
-            inputMode="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+41 79 123 45 67"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="Prénom"
+            className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+          />
+          <input
+            required
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Nom"
             className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
           />
         </div>
+        <input
+          required
+          type="tel"
+          inputMode="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="+41 79 123 45 67"
+          className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
+        />
 
         {error && (
-          <div
-            role="alert"
-            className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800"
-          >
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800">
             {error}
           </div>
         )}
@@ -220,8 +211,14 @@ export default function LoyaltyCardSignup({
   );
 }
 
-function ActiveCard({ customer }: { customer: RialtoCustomer }) {
-  const complete = customer.stamps_count >= STAMPS_REQUIRED;
+function ActiveCard({
+  customer,
+  card,
+}: {
+  customer: StampifyCustomer;
+  card: StampifyCard;
+}) {
+  const complete = card.current_stamps >= card.stamps_required;
   return (
     <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
       <div className="flex items-start gap-3">
@@ -231,7 +228,7 @@ function ActiveCard({ customer }: { customer: RialtoCustomer }) {
             Bonjour {customer.first_name} !
           </h3>
           <p className="mt-1 text-sm text-emerald-900/80">
-            Votre carte fidélité Rialto est active.
+            Carte <strong>{card.card_name}</strong> · {card.reward_description}
           </p>
         </div>
       </div>
@@ -239,7 +236,7 @@ function ActiveCard({ customer }: { customer: RialtoCustomer }) {
       <div className="mt-5">
         <div className="mb-2 flex items-baseline justify-between text-sm">
           <span className="font-semibold text-emerald-900">
-            {customer.stamps_count} / {STAMPS_REQUIRED} tampons
+            {card.current_stamps} / {card.stamps_required} tampons
           </span>
           {complete && (
             <span className="text-xs font-bold text-emerald-700">
@@ -248,11 +245,11 @@ function ActiveCard({ customer }: { customer: RialtoCustomer }) {
           )}
         </div>
         <div className="flex gap-1">
-          {Array.from({ length: STAMPS_REQUIRED }).map((_, i) => (
+          {Array.from({ length: card.stamps_required }).map((_, i) => (
             <div
               key={i}
               className={`h-8 flex-1 rounded-md transition-colors ${
-                i < customer.stamps_count
+                i < card.current_stamps
                   ? "bg-emerald-600"
                   : "bg-white border border-emerald-200"
               }`}
@@ -260,8 +257,7 @@ function ActiveCard({ customer }: { customer: RialtoCustomer }) {
           ))}
         </div>
         <p className="mt-3 text-xs text-emerald-900/70">
-          Votre prochaine commande créditera 1 tampon à la validation en
-          caisse.
+          Votre prochaine commande créditera 1 tampon à la validation en caisse.
         </p>
       </div>
     </section>

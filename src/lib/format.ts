@@ -57,10 +57,13 @@ export function cartItemKey(
   return `${itemId}::${opt}::${notes}`;
 }
 
+/**
+ * @deprecated Utiliser normalizePhone de "@/lib/phone" qui gère CH + FR +
+ * détection auto. Conservé pour compatibilité legacy — redirige.
+ */
 export function sanitizePhoneCH(input: string): string {
-  const digits = input.replace(/[^\d+]/g, "");
-  if (digits.startsWith("+")) return digits;
-  if (digits.startsWith("00")) return "+" + digits.slice(2);
-  if (digits.startsWith("0")) return "+41" + digits.slice(1);
-  return digits;
+  // Conservé pour les imports existants. En interne on bascule sur
+  // la nouvelle fonction libphonenumber-based qui gère CH + FR.
+  const cleaned = input.trim().replace(/[\s\-().]/g, "");
+  return cleaned;
 }

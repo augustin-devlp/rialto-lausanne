@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
-import { sanitizePhoneCH } from "@/lib/format";
+import { normalizePhone } from "@/lib/phone";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import SpinWheel from "./SpinWheel";
 import LotteryEntry from "./LotteryEntry";
@@ -75,8 +75,8 @@ export default function FideliteSection() {
   }, []);
 
   async function lookup(raw: string, opts?: { silent?: boolean }) {
-    const clean = sanitizePhoneCH(raw);
-    if (!clean || clean.length < 10) return;
+    const clean = normalizePhone(raw);
+    if (!clean) return;
     if (!opts?.silent) setSearching(true);
     try {
       const res = await fetch(
@@ -210,13 +210,13 @@ function SignupForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    const cleanPhone = sanitizePhoneCH(phone);
     if (!firstName.trim()) {
       setErr("Prénom obligatoire.");
       return;
     }
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setErr("Numéro de téléphone invalide.");
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone) {
+      setErr("Numéro invalide. Format accepté : +41 79…, +33 6…, etc.");
       return;
     }
     setBusy(true);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { sanitizePhoneCH } from "@/lib/format";
+import { normalizePhone } from "@/lib/phone";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type StampifyCard = {
@@ -82,13 +82,13 @@ export default function LoyaltyCardSignup({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const cleanPhone = sanitizePhoneCH(phone);
     if (!firstName.trim()) {
       setError("Prénom obligatoire.");
       return;
     }
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setError("Numéro de téléphone invalide (format +41…).");
+    const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone) {
+      setError("Numéro invalide. Format accepté : +41 79…, +33 6…, etc.");
       return;
     }
     setSubmitting(true);

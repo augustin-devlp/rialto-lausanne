@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CartItem, Restaurant } from "@/lib/types";
-import { buildPickupTimeSlots, formatCHF, sanitizePhoneCH } from "@/lib/format";
+import { buildPickupTimeSlots, formatCHF } from "@/lib/format";
+import { normalizePhone } from "@/lib/phone";
 import { pickupFromZurichHHMM } from "@/lib/timezone";
 import PickupTimePicker from "./PickupTimePicker";
 
@@ -49,7 +50,14 @@ export default function CheckoutForm({
     setLoading(true);
     setError(null);
     try {
-      const cleanPhone = sanitizePhoneCH(phone);
+      const cleanPhone = normalizePhone(phone);
+      if (!cleanPhone) {
+        setError(
+          "Numéro de téléphone invalide. Vérifiez le format (ex. +41 79… ou +33 6…).",
+        );
+        setLoading(false);
+        return;
+      }
 
       // Construit l'instant UTC correspondant à l'heure "HH:MM" interprétée
       // dans la timezone Europe/Zurich (peu importe où se trouve le client).

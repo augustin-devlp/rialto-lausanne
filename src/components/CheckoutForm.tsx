@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CartItem, Restaurant } from "@/lib/types";
 import { buildPickupTimeSlots, formatCHF, sanitizePhoneCH } from "@/lib/format";
 import { pickupFromZurichHHMM } from "@/lib/timezone";
+import PickupTimePicker from "./PickupTimePicker";
 
 type Props = {
   restaurant: Restaurant;
@@ -165,22 +166,13 @@ export default function CheckoutForm({
           </Field>
 
           <Field label="Heure de retrait" required>
-            <select
-              required
+            <PickupTimePicker
+              openTime={restaurant.order_open_time}
+              closeTime={restaurant.order_close_time}
+              prepMinutes={restaurant.prep_time_minutes}
               value={pickup}
-              onChange={(e) => setPickup(e.target.value)}
-              className="input"
-            >
-              {slots.length === 0 ? (
-                <option value="">Hors horaires d'ouverture</option>
-              ) : (
-                slots.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))
-              )}
-            </select>
+              onChange={setPickup}
+            />
           </Field>
 
           <Field label="Notes (allergies, précisions)">

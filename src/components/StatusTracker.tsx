@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 import type { Order, OrderItemRow, OrderStatus, Restaurant } from "@/lib/types";
 import { supabaseBrowser } from "@/lib/supabase";
 import { formatCHF } from "@/lib/format";
-import QRPickup from "./QRPickup";
 
 type Props = {
   order: Order;
   items: OrderItemRow[];
   restaurant: Pick<Restaurant, "name" | "address" | "phone">;
-  /** URL scan pour le QR code à afficher quand la commande est prête. */
-  scanUrl?: string;
 };
 
 const STAGES: { key: OrderStatus; label: string; icon: string }[] = [
@@ -26,7 +23,7 @@ function stageIndex(status: OrderStatus): number {
   return i < 0 ? 0 : i;
 }
 
-export default function StatusTracker({ order, items, restaurant, scanUrl }: Props) {
+export default function StatusTracker({ order, items, restaurant }: Props) {
   const [status, setStatus] = useState<OrderStatus>(order.status);
 
   useEffect(() => {
@@ -118,9 +115,34 @@ export default function StatusTracker({ order, items, restaurant, scanUrl }: Pro
         </div>
       )}
 
-      {/* QR de retrait */}
-      {status === "ready" && scanUrl && (
-        <QRPickup orderNumber={order.order_number} scanUrl={scanUrl} />
+      {/* Card "prête" */}
+      {status === "ready" && (
+        <div className="mt-6 rounded-2xl border-2 border-emerald-500 bg-emerald-50 p-6 text-center shadow-card">
+          <div className="text-5xl">✅</div>
+          <h3 className="mt-3 text-2xl font-black text-emerald-900">
+            Votre commande est prête !
+          </h3>
+          <div className="mt-1 text-sm text-emerald-900/80">
+            Numéro : <strong>{order.order_number}</strong>
+          </div>
+          <div className="mt-3 inline-block rounded-full bg-white px-4 py-2 text-lg font-bold text-emerald-900">
+            Montant : {formatCHF(Number(order.total_amount))}
+          </div>
+          <p className="mt-3 text-sm text-emerald-900/80">
+            Payez sur place en espèces ou TWINT.
+          </p>
+          <p className="mt-1 text-sm font-semibold text-emerald-900">
+            {restaurant.address ?? "Av. de Béthusy 29B, 1012 Lausanne"}
+          </p>
+          {restaurant.phone && (
+            <a
+              href={`tel:${restaurant.phone.replace(/\s/g, "")}`}
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+            >
+              📞 Appeler Rialto
+            </a>
+          )}
+        </div>
       )}
 
       {/* Récap */}

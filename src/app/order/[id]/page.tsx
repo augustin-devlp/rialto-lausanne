@@ -36,12 +36,8 @@ export default async function OrderPage({
     .eq("id", order.restaurant_id)
     .single();
 
-  // URL du webhook scan côté Stampify (pour le QR)
   const stampifyBase =
     process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://stampify.ch";
-  const scanUrl = `${stampifyBase}/api/orders/scan?number=${encodeURIComponent(
-    order.order_number,
-  )}`;
 
   // Noms par défaut pour pré-remplir le formulaire fidélité
   const [firstName, ...rest] = (order.customer_name ?? "").split(" ");
@@ -71,7 +67,6 @@ export default async function OrderPage({
             phone: null,
           }) as Pick<Restaurant, "name" | "address" | "phone">
         }
-        scanUrl={scanUrl}
       />
 
       <div className="mx-auto max-w-2xl px-4 pb-10">

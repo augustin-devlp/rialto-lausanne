@@ -10,9 +10,9 @@ type Props = {
 const TABS: { key: TabKey; label: string }[] = [
   { key: "menu", label: "Menu" },
   { key: "avis", label: "Avis" },
+  { key: "fidelite", label: "Fidélité" },
   { key: "contact", label: "Contact" },
   { key: "legal", label: "Mentions légales" },
-  { key: "fidelite", label: "Fidélité" },
 ];
 
 export default function Hero({ activeTab, onSelect }: Props) {
@@ -56,25 +56,20 @@ export default function Hero({ activeTab, onSelect }: Props) {
         </ul>
       </nav>
 
-      {/* Logo + titre centrés */}
+      {/* Logo centré — version blanche (sans titre) */}
       <div className="relative z-10 flex flex-col items-center px-4">
         <img
           src="https://static.takeaway.com/images/restaurants/ch/0R0QOO11/logo_465x320.png"
-          alt="Logo Rialto"
-          className="mb-6 animate-[fadeIn_0.6s_ease-out] drop-shadow-2xl"
-          style={{ width: "clamp(200px, 28vw, 300px)", height: "auto", objectFit: "contain" }}
-        />
-        <h1
-          className="font-bold text-white"
+          alt="Rialto"
+          className="animate-[fadeIn_0.6s_ease-out] drop-shadow-2xl"
           style={{
-            fontFamily: "'Fraunces', 'Playfair Display', Georgia, serif",
-            fontSize: "clamp(48px, 8vw, 72px)",
-            letterSpacing: "0.05em",
-            textShadow: "0 2px 8px rgba(0,0,0,0.4)",
+            width: "clamp(240px, 34vw, 360px)",
+            height: "auto",
+            objectFit: "contain",
+            // Convertit l'image en blanc pur
+            filter: "brightness(0) invert(1)",
           }}
-        >
-          RIALTO
-        </h1>
+        />
       </div>
 
       {/* Chevron vers le contenu */}

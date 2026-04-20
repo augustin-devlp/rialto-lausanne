@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CartItem, Restaurant } from "@/lib/types";
+import type { CartItem, DeliveryZone, FulfillmentType, Restaurant } from "@/lib/types";
 import { buildPickupTimeSlots, formatCHF } from "@/lib/format";
 import { normalizePhone } from "@/lib/phone";
 import { pickupFromZurichHHMM } from "@/lib/timezone";
@@ -16,6 +16,9 @@ type Props = {
   onSuccess: () => void;
 };
 
+const STAMPIFY_BASE =
+  process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://www.stampify.ch";
+
 export default function CheckoutForm({
   restaurant,
   cart,
@@ -23,6 +26,22 @@ export default function CheckoutForm({
   onClose,
   onSuccess,
 }: Props) {
+  const offersPickup = restaurant.offers_pickup ?? true;
+  const offersDelivery = restaurant.offers_delivery ?? false;
+
+  const [fulfillmentType, setFulfillmentType] = useState<FulfillmentType>(
+    offersPickup ? "pickup" : "delivery",
+  );
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [payerPhone, setPayerPhone] = useState("");
+  const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  // Pickup time
   const slots = useMemo(
     () =>
       buildPickupTimeSlots(
@@ -32,17 +51,115 @@ export default function CheckoutForm({
       ),
     [restaurant],
   );
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
   const [pickup, setPickup] = useState(slots[0] ?? "");
-  const [notes, setNotes] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
 
-  const valid =
-    firstName.trim() && lastName.trim() && phone.trim() && pickup && !loading;
+  // Delivery fields
+  const [address, setAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [floorDoor, setFloorDoor] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [asap, setAsap] = useState(true);
+
+  // Zone lookup
+  const [zone, setZone] = useState<DeliveryZone | null>(null);
+  const [zoneChecking, setZoneChecking] = useState(false);
+  const [zoneError, setZoneError] = useState<string | null>(null);
+
+  // Prep time dynamique
+  const [prepLabel, setPrepLabel] = useState<string | null>(null);
+
+  const deliveryFee = zone?.delivery_fee ?? 0;
+  const total = Number(subtotal) + Number(deliveryFee);
+  const minAmount =
+    fulfillmentType === "delivery"
+      ? (zone?.min_order_amount ?? 0)
+      : restaurant.order_min_amount;
+  const missingAmount = Math.max(0, minAmount - subtotal);
+
+  // Vérifie le zonage à chaque changement de code postal
+  useEffect(() => {
+    if (fulfillmentType !== "delivery") {
+      setZone(null);
+      setZoneError(null);
+      return;
+    }
+    const pc = postalCode.trim();
+    if (pc.length !== 4) {
+      setZone(null);
+      setZoneError(null);
+      return;
+    }
+    let cancelled = false;
+    setZoneChecking(true);
+    setZoneError(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `${STAMPIFY_BASE}/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
+            restaurant.id,
+          )}&postal_code=${encodeURIComponent(pc)}`,
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          setZoneError("Erreur de vérification de zone.");
+          setZone(null);
+        } else {
+          const body = (await res.json()) as {
+            covered: boolean;
+            zone?: DeliveryZone;
+          };
+          if (body.covered && body.zone) {
+            setZone(body.zone);
+            setZoneError(null);
+          } else {
+            setZone(null);
+            setZoneError(
+              `Nous ne livrons pas au ${pc}. Optez pour le retrait en magasin.`,
+            );
+          }
+        }
+      } catch {
+        if (!cancelled) setZoneError("Erreur réseau.");
+      } finally {
+        if (!cancelled) setZoneChecking(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfillmentType, postalCode, restaurant.id]);
+
+  // Prep time dynamique (appel à chaque changement de mode ou de zone)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pc = fulfillmentType === "delivery" ? zone?.postal_code : undefined;
+      const url = new URL(
+        `${STAMPIFY_BASE}/api/restaurants/${restaurant.id}/prep-time`,
+      );
+      url.searchParams.set("type", fulfillmentType);
+      if (pc) url.searchParams.set("postal_code", pc);
+      try {
+        const res = await fetch(url.toString());
+        if (cancelled || !res.ok) return;
+        const body = (await res.json()) as { label: string };
+        setPrepLabel(body.label);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfillmentType, zone?.postal_code, restaurant.id]);
+
+  const baseValid =
+    firstName.trim() && lastName.trim() && phone.trim() && !loading;
+  const pickupValid = fulfillmentType !== "pickup" || !!pickup;
+  const deliveryValid =
+    fulfillmentType !== "delivery" ||
+    (address.trim() && zone && !zoneChecking && subtotal >= minAmount);
+  const valid = baseValid && pickupValid && deliveryValid && missingAmount === 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,16 +170,19 @@ export default function CheckoutForm({
       const cleanPhone = normalizePhone(phone);
       if (!cleanPhone) {
         setError(
-          "Numéro de téléphone invalide. Vérifiez le format (ex. +41 79… ou +33 6…).",
+          "Numéro invalide. Format accepté : +41 79…, +33 6…, etc.",
         );
         setLoading(false);
         return;
       }
+      const cleanPayer = payerPhone.trim() ? normalizePhone(payerPhone) : null;
 
-      // Construit l'instant UTC correspondant à l'heure "HH:MM" interprétée
-      // dans la timezone Europe/Zurich (peu importe où se trouve le client).
-      // Si l'heure est déjà passée aujourd'hui, on bascule à demain.
-      const pickupISO = pickupFromZurichHHMM(pickup).toISOString();
+      let pickupISO: string | null = null;
+      if (fulfillmentType === "pickup") {
+        pickupISO = pickupFromZurichHHMM(pickup).toISOString();
+      } else if (!asap) {
+        pickupISO = pickupFromZurichHHMM(pickup).toISOString();
+      }
 
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -71,7 +191,21 @@ export default function CheckoutForm({
           restaurant_id: restaurant.id,
           customer_name: `${firstName.trim()} ${lastName.trim()}`,
           customer_phone: cleanPhone,
+          payer_phone: cleanPayer,
           requested_pickup_time: pickupISO,
+          fulfillment_type: fulfillmentType,
+          delivery_address:
+            fulfillmentType === "delivery" ? address.trim() : null,
+          delivery_postal_code:
+            fulfillmentType === "delivery" ? postalCode.trim() : null,
+          delivery_city:
+            fulfillmentType === "delivery" ? zone?.city ?? null : null,
+          delivery_floor_door:
+            fulfillmentType === "delivery" ? floorDoor.trim() || null : null,
+          delivery_instructions:
+            fulfillmentType === "delivery" ? instructions.trim() || null : null,
+          delivery_zone_id:
+            fulfillmentType === "delivery" ? zone?.id ?? null : null,
           notes: notes.trim() || null,
           items: cart.map((c) => ({
             menu_item_id: c.menu_item_id,
@@ -97,6 +231,8 @@ export default function CheckoutForm({
     }
   };
 
+  const showBothModes = offersPickup && offersDelivery;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
@@ -119,86 +255,210 @@ export default function CheckoutForm({
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
+          {/* Sélecteur pickup/delivery */}
+          {showBothModes && (
+            <div className="mb-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setFulfillmentType("pickup")}
+                className={`rounded-xl border-2 p-3 text-center transition ${
+                  fulfillmentType === "pickup"
+                    ? "border-rialto bg-rialto/5"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="text-2xl">🏪</div>
+                <div className="mt-1 text-sm font-semibold">Retrait en magasin</div>
+                <div className="text-[11px] text-mute">Gratuit</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFulfillmentType("delivery")}
+                className={`rounded-xl border-2 p-3 text-center transition ${
+                  fulfillmentType === "delivery"
+                    ? "border-rialto bg-rialto/5"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="text-2xl">🚴</div>
+                <div className="mt-1 text-sm font-semibold">Livraison</div>
+                <div className="text-[11px] text-mute">à domicile</div>
+              </button>
+            </div>
+          )}
+
+          {prepLabel && (
+            <div className="mb-4 rounded-lg bg-surface p-3 text-center text-xs font-medium text-ink">
+              ⏱️ {prepLabel}
+            </div>
+          )}
+
+          {/* Récap */}
           <div className="mb-5 rounded-xl bg-surface p-4">
             <div className="mb-2 text-sm font-semibold">Récapitulatif</div>
             <ul className="mb-2 space-y-1 text-sm">
               {cart.map((c) => (
                 <li key={c.key} className="flex justify-between">
-                  <span>
-                    {c.quantity}× {c.name}
-                  </span>
+                  <span>{c.quantity}× {c.name}</span>
                   <span>{formatCHF(c.subtotal)}</span>
                 </li>
               ))}
             </ul>
-            <div className="flex justify-between border-t border-gray-200 pt-2 text-sm font-bold">
-              <span>Total</span>
-              <span>{formatCHF(subtotal)}</span>
+            <div className="space-y-1 border-t border-gray-200 pt-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-mute">Sous-total</span>
+                <span>{formatCHF(subtotal)}</span>
+              </div>
+              {fulfillmentType === "delivery" && (
+                <div className="flex justify-between">
+                  <span className="text-mute">Livraison</span>
+                  <span>
+                    {zone ? formatCHF(deliveryFee) : "—"}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-gray-200 pt-1 font-bold">
+                <span>Total</span>
+                <span>{formatCHF(total)}</span>
+              </div>
             </div>
+            {fulfillmentType === "delivery" && zone && missingAmount > 0 && (
+              <div className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-800">
+                Commande minimum : {formatCHF(minAmount)} pour {zone.city ?? zone.postal_code}.
+                Ajoutez <strong>{formatCHF(missingAmount)}</strong> pour pouvoir livrer.
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Prénom" required>
-              <input
-                type="text"
-                required
-                autoComplete="given-name"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="input"
-              />
+              <input type="text" required autoComplete="given-name"
+                value={firstName} onChange={(e) => setFirstName(e.target.value)} className="input" />
             </Field>
             <Field label="Nom" required>
-              <input
-                type="text"
-                required
-                autoComplete="family-name"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="input"
-              />
+              <input type="text" required autoComplete="family-name"
+                value={lastName} onChange={(e) => setLastName(e.target.value)} className="input" />
             </Field>
           </div>
 
-          <Field label="Téléphone" required hint="Format suisse : +41 …">
-            <input
-              type="tel"
-              required
-              inputMode="tel"
-              autoComplete="tel"
+          <Field label="Téléphone" required hint="Format CH (+41…) ou FR (+33…) accepté">
+            <input type="tel" required inputMode="tel" autoComplete="tel"
               placeholder="+41 79 123 45 67"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="input"
-            />
+              value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="input" />
           </Field>
 
-          <Field label="Heure de retrait" required>
-            <PickupTimePicker
-              openTime={restaurant.order_open_time}
-              closeTime={restaurant.order_close_time}
-              prepMinutes={restaurant.prep_time_minutes}
-              value={pickup}
-              onChange={setPickup}
-            />
-          </Field>
+          {fulfillmentType === "pickup" && (
+            <>
+              <Field label="Heure de retrait" required>
+                <PickupTimePicker
+                  openTime={restaurant.order_open_time}
+                  closeTime={restaurant.order_close_time}
+                  prepMinutes={restaurant.prep_time_minutes}
+                  value={pickup}
+                  onChange={setPickup}
+                />
+              </Field>
+              <div className="mb-4 rounded-lg bg-surface p-3 text-xs text-mute">
+                🏪 Retrait : {restaurant.address ?? "Av. de Béthusy 29, Lausanne"}
+              </div>
+            </>
+          )}
+
+          {fulfillmentType === "delivery" && (
+            <>
+              <Field label="Code postal" required>
+                <input
+                  type="text" required inputMode="numeric" pattern="[0-9]{4}"
+                  placeholder="1012"
+                  maxLength={4}
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ""))}
+                  className="input"
+                />
+                {zoneChecking && (
+                  <p className="mt-1 text-xs text-mute">Vérification…</p>
+                )}
+                {zone && !zoneChecking && (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    ✓ Zone {zone.city ?? zone.postal_code} — {formatCHF(zone.delivery_fee)}{" "}
+                    · min. {formatCHF(zone.min_order_amount)} · ~{zone.estimated_delivery_minutes} min
+                  </p>
+                )}
+                {zoneError && !zoneChecking && (
+                  <p className="mt-1 text-xs text-red-700">⚠️ {zoneError}</p>
+                )}
+              </Field>
+
+              <Field label="Adresse complète" required hint="Rue et numéro">
+                <input type="text" required value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Av. de Béthusy 29"
+                  className="input" />
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Étage / code d'entrée">
+                  <input type="text" value={floorDoor}
+                    onChange={(e) => setFloorDoor(e.target.value)}
+                    placeholder="3e étage · porte gauche"
+                    className="input" />
+                </Field>
+                <Field label="Téléphone du payeur" hint="Si quelqu'un paye à votre place">
+                  <input type="tel" value={payerPhone}
+                    onChange={(e) => setPayerPhone(e.target.value)}
+                    placeholder="+41 79 999 88 77"
+                    className="input" />
+                </Field>
+              </div>
+
+              <Field label="Instructions livreur">
+                <textarea rows={2} value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  className="input resize-none"
+                  placeholder="Ex. sonner 2 fois, laisser devant la porte…" />
+              </Field>
+
+              <Field label="Heure de livraison">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" checked={asap} onChange={() => setAsap(true)}
+                      className="accent-rialto" />
+                    Dès que possible
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" checked={!asap} onChange={() => setAsap(false)}
+                      className="accent-rialto" />
+                    À une heure précise
+                  </label>
+                  {!asap && (
+                    <PickupTimePicker
+                      openTime={restaurant.order_open_time}
+                      closeTime={restaurant.order_close_time}
+                      prepMinutes={restaurant.prep_time_minutes}
+                      value={pickup}
+                      onChange={setPickup}
+                    />
+                  )}
+                </div>
+              </Field>
+            </>
+          )}
 
           <Field label="Notes (allergies, précisions)">
-            <textarea
-              rows={2}
-              value={notes}
+            <textarea rows={2} value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="input resize-none"
-              placeholder="Ex. allergie aux noix…"
-            />
+              placeholder="Ex. allergie aux noix…" />
           </Field>
 
           <div className="mt-3 rounded-xl bg-surface p-4 text-sm">
-            <div className="mb-1 font-semibold">
-              💰 Paiement en magasin uniquement
-            </div>
+            <div className="mb-1 font-semibold">💰 Paiement sur place</div>
             <div className="text-mute">
-              Espèces ou TWINT · Retrait : {restaurant.address}
+              Espèces, TWINT ou carte bancaire{" "}
+              {fulfillmentType === "delivery"
+                ? "— réglé au livreur."
+                : "— réglé au comptoir."}
             </div>
           </div>
 
@@ -210,8 +470,18 @@ export default function CheckoutForm({
         </div>
 
         <footer className="border-t border-gray-100 p-4">
-          <button type="submit" disabled={!valid} className="btn-primary w-full">
-            {loading ? "Envoi…" : `Confirmer la commande · ${formatCHF(subtotal)}`}
+          <button
+            type="submit"
+            disabled={!valid}
+            className={`w-full rounded-full px-5 py-4 text-sm font-semibold text-white shadow-sm transition ${
+              valid
+                ? "bg-rialto hover:bg-rialto-dark active:scale-[0.98]"
+                : "bg-gray-400 cursor-not-allowed"
+            }`}
+          >
+            {loading
+              ? "Envoi…"
+              : `Confirmer · ${formatCHF(total)}`}
           </button>
         </footer>
       </form>
@@ -226,9 +496,7 @@ export default function CheckoutForm({
           outline: none;
           transition: border-color 0.15s;
         }
-        .input:focus {
-          border-color: #e30613;
-        }
+        .input:focus { border-color: #e30613; }
       `}</style>
     </div>
   );

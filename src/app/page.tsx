@@ -15,7 +15,7 @@ async function loadData() {
   const { data: restaurant } = await sb
     .from("restaurants")
     .select(
-      "id, slug, name, address, phone, logo_url, order_min_amount, order_open_time, order_close_time, prep_time_minutes, accepting_orders",
+      "id, slug, name, address, phone, logo_url, order_min_amount, order_open_time, order_close_time, prep_time_minutes, accepting_orders, offers_pickup, offers_delivery, pickup_prep_time_minutes, delivery_prep_time_minutes, announcement_message, announcement_active",
     )
     .eq("id", RESTAURANT_ID)
     .single();

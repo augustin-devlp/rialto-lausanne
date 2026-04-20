@@ -10,6 +10,25 @@ export type Restaurant = {
   order_close_time: string;
   prep_time_minutes: number;
   accepting_orders: boolean;
+  // Delivery settings
+  offers_pickup?: boolean;
+  offers_delivery?: boolean;
+  pickup_prep_time_minutes?: number;
+  delivery_prep_time_minutes?: number;
+  announcement_message?: string | null;
+  announcement_active?: boolean;
+};
+
+export type FulfillmentType = "pickup" | "delivery";
+
+export type DeliveryZone = {
+  id: string;
+  postal_code: string;
+  city: string | null;
+  delivery_fee: number;
+  min_order_amount: number;
+  estimated_delivery_minutes: number;
+  is_active: boolean;
 };
 
 export type MenuCategory = {

@@ -26,14 +26,18 @@ type Payload = {
   restaurant_id: string;
   customer_name: string;
   customer_phone: string;
-  /**
-   * Full ISO 8601 timestamp (e.g. "2026-04-18T19:15:00.000Z").
-   * Constructed client-side from the user's local time zone so it reflects
-   * the actual pickup instant. Stored as-is in Supabase.
-   */
-  requested_pickup_time: string;
+  payer_phone?: string | null;
+  requested_pickup_time: string | null;
   notes: string | null;
   items: IncomingItem[];
+  // Delivery fields
+  fulfillment_type?: "pickup" | "delivery";
+  delivery_address?: string | null;
+  delivery_postal_code?: string | null;
+  delivery_city?: string | null;
+  delivery_floor_door?: string | null;
+  delivery_instructions?: string | null;
+  delivery_zone_id?: string | null;
 };
 
 function parsePickupISO(value: string): string | null {
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
   const { data: restaurant, error: rErr } = await sb
     .from("restaurants")
     .select(
-      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes",
+      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes, offers_pickup, offers_delivery",
     )
     .eq("id", body.restaurant_id)
     .single();
@@ -74,68 +78,129 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const total = body.items.reduce((s, it) => s + Number(it.subtotal), 0);
-  if (total < Number(restaurant.order_min_amount)) {
-    return NextResponse.json(
-      { error: `Commande minimum : ${restaurant.order_min_amount} CHF` },
-      { status: 400 },
-    );
-  }
+  const subtotal = body.items.reduce((s, it) => s + Number(it.subtotal), 0);
+  const fulfillmentType: "pickup" | "delivery" = body.fulfillment_type ?? "pickup";
 
-  const pickupISO = parsePickupISO(body.requested_pickup_time);
-  if (!pickupISO) {
-    return NextResponse.json(
-      { error: "Heure de retrait invalide" },
-      { status: 400 },
-    );
-  }
+  // --- Validation delivery ---
+  let deliveryFee = 0;
+  let deliveryZoneId: string | null = null;
+  let deliveryCity: string | null = null;
 
-  // --- Validation horaires / prep time, en Europe/Zurich ---
-  const pickupDate = new Date(pickupISO);
-  const now = new Date();
-
-  const pickupHHMM = toZurichHHMM(pickupDate);
-  const pickupDateZurich = toZurichDate(pickupDate);
-  const nowDateZurich = toZurichDate(now);
-  const earliestHHMM = toZurichHHMM(
-    new Date(now.getTime() + restaurant.prep_time_minutes * 60_000),
-  );
-
-  const openHHMM = String(restaurant.order_open_time).slice(0, 5);
-  const closeHHMM = String(restaurant.order_close_time).slice(0, 5);
-
-  const pickupMin = hhmmToMinutes(pickupHHMM);
-  const openMin = hhmmToMinutes(openHHMM);
-  const closeMin = hhmmToMinutes(closeHHMM);
-
-  if (pickupMin < openMin) {
-    return NextResponse.json(
-      {
-        error: `Les commandes sont acceptées à partir de ${openHHMM}. Choisissez une heure plus tardive.`,
-      },
-      { status: 400 },
-    );
-  }
-  if (pickupMin > closeMin) {
-    return NextResponse.json(
-      {
-        error: `Les commandes sont acceptées jusqu'à ${closeHHMM}. Choisissez une heure plus tôt.`,
-      },
-      { status: 400 },
-    );
-  }
-
-  // Contrainte "au moins prep_time_minutes" seulement si le retrait est
-  // aujourd'hui (Zurich). Pour demain, pas de contrainte prep.
-  if (pickupDateZurich === nowDateZurich) {
-    const earliestMin = hhmmToMinutes(earliestHHMM);
-    if (pickupMin < earliestMin) {
+  if (fulfillmentType === "delivery") {
+    if (restaurant.offers_delivery === false) {
+      return NextResponse.json(
+        { error: "La livraison n'est pas disponible pour ce restaurant." },
+        { status: 409 },
+      );
+    }
+    if (!body.delivery_address?.trim() || !body.delivery_postal_code?.trim()) {
+      return NextResponse.json(
+        { error: "Adresse et code postal requis pour la livraison." },
+        { status: 400 },
+      );
+    }
+    const { data: zone } = await sb
+      .from("delivery_zones")
+      .select(
+        "id, postal_code, city, delivery_fee, min_order_amount, is_active",
+      )
+      .eq("restaurant_id", body.restaurant_id)
+      .eq("postal_code", body.delivery_postal_code.trim())
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!zone) {
       return NextResponse.json(
         {
-          error: `Prévoyez au moins ${restaurant.prep_time_minutes} min de préparation. Plus tôt possible : ${earliestHHMM}.`,
+          error: `Nous ne livrons pas au ${body.delivery_postal_code.trim()}. Optez pour le retrait en magasin.`,
         },
         { status: 400 },
       );
+    }
+    if (subtotal < Number(zone.min_order_amount)) {
+      return NextResponse.json(
+        {
+          error: `Commande minimum pour la livraison : ${Number(
+            zone.min_order_amount,
+          ).toFixed(2)} CHF.`,
+        },
+        { status: 400 },
+      );
+    }
+    deliveryFee = Number(zone.delivery_fee);
+    deliveryZoneId = zone.id as string;
+    deliveryCity = (zone.city as string | null) ?? body.delivery_city ?? null;
+  } else {
+    // Pickup : validation du panier min restaurant
+    if (subtotal < Number(restaurant.order_min_amount)) {
+      return NextResponse.json(
+        { error: `Commande minimum : ${restaurant.order_min_amount} CHF` },
+        { status: 400 },
+      );
+    }
+  }
+
+  const total = subtotal + deliveryFee;
+
+  // --- Heure de retrait / livraison ---
+  // Pickup : obligatoire. Delivery : optionnelle (asap possible).
+  let pickupISO: string | null = null;
+  if (body.requested_pickup_time) {
+    pickupISO = parsePickupISO(body.requested_pickup_time);
+    if (!pickupISO) {
+      return NextResponse.json(
+        { error: "Heure invalide" },
+        { status: 400 },
+      );
+    }
+  } else if (fulfillmentType === "pickup") {
+    return NextResponse.json(
+      { error: "Heure de retrait requise." },
+      { status: 400 },
+    );
+  }
+
+  // --- Validation horaires / prep time pour PICKUP uniquement ---
+  if (fulfillmentType === "pickup" && pickupISO) {
+    const pickupDate = new Date(pickupISO);
+    const now = new Date();
+    const pickupHHMM = toZurichHHMM(pickupDate);
+    const pickupDateZurich = toZurichDate(pickupDate);
+    const nowDateZurich = toZurichDate(now);
+    const earliestHHMM = toZurichHHMM(
+      new Date(now.getTime() + restaurant.prep_time_minutes * 60_000),
+    );
+    const openHHMM = String(restaurant.order_open_time).slice(0, 5);
+    const closeHHMM = String(restaurant.order_close_time).slice(0, 5);
+    const pickupMin = hhmmToMinutes(pickupHHMM);
+    const openMin = hhmmToMinutes(openHHMM);
+    const closeMin = hhmmToMinutes(closeHHMM);
+
+    if (pickupMin < openMin) {
+      return NextResponse.json(
+        {
+          error: `Les commandes sont acceptées à partir de ${openHHMM}.`,
+        },
+        { status: 400 },
+      );
+    }
+    if (pickupMin > closeMin) {
+      return NextResponse.json(
+        {
+          error: `Les commandes sont acceptées jusqu'à ${closeHHMM}.`,
+        },
+        { status: 400 },
+      );
+    }
+    if (pickupDateZurich === nowDateZurich) {
+      const earliestMin = hhmmToMinutes(earliestHHMM);
+      if (pickupMin < earliestMin) {
+        return NextResponse.json(
+          {
+            error: `Prévoyez au moins ${restaurant.prep_time_minutes} min. Plus tôt possible : ${earliestHHMM}.`,
+          },
+          { status: 400 },
+        );
+      }
     }
   }
 
@@ -151,10 +216,19 @@ export async function POST(req: NextRequest) {
       order_number: orderNumber,
       customer_name: body.customer_name,
       customer_phone: body.customer_phone,
+      payer_phone: body.payer_phone ?? null,
       requested_pickup_time: pickupISO,
       status: "new",
       total_amount: total,
       notes: body.notes,
+      fulfillment_type: fulfillmentType,
+      delivery_address: body.delivery_address ?? null,
+      delivery_postal_code: body.delivery_postal_code ?? null,
+      delivery_city: deliveryCity,
+      delivery_floor_door: body.delivery_floor_door ?? null,
+      delivery_instructions: body.delivery_instructions ?? null,
+      delivery_fee: deliveryFee,
+      delivery_zone_id: deliveryZoneId,
     })
     .select("id, order_number")
     .single();
@@ -252,7 +326,7 @@ export async function POST(req: NextRequest) {
           order_number: order.order_number,
           customer_name: body.customer_name,
           total_amount: total,
-          requested_pickup_time: pickupISO,
+          requested_pickup_time: pickupISO ?? new Date().toISOString(),
         },
         restaurant: {
           name: restaurant.name,
@@ -270,15 +344,47 @@ export async function POST(req: NextRequest) {
 
   // Push dashboard (non-blocking, best-effort). Le secret + l'URL sont
   // configurés côté Vercel. Si indisponibles en dev, on skip.
+  const pickupTimeLabel = pickupISO
+    ? toZurichHHMM(new Date(pickupISO))
+    : "dès que possible";
   void notifyDashboard({
     restaurant_id: body.restaurant_id,
     order_number: order.order_number,
     customer_name: body.customer_name,
     total: total,
-    pickup_time_hhmm: pickupHHMM,
+    pickup_time_hhmm: pickupTimeLabel,
+    fulfillment_type: fulfillmentType,
   });
 
+  // PDF receipt email (fire-and-forget)
+  void sendReceiptEmail(order.id);
+
   return NextResponse.json({ order });
+}
+
+async function sendReceiptEmail(orderId: string): Promise<void> {
+  const url = process.env.LOYALTY_CARDS_BASE_URL
+    ?? process.env.LOYALTY_CARDS_WEBHOOK_URL?.replace(
+      /\/api\/push\/dashboard-send$/,
+      "",
+    )
+    ?? "https://www.stampify.ch";
+  const secret = process.env.ORDER_WEBHOOK_SECRET;
+  if (!secret) {
+    console.log("[receipt-email] skipped (ORDER_WEBHOOK_SECRET missing)");
+    return;
+  }
+  try {
+    await fetch(`${url}/api/orders/${orderId}/receipt-email`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-webhook-secret": secret,
+      },
+    });
+  } catch (err) {
+    console.error("[receipt-email] failed", err);
+  }
 }
 
 async function notifyDashboard(input: {
@@ -287,6 +393,7 @@ async function notifyDashboard(input: {
   customer_name: string;
   total: number;
   pickup_time_hhmm: string;
+  fulfillment_type?: "pickup" | "delivery";
 }): Promise<void> {
   const url = process.env.LOYALTY_CARDS_WEBHOOK_URL;
   const secret = process.env.ORDER_WEBHOOK_SECRET;
@@ -304,7 +411,9 @@ async function notifyDashboard(input: {
       body: JSON.stringify({
         restaurant_id: input.restaurant_id,
         title: `Nouvelle commande ${input.order_number}`,
-        body: `${input.customer_name} · ${input.total.toFixed(2)} CHF · Retrait ${input.pickup_time_hhmm}`,
+        body: `${input.customer_name} · ${input.total.toFixed(2)} CHF · ${
+          input.fulfillment_type === "delivery" ? "🚴 Livraison" : "🏪 Retrait"
+        } ${input.pickup_time_hhmm}`,
         url: "/dashboard/commandes",
         tag: `order-${input.order_number}`,
       }),

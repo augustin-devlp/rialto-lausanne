@@ -2,13 +2,12 @@
 
 const RATING = 4.7;
 const REVIEWS_COUNT = "230+";
-const JUSTEAT_URL = "https://www.just-eat.ch/fr/menu/rialto-1";
 
-function Star({ filled = true }: { filled?: boolean }) {
+function Star() {
   return (
     <svg
       viewBox="0 0 24 24"
-      fill={filled ? "#E30613" : "none"}
+      fill="#E30613"
       stroke="#E30613"
       strokeWidth={2}
       strokeLinejoin="round"
@@ -54,29 +53,13 @@ export default function AvisSection() {
 
           <p className="mt-4 text-sm text-mute">
             Basé sur <strong className="text-ink">{REVIEWS_COUNT} avis</strong>{" "}
-            Just Eat.
+            de clients satisfaits.
           </p>
 
-          <a
-            href={JUSTEAT_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-rialto px-5 py-3 text-sm font-semibold text-white transition hover:bg-rialto-dark"
-          >
-            Voir tous les avis sur Just Eat
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M7 17 17 7" />
-              <path d="M7 7h10v10" />
-            </svg>
-          </a>
+          <p className="mt-4 rounded-xl bg-surface p-4 text-xs text-mute">
+            Commandez en direct sans intermédiaire — livraison maison par{" "}
+            <strong className="text-ink">Rialto</strong>.
+          </p>
         </div>
       </div>
     </section>

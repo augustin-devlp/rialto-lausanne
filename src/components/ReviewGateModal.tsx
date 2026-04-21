@@ -13,6 +13,8 @@ type VerifyResult =
         | "api-missing"
         | "place-id-missing"
         | "google-api-error";
+      user_message?: string;
+      freshest_age_minutes?: number | null;
     };
 
 type Props = {
@@ -90,31 +92,39 @@ export default function ReviewGateModal({
         onVerified();
         return;
       }
-      // Gestion des raisons d'échec
-      switch (body.reason) {
-        case "no-recent-review":
-          setError(
-            "Nous n'avons pas encore détecté votre avis. Si vous venez de le publier, patientez 1 min puis réessayez.",
-          );
-          // Relance un cooldown court
+      // Le backend renvoie désormais un user_message contextualisé. On
+      // l'utilise en priorité et on tombe sur les messages par défaut sinon.
+      if (body.user_message) {
+        setError(body.user_message);
+        if (body.reason === "no-recent-review") {
+          // Relance un cooldown court pour laisser Google propager
           setStartedReviewAt(Date.now() - (WAIT_BEFORE_CHECK_MS - 20_000));
-          break;
-        case "already-claimed":
-          setError(
-            "Cet avis a déjà été utilisé. Laissez-en un nouveau pour débloquer.",
-          );
-          break;
-        case "api-missing":
-          setError(
-            "La vérification automatique est désactivée. Contactez le restaurant.",
-          );
-          break;
-        case "place-id-missing":
-          setError("Configuration Google manquante. Contactez le support.");
-          break;
-        case "google-api-error":
-          setError("Erreur temporaire Google. Réessayez dans 1 min.");
-          break;
+        }
+      } else {
+        switch (body.reason) {
+          case "no-recent-review":
+            setError(
+              "Nous n'avons pas encore détecté votre avis. Si vous venez de le publier, patientez 1 min puis réessayez.",
+            );
+            setStartedReviewAt(Date.now() - (WAIT_BEFORE_CHECK_MS - 20_000));
+            break;
+          case "already-claimed":
+            setError(
+              "Cet avis a déjà été utilisé. Laissez-en un nouveau pour débloquer.",
+            );
+            break;
+          case "api-missing":
+            setError(
+              "La vérification automatique est désactivée. Contactez le restaurant.",
+            );
+            break;
+          case "place-id-missing":
+            setError("Configuration Google manquante. Contactez le support.");
+            break;
+          case "google-api-error":
+            setError("Erreur temporaire Google. Réessayez dans 1 min.");
+            break;
+        }
       }
     } catch (err) {
       setError(

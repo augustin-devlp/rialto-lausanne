@@ -68,8 +68,76 @@ export default function CheckoutForm({
   // Prep time dynamique
   const [prepLabel, setPrepLabel] = useState<string | null>(null);
 
+  // --- Code promo ---
+  const [promoInput, setPromoInput] = useState("");
+  const [promoChecking, setPromoChecking] = useState(false);
+  const [promo, setPromo] = useState<{
+    code: string;
+    code_id: string;
+    discount_amount: number;
+    message: string;
+    free_item_label: string | null;
+  } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff"; // Rialto
+
+  async function applyPromo() {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setPromoChecking(true);
+    setPromoError(null);
+    try {
+      const res = await fetch(`${STAMPIFY_BASE}/api/promo-codes/validate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          business_id: STAMPIFY_BUSINESS_ID,
+          code,
+          subtotal,
+        }),
+      });
+      const body = (await res.json()) as {
+        valid: boolean;
+        error?: string;
+        code_id?: string;
+        code?: string;
+        discount_amount?: number;
+        message?: string;
+        free_item_label?: string | null;
+      };
+      if (!body.valid) {
+        setPromo(null);
+        setPromoError(body.error ?? "Code invalide");
+      } else {
+        setPromo({
+          code: body.code!,
+          code_id: body.code_id!,
+          discount_amount: body.discount_amount ?? 0,
+          message: body.message ?? "",
+          free_item_label: body.free_item_label ?? null,
+        });
+        setPromoError(null);
+      }
+    } catch {
+      setPromoError("Erreur réseau");
+    } finally {
+      setPromoChecking(false);
+    }
+  }
+
+  function clearPromo() {
+    setPromo(null);
+    setPromoInput("");
+    setPromoError(null);
+  }
+
   const deliveryFee = zone?.delivery_fee ?? 0;
-  const total = Number(subtotal) + Number(deliveryFee);
+  const promoDiscount = promo?.discount_amount ?? 0;
+  const total = Math.max(
+    0,
+    Number(subtotal) + Number(deliveryFee) - Number(promoDiscount),
+  );
   const minAmount =
     fulfillmentType === "delivery"
       ? (zone?.min_order_amount ?? 0)
@@ -222,6 +290,25 @@ export default function CheckoutForm({
       if (!res.ok || !body?.order?.id) {
         throw new Error(body?.error ?? "Erreur lors de la commande");
       }
+
+      // Si un code promo a été validé, on le consomme maintenant
+      if (promo) {
+        try {
+          await fetch(`${STAMPIFY_BASE}/api/promo-codes/apply`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              business_id: STAMPIFY_BUSINESS_ID,
+              code: promo.code,
+              order_id: body.order.id,
+              subtotal,
+            }),
+          });
+        } catch (err) {
+          console.error("[checkout] promo apply failed (non-blocking)", err);
+        }
+      }
+
       onSuccess();
       router.push(`/order/${body.order.id}`);
     } catch (err: unknown) {
@@ -315,6 +402,18 @@ export default function CheckoutForm({
                   <span>
                     {zone ? formatCHF(deliveryFee) : "—"}
                   </span>
+                </div>
+              )}
+              {promo && promoDiscount > 0 && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Code {promo.code}</span>
+                  <span>−{formatCHF(promoDiscount)}</span>
+                </div>
+              )}
+              {promo && promo.free_item_label && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Code {promo.code}</span>
+                  <span>{promo.free_item_label} offert</span>
                 </div>
               )}
               <div className="flex justify-between border-t border-gray-200 pt-1 font-bold">
@@ -444,6 +543,50 @@ export default function CheckoutForm({
               </Field>
             </>
           )}
+
+          <Field label="Code promo" hint="Si vous avez gagné un code à la roue ou reçu un bon cadeau">
+            {promo ? (
+              <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-emerald-800">
+                    ✓ {promo.code}
+                  </div>
+                  <div className="text-xs text-emerald-700">{promo.message}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearPromo}
+                  className="text-xs font-semibold text-emerald-800 underline"
+                >
+                  Retirer
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                  placeholder="RIA-XXXXX"
+                  className="input flex-1"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  onClick={applyPromo}
+                  disabled={!promoInput.trim() || promoChecking}
+                  className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {promoChecking ? "…" : "OK"}
+                </button>
+              </div>
+            )}
+            {promoError && (
+              <p className="mt-1 text-xs text-red-700">⚠️ {promoError}</p>
+            )}
+          </Field>
 
           <Field label="Notes (allergies, précisions)">
             <textarea rows={2} value={notes}

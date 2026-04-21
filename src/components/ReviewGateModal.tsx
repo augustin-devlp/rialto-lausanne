@@ -27,13 +27,54 @@ type Props = {
   onVerified: () => void;
 };
 
-const WAIT_BEFORE_CHECK_MS = 30_000;
+// TODO HACK TEMPORAIRE — jusqu'à jeudi 23 avril — remplacer par vraie
+// vérification Google Places API une fois la clé GOOGLE_PLACES_API_KEY
+// configurée dans Vercel. Voir commentaire en haut de handleVerify.
+const WAIT_BEFORE_CHECK_MS = 60_000;
+
+/**
+ * Clé localStorage pour stocker l'intent de l'utilisateur (a-t-il cliqué
+ * sur "Laisser un avis" ? à quel moment ?). Persiste entre les refresh.
+ */
+function intentKey(customerId: string): string {
+  return `rialto:review-intent:${customerId}`;
+}
+
+type ReviewIntent = {
+  opened_at: number;
+  status: "review_opened" | "verified";
+};
+
+function readIntent(customerId: string): ReviewIntent | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(intentKey(customerId));
+    if (!raw) return null;
+    return JSON.parse(raw) as ReviewIntent;
+  } catch {
+    return null;
+  }
+}
+
+function writeIntent(customerId: string, intent: ReviewIntent): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(intentKey(customerId), JSON.stringify(intent));
+}
 
 /**
  * Modal qui demande un avis Google 5★ pour débloquer roue + loterie.
- * 1. Bouton "Laisser un avis Google" → ouvre Google dans un nouvel onglet.
- * 2. Après 30s, active "J'ai laissé mon avis, vérifier".
- * 3. Appelle /api/rialto/loyalty/verify-review → si OK, onVerified().
+ *
+ * 2 modes :
+ * - Mode normal (GOOGLE_PLACES_API_KEY présent) : appel
+ *   /api/rialto/loyalty/verify-review qui interroge Google Places.
+ * - Mode dégradé (pas de clé) : hack timer 60s — le bouton "J'ai laissé
+ *   mon avis" devient cliquable 60s après avoir cliqué "Laisser un avis".
+ *   Appel /api/rialto/loyalty/verify-review-degraded qui crée le claim
+ *   avec is_degraded_mode=true sans vérification Google.
+ *
+ * Le composant tente d'abord le mode normal ; si la réponse est
+ * "api-missing" ou "google-api-error", il bascule automatiquement en mode
+ * dégradé (et l'UI countdown s'active).
  */
 export default function ReviewGateModal({
   customerId,
@@ -46,6 +87,18 @@ export default function ReviewGateModal({
   const [remainingSec, setRemainingSec] = useState<number>(0);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [degradedMode, setDegradedMode] = useState<boolean>(false);
+
+  // Au mount : recharge un intent précédent si présent
+  useEffect(() => {
+    const prev = readIntent(customerId);
+    if (prev && prev.status === "review_opened") {
+      setStartedReviewAt(prev.opened_at);
+      console.log(
+        `[review-gate] step=init action=restore_intent remaining_s=${Math.max(0, Math.round((prev.opened_at + WAIT_BEFORE_CHECK_MS - Date.now()) / 1000))}`,
+      );
+    }
+  }, [customerId]);
 
   const reviewUrl = `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
 
@@ -70,62 +123,98 @@ export default function ReviewGateModal({
 
   const canVerify = startedReviewAt !== null && remainingSec === 0;
 
+  /**
+   * Vérifie l'avis en deux temps :
+   * 1. Essaie d'abord le mode normal (appel Google Places côté Stampify)
+   * 2. Si "api-missing" ou "google-api-error" → bascule auto en mode
+   *    dégradé (verify-review-degraded). Le timer 60s côté client sert
+   *    de garde-fou "honor-based".
+   *
+   * Une fois basculé en mode dégradé, les clics suivants ciblent
+   * directement l'endpoint dégradé.
+   */
   async function handleVerify() {
     if (!canVerify || verifying) return;
     setVerifying(true);
     setError(null);
+    console.log(
+      `[review-gate] step=verify action=click degraded_mode=${degradedMode}`,
+    );
     try {
-      const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/verify-review`,
+      // Tentative mode normal d'abord (sauf si on a déjà basculé)
+      if (!degradedMode) {
+        const res = await fetch(
+          `${STAMPIFY_BASE}/api/rialto/loyalty/verify-review`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ customer_id: customerId }),
+          },
+        );
+        if (res.ok) {
+          const body = (await res.json()) as VerifyResult;
+          if (body.ok) {
+            writeIntent(customerId, {
+              opened_at: startedReviewAt ?? Date.now(),
+              status: "verified",
+            });
+            console.log("[review-gate] step=verified reason=normal_mode");
+            onVerified();
+            return;
+          }
+          // Si raison = api-missing ou google-api-error → fallback mode dégradé
+          if (
+            body.reason === "api-missing" ||
+            body.reason === "google-api-error"
+          ) {
+            console.log(
+              `[review-gate] step=fallback action=switch_to_degraded reason=${body.reason}`,
+            );
+            setDegradedMode(true);
+            // Continue vers le call dégradé juste après
+          } else {
+            // Autres raisons : afficher user_message et stop
+            setError(
+              body.user_message ??
+                (body.reason === "already-claimed"
+                  ? "Cet avis a déjà été utilisé."
+                  : "Vérification échouée, réessayez."),
+            );
+            return;
+          }
+        }
+      }
+
+      // Mode dégradé — appel endpoint dédié
+      const opened_at = startedReviewAt ?? Date.now() - WAIT_BEFORE_CHECK_MS;
+      const res2 = await fetch(
+        `${STAMPIFY_BASE}/api/rialto/loyalty/verify-review-degraded`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ customer_id: customerId }),
+          body: JSON.stringify({ customer_id: customerId, opened_at }),
         },
       );
-      if (!res.ok) {
-        setError(`Erreur serveur (${res.status}). Réessayez.`);
-        return;
-      }
-      const body = (await res.json()) as VerifyResult;
-      if (body.ok) {
+      const body2 = (await res2.json()) as {
+        ok: boolean;
+        reason?: string;
+        user_message?: string;
+      };
+      if (body2.ok) {
+        writeIntent(customerId, {
+          opened_at,
+          status: "verified",
+        });
+        console.log("[review-gate] step=verified reason=degraded_mode");
         onVerified();
         return;
       }
-      // Le backend renvoie désormais un user_message contextualisé. On
-      // l'utilise en priorité et on tombe sur les messages par défaut sinon.
-      if (body.user_message) {
-        setError(body.user_message);
-        if (body.reason === "no-recent-review") {
-          // Relance un cooldown court pour laisser Google propager
-          setStartedReviewAt(Date.now() - (WAIT_BEFORE_CHECK_MS - 20_000));
-        }
-      } else {
-        switch (body.reason) {
-          case "no-recent-review":
-            setError(
-              "Nous n'avons pas encore détecté votre avis. Si vous venez de le publier, patientez 1 min puis réessayez.",
-            );
-            setStartedReviewAt(Date.now() - (WAIT_BEFORE_CHECK_MS - 20_000));
-            break;
-          case "already-claimed":
-            setError(
-              "Cet avis a déjà été utilisé. Laissez-en un nouveau pour débloquer.",
-            );
-            break;
-          case "api-missing":
-            setError(
-              "La vérification automatique est désactivée. Contactez le restaurant.",
-            );
-            break;
-          case "place-id-missing":
-            setError("Configuration Google manquante. Contactez le support.");
-            break;
-          case "google-api-error":
-            setError("Erreur temporaire Google. Réessayez dans 1 min.");
-            break;
-        }
-      }
+      setError(
+        body2.user_message ??
+          (body2.reason === "too_soon"
+            ? "Patientez encore quelques secondes…"
+            : "Vérification échouée, rouvrez Google et réessayez."),
+      );
     } catch (err) {
       setError(
         err instanceof Error ? `Erreur réseau : ${err.message}` : "Erreur réseau",
@@ -136,9 +225,12 @@ export default function ReviewGateModal({
   }
 
   function openReview() {
+    const openedAt = Date.now();
     window.open(reviewUrl, "_blank", "noopener,noreferrer");
-    setStartedReviewAt(Date.now());
+    setStartedReviewAt(openedAt);
+    writeIntent(customerId, { opened_at: openedAt, status: "review_opened" });
     setError(null);
+    console.log(`[review-gate] step=opened action=click_google_url opened_at=${openedAt}`);
   }
 
   return (

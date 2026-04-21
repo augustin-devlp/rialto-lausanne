@@ -1,75 +1,45 @@
 import { supabaseServer, RESTAURANT_ID } from "@/lib/supabase";
-import type {
-  Restaurant,
-  MenuCategory,
-  MenuItem,
-  MenuItemOption,
-} from "@/lib/types";
-import RialtoHome from "@/components/RialtoHome";
+import SiteHeader from "@/components/home/SiteHeader";
+import HeroSection from "@/components/home/HeroSection";
+import SignatureDishes from "@/components/home/SignatureDishes";
+import WhyOrderDirect from "@/components/home/WhyOrderDirect";
+import LocationHours from "@/components/home/LocationHours";
+import ReviewsCarousel from "@/components/home/ReviewsCarousel";
+import SiteFooter from "@/components/home/SiteFooter";
 
-export const revalidate = 60;
+export const revalidate = 300;
 
-async function loadData() {
+async function loadRestaurant() {
   const sb = supabaseServer();
-
-  const { data: restaurant } = await sb
+  const { data } = await sb
     .from("restaurants")
-    .select(
-      "id, slug, name, address, phone, logo_url, order_min_amount, order_open_time, order_close_time, prep_time_minutes, accepting_orders, offers_pickup, offers_delivery, pickup_prep_time_minutes, delivery_prep_time_minutes, announcement_message, announcement_active",
-    )
+    .select("id, order_min_amount, accepting_orders")
     .eq("id", RESTAURANT_ID)
     .single();
-
-  const { data: categories } = await sb
-    .from("menu_categories")
-    .select("id, name, display_order, icon")
-    .eq("restaurant_id", RESTAURANT_ID)
-    .order("display_order");
-
-  const { data: items } = await sb
-    .from("menu_items")
-    .select(
-      "id, category_id, name, description, price, image_url, is_available, is_vegetarian, is_spicy, has_options, display_order",
-    )
-    .eq("restaurant_id", RESTAURANT_ID)
-    .order("display_order");
-
-  const itemIds = (items ?? []).map((i) => i.id);
-  const { data: options } = itemIds.length
-    ? await sb
-        .from("menu_item_options")
-        .select(
-          "id, item_id, option_group, option_name, extra_price, is_required, max_selections, display_order",
-        )
-        .in("item_id", itemIds)
-        .order("display_order")
-    : { data: [] as MenuItemOption[] };
-
-  return {
-    restaurant: restaurant as Restaurant | null,
-    categories: (categories ?? []) as MenuCategory[],
-    items: (items ?? []) as MenuItem[],
-    options: (options ?? []) as MenuItemOption[],
-  };
+  return data as {
+    id: string;
+    order_min_amount: number;
+    accepting_orders: boolean;
+  } | null;
 }
 
 export default async function HomePage() {
-  const { restaurant, categories, items, options } = await loadData();
-
-  if (!restaurant) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-10">
-        <p className="text-mute">Restaurant introuvable.</p>
-      </main>
-    );
-  }
+  const restaurant = await loadRestaurant();
+  const minOrderFallback = restaurant?.order_min_amount ?? 25;
+  const restaurantId = restaurant?.id ?? RESTAURANT_ID;
 
   return (
-    <RialtoHome
-      restaurant={restaurant}
-      categories={categories}
-      items={items}
-      options={options}
-    />
+    <main className="min-h-screen">
+      <SiteHeader transparentOnTop />
+      <HeroSection
+        restaurantId={restaurantId}
+        minOrderFallback={minOrderFallback}
+      />
+      <SignatureDishes />
+      <WhyOrderDirect />
+      <LocationHours />
+      <ReviewsCarousel />
+      <SiteFooter />
+    </main>
   );
 }

@@ -356,35 +356,11 @@ export async function POST(req: NextRequest) {
     fulfillment_type: fulfillmentType,
   });
 
-  // PDF receipt email (fire-and-forget)
-  void sendReceiptEmail(order.id);
+  // Note : email PDF au restaurant n'est PLUS déclenché ici à la
+  // création. Il est envoyé quand Mehmet accepte la commande depuis le
+  // dashboard (status → 'accepted'). Voir loyalty-cards PATCH /api/orders/[id].
 
   return NextResponse.json({ order });
-}
-
-async function sendReceiptEmail(orderId: string): Promise<void> {
-  const url = process.env.LOYALTY_CARDS_BASE_URL
-    ?? process.env.LOYALTY_CARDS_WEBHOOK_URL?.replace(
-      /\/api\/push\/dashboard-send$/,
-      "",
-    )
-    ?? "https://www.stampify.ch";
-  const secret = process.env.ORDER_WEBHOOK_SECRET;
-  if (!secret) {
-    console.log("[receipt-email] skipped (ORDER_WEBHOOK_SECRET missing)");
-    return;
-  }
-  try {
-    await fetch(`${url}/api/orders/${orderId}/receipt-email`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-webhook-secret": secret,
-      },
-    });
-  } catch (err) {
-    console.error("[receipt-email] failed", err);
-  }
 }
 
 async function notifyDashboard(input: {

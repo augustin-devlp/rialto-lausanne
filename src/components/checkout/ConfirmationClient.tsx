@@ -10,9 +10,10 @@
  */
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
+import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type OrderStatus =
   | "new"
@@ -82,10 +83,25 @@ function stepIndex(status: OrderStatus): number {
   return idx === -1 ? 0 : idx;
 }
 
+type LoyaltyCardState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | {
+      status: "has_card";
+      short_code: string;
+      current_stamps: number;
+      stamps_required: number;
+      reward_description: string;
+    }
+  | { status: "needs_signup" }
+  | { status: "signing_up" }
+  | { status: "error"; message: string };
+
 export default function ConfirmationClient({ order: initialOrder }: Props) {
   const [order, setOrder] = useState<OrderData>(initialOrder);
   const statusRef = useRef<OrderStatus>(initialOrder.status);
   const tickCountRef = useRef(0);
+  const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
 
   // Polling 15s sur le statut.
   //
@@ -191,6 +207,93 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   const currentStep = stepIndex(order.status);
   const firstName = order.customer_name.split(" ")[0] ?? "";
   const isCancelled = order.status === "cancelled";
+
+  /* ─── Carte fidélité : détection automatique au mount ──────────────── */
+  const lookupCard = useCallback(async () => {
+    if (!order.customer_phone) return;
+    setLoyalty({ status: "checking" });
+    try {
+      const res = await fetch(
+        `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(order.customer_phone)}`,
+      );
+      if (res.ok) {
+        const body = (await res.json()) as {
+          card?: {
+            short_code: string | null;
+            current_stamps: number;
+            stamps_required: number;
+            reward_description: string;
+          } | null;
+        };
+        if (body.card && body.card.short_code) {
+          setLoyalty({
+            status: "has_card",
+            short_code: body.card.short_code,
+            current_stamps: body.card.current_stamps,
+            stamps_required: body.card.stamps_required,
+            reward_description: body.card.reward_description,
+          });
+          return;
+        }
+      }
+      setLoyalty({ status: "needs_signup" });
+    } catch {
+      setLoyalty({ status: "needs_signup" });
+    }
+  }, [order.customer_phone]);
+
+  useEffect(() => {
+    void lookupCard();
+  }, [lookupCard]);
+
+  async function createCard() {
+    setLoyalty({ status: "signing_up" });
+    try {
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          first_name: firstName,
+          last_name: order.customer_name.split(" ").slice(1).join(" ") || "",
+          phone: order.customer_phone,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setLoyalty({
+          status: "error",
+          message: (body as { error?: string }).error ?? "Erreur serveur",
+        });
+        return;
+      }
+      const body = (await res.json()) as {
+        card: {
+          short_code: string | null;
+          current_stamps: number;
+          stamps_required: number;
+          reward_description: string;
+        };
+      };
+      if (!body.card.short_code) {
+        // Re-lookup pour récupérer le short_code (cas où le backfill vient
+        // juste de se faire)
+        await lookupCard();
+        return;
+      }
+      setLoyalty({
+        status: "has_card",
+        short_code: body.card.short_code,
+        current_stamps: body.card.current_stamps,
+        stamps_required: body.card.stamps_required,
+        reward_description: body.card.reward_description,
+      });
+    } catch (err) {
+      setLoyalty({
+        status: "error",
+        message: err instanceof Error ? err.message : "Erreur réseau",
+      });
+    }
+  }
 
   return (
     <main className="min-h-screen bg-cream pb-20">
@@ -374,17 +477,221 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         </div>
       </section>
 
-      {/* Actions */}
-      <section className="container-hero mt-10">
+      {/* ─── Carte fidélité — SECTION PROMINENTE (placée avant le récap) ── */}
+      {!isCancelled && (
+        <section className="container-hero mt-10">
+          <div className="mx-auto max-w-xl">
+            <LoyaltyCardSection
+              loyalty={loyalty}
+              firstName={firstName}
+              phone={order.customer_phone}
+              onCreate={createCard}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Actions retour */}
+      <section className="container-hero mt-8">
         <div className="mx-auto flex max-w-xl flex-col gap-3 sm:flex-row">
           <Link href="/" className="btn-ghost flex-1">
-            Retour à l'accueil
+            Retour à l&apos;accueil
           </Link>
-          <Link href={`/order/${order.id}`} className="btn-primary flex-1">
-            Créer ma carte fidélité
+          <Link href="/menu" className="btn-ghost flex-1">
+            Voir le menu
           </Link>
         </div>
       </section>
     </main>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Section carte fidélité — UI proéminente one-click
+   ═══════════════════════════════════════════════════════════════════════ */
+function LoyaltyCardSection({
+  loyalty,
+  firstName,
+  phone,
+  onCreate,
+}: {
+  loyalty: LoyaltyCardState;
+  firstName: string;
+  phone: string;
+  onCreate: () => void;
+}) {
+  // Masque le numéro pour l'affichage (+41 79 *** 45 67 → +41 79 XX XX 67)
+  const phoneMasked = phone
+    ? phone.replace(/(\+?\d{2,3})(\d+)(\d{2})$/, "$1 ... $3")
+    : "";
+
+  if (loyalty.status === "idle" || loyalty.status === "checking") {
+    return (
+      <div className="rounded-3xl border border-border bg-white p-6 shadow-card md:p-8">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 animate-pulse rounded-full bg-cream-dark" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-32 animate-pulse rounded bg-cream-dark" />
+            <div className="h-3 w-48 animate-pulse rounded bg-cream-dark" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loyalty.status === "has_card") {
+    const pct = Math.min(
+      100,
+      Math.round(
+        (loyalty.current_stamps / Math.max(1, loyalty.stamps_required)) * 100,
+      ),
+    );
+    const cardUrl = `${STAMPIFY_BASE}/c/${loyalty.short_code}`;
+    return (
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white shadow-pop md:p-8">
+        <span className="eyebrow !text-saffron">Ta carte fidélité</span>
+        <h3 className="mt-3 font-display text-2xl font-bold leading-tight md:text-3xl">
+          {loyalty.current_stamps} tampon
+          {loyalty.current_stamps > 1 ? "s" : ""} sur{" "}
+          {loyalty.stamps_required}
+        </h3>
+        <p className="mt-1 text-sm text-white/85">
+          {loyalty.stamps_required - loyalty.current_stamps > 0
+            ? `Encore ${loyalty.stamps_required - loyalty.current_stamps} pour ${loyalty.reward_description.toLowerCase()}.`
+            : `🎉 Carte complète ! ${loyalty.reward_description} à récupérer.`}
+        </p>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20">
+          <div
+            className="h-full rounded-full bg-saffron transition-all duration-700"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          <a
+            href={cardUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-semibold text-rialto transition hover:bg-cream"
+          >
+            Afficher mon QR code
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </a>
+        </div>
+        <p className="mt-3 text-center text-[11px] text-white/60">
+          Code : <span className="font-mono font-semibold text-white/90">{loyalty.short_code}</span>
+        </p>
+      </div>
+    );
+  }
+
+  if (loyalty.status === "signing_up") {
+    return (
+      <div className="rounded-3xl border-2 border-rialto bg-rialto/5 p-6 text-center md:p-8">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-rialto text-white">
+          <svg
+            className="animate-spin"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        </div>
+        <h3 className="font-display text-xl font-bold">
+          Création de ta carte…
+        </h3>
+        <p className="mt-1 text-sm text-mute">
+          On t&apos;envoie ton QR par SMS dans quelques secondes.
+        </p>
+      </div>
+    );
+  }
+
+  if (loyalty.status === "error") {
+    return (
+      <div className="rounded-3xl border border-rialto/30 bg-rialto/10 p-6">
+        <h3 className="font-display text-lg font-semibold text-rialto">
+          Erreur
+        </h3>
+        <p className="mt-1 text-sm text-ink/80">{loyalty.message}</p>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="btn-primary mt-3"
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
+  // needs_signup
+  return (
+    <div className="relative overflow-hidden rounded-3xl border-2 border-rialto bg-cream p-6 text-ink shadow-pop md:p-8">
+      {/* Badge d'intro */}
+      <div className="flex items-start gap-3">
+        <div className="shrink-0 text-3xl">🎴</div>
+        <div>
+          <span className="eyebrow">Profite de tes avantages Rialto</span>
+          <h3 className="mt-2 font-display text-xl font-bold leading-tight md:text-2xl">
+            Crée ta carte fidélité{" "}
+            <em className="italic text-rialto">en 1 clic</em>
+          </h3>
+          <p className="mt-1.5 text-sm text-mute">
+            1 tampon offert tout de suite + 1 tampon à chaque commande.
+            À 10 tampons, une pizza Ø33 cm offerte.
+          </p>
+        </div>
+      </div>
+
+      {/* Bénéfices */}
+      <ul className="mt-5 space-y-2 text-sm">
+        <li className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rialto/10 text-rialto">
+            ✓
+          </span>
+          <span className="text-ink">1 pizza Ø33 cm offerte tous les 10 tampons</span>
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rialto/10 text-rialto">
+            ✓
+          </span>
+          <span className="text-ink">Tour de roue chaque mois</span>
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rialto/10 text-rialto">
+            ✓
+          </span>
+          <span className="text-ink">Offres spéciales anniversaire</span>
+        </li>
+      </ul>
+
+      {/* CTA one-click : réutilise le téléphone de la commande */}
+      <button
+        type="button"
+        onClick={onCreate}
+        className="btn-primary-lg mt-6 w-full"
+      >
+        🎴 Créer ma carte avec {phoneMasked || "ce numéro"}
+      </button>
+
+      <p className="mt-2 text-center text-[11px] text-mute">
+        Gratuit · aucune carte plastique · juste un QR code à montrer
+      </p>
+    </div>
   );
 }

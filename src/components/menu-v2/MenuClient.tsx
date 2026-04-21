@@ -41,6 +41,31 @@ type Props = {
   options: MenuItemOption[];
 };
 
+type FilterKey = "vegetarian" | "spicy" | "gluten_free" | "anatolian" | "seafood" | "meat";
+
+const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
+  { key: "vegetarian", label: "Végétarien", icon: "🌱" },
+  { key: "spicy", label: "Piquant", icon: "🌶" },
+  { key: "gluten_free", label: "Sans gluten", icon: "🌾" },
+  { key: "anatolian", label: "Anatolien", icon: "🇹🇷" },
+  { key: "seafood", label: "Fruits de mer", icon: "🐟" },
+  { key: "meat", label: "Viande", icon: "🥩" },
+];
+
+function itemMatchesFilters(item: MenuItem, active: Set<FilterKey>): boolean {
+  if (active.size === 0) return true;
+  // OR logique : au moins un filtre actif satisfait
+  for (const f of active) {
+    if (f === "vegetarian" && item.is_vegetarian) return true;
+    if (f === "spicy" && item.is_spicy) return true;
+    if (f === "gluten_free" && item.is_gluten_free) return true;
+    if (f === "anatolian" && item.tags?.includes("anatolian")) return true;
+    if (f === "seafood" && item.tags?.includes("seafood")) return true;
+    if (f === "meat" && item.tags?.includes("meat")) return true;
+  }
+  return false;
+}
+
 export default function MenuClient({ categories, items, options }: Props) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string | null>(
@@ -49,6 +74,9 @@ export default function MenuClient({ categories, items, options }: Props) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<QualifiedAddress | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
+    new Set(),
+  );
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryNavRef = useRef<HTMLDivElement | null>(null);
 
@@ -114,10 +142,20 @@ export default function MenuClient({ categories, items, options }: Props) {
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
     for (const it of items) {
+      if (!itemMatchesFilters(it, activeFilters)) continue;
       (map[it.category_id] ??= []).push(it);
     }
     return map;
-  }, [items]);
+  }, [items, activeFilters]);
+
+  const toggleFilter = (f: FilterKey) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f);
+      else next.add(f);
+      return next;
+    });
+  };
 
   const subtotal = cartSubtotal(cart);
   const count = cartCount(cart);
@@ -262,7 +300,7 @@ export default function MenuClient({ categories, items, options }: Props) {
         {/* Nav catégories */}
         <div
           ref={categoryNavRef}
-          className="scrollbar-none container-hero flex gap-2 overflow-x-auto pb-3 pt-1"
+          className="scrollbar-none container-hero flex gap-2 overflow-x-auto pb-2 pt-1"
         >
           {categories.map((c) => (
             <button
@@ -272,7 +310,7 @@ export default function MenuClient({ categories, items, options }: Props) {
               onClick={() => {
                 const el = sectionRefs.current[c.id];
                 if (el) {
-                  const y = el.getBoundingClientRect().top + window.scrollY - 120;
+                  const y = el.getBoundingClientRect().top + window.scrollY - 160;
                   window.scrollTo({ top: y, behavior: "smooth" });
                 }
               }}
@@ -282,6 +320,38 @@ export default function MenuClient({ categories, items, options }: Props) {
               {c.name}
             </button>
           ))}
+        </div>
+
+        {/* Filtres — rangée sous les catégories */}
+        <div className="scrollbar-none container-hero flex gap-2 overflow-x-auto border-t border-border/50 pb-3 pt-2">
+          {FILTERS.map((f) => {
+            const active = activeFilters.has(f.key);
+            return (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => toggleFilter(f.key)}
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                  active
+                    ? "border-rialto bg-rialto text-white"
+                    : "border-border bg-white text-ink hover:border-ink"
+                }`}
+                aria-pressed={active}
+              >
+                <span>{f.icon}</span>
+                {f.label}
+              </button>
+            );
+          })}
+          {activeFilters.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveFilters(new Set())}
+              className="shrink-0 text-xs font-medium text-mute underline hover:text-ink"
+            >
+              Effacer
+            </button>
+          )}
         </div>
       </header>
 
@@ -301,37 +371,56 @@ export default function MenuClient({ categories, items, options }: Props) {
 
       {/* ─── Sections catégories ───────────────────────────────── */}
       <div className="container-hero pb-40 pt-8">
-        {categories.map((category) => {
-          const catItems = itemsByCategory[category.id] ?? [];
-          if (catItems.length === 0) return null;
-          return (
-            <section
-              key={category.id}
-              id={category.id}
-              ref={(el) => {
-                sectionRefs.current[category.id] = el;
-              }}
-              className="scroll-mt-[180px] pt-10 md:pt-14"
+        {categories.every((c) => (itemsByCategory[c.id] ?? []).length === 0) ? (
+          <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center">
+            <div className="mb-3 text-4xl">🤔</div>
+            <h3 className="font-display text-lg font-bold">
+              Aucun plat ne correspond
+            </h3>
+            <p className="mt-1 text-sm text-mute">
+              Essayez de désactiver quelques filtres.
+            </p>
+            <button
+              type="button"
+              onClick={() => setActiveFilters(new Set())}
+              className="btn-ghost mt-4"
             >
-              <h2 className="mb-5 flex items-center gap-3 font-display text-h2 font-bold md:mb-7">
-                {category.icon && (
-                  <span className="text-2xl">{category.icon}</span>
-                )}
-                {category.name}
-              </h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
-                {catItems.map((item) => (
-                  <MenuItemCard
-                    key={item.id}
-                    item={item}
-                    categoryName={category.name}
-                    onAdd={handleSelectItem}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+              Effacer les filtres
+            </button>
+          </div>
+        ) : (
+          categories.map((category) => {
+            const catItems = itemsByCategory[category.id] ?? [];
+            if (catItems.length === 0) return null;
+            return (
+              <section
+                key={category.id}
+                id={category.id}
+                ref={(el) => {
+                  sectionRefs.current[category.id] = el;
+                }}
+                className="scroll-mt-[220px] pt-10 md:pt-14"
+              >
+                <h2 className="mb-5 flex items-center gap-3 font-display text-h2 font-bold md:mb-7">
+                  {category.icon && (
+                    <span className="text-2xl">{category.icon}</span>
+                  )}
+                  {category.name}
+                </h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+                  {catItems.map((item) => (
+                    <MenuItemCard
+                      key={item.id}
+                      item={item}
+                      categoryName={category.name}
+                      onAdd={handleSelectItem}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
 
       {/* ─── Modale plat ───────────────────────────────────────── */}

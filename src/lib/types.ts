@@ -48,6 +48,8 @@ export type MenuItem = {
   is_available: boolean;
   is_vegetarian: boolean;
   is_spicy: boolean;
+  is_gluten_free?: boolean;
+  tags?: string[];
   has_options: boolean;
   display_order: number;
 };

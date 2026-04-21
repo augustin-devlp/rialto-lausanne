@@ -20,7 +20,7 @@ async function loadMenu() {
     sb
       .from("menu_items")
       .select(
-        "id, category_id, name, description, price, image_url, is_available, is_vegetarian, is_spicy, has_options, display_order",
+        "id, category_id, name, description, price, image_url, is_available, is_vegetarian, is_spicy, is_gluten_free, tags, has_options, display_order",
       )
       .eq("restaurant_id", RESTAURANT_ID)
       .order("display_order"),

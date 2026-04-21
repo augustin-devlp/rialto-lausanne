@@ -10,7 +10,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 
@@ -84,31 +84,109 @@ function stepIndex(status: OrderStatus): number {
 
 export default function ConfirmationClient({ order: initialOrder }: Props) {
   const [order, setOrder] = useState<OrderData>(initialOrder);
+  const statusRef = useRef<OrderStatus>(initialOrder.status);
+  const tickCountRef = useRef(0);
 
-  // Polling 15s sur le statut (uniquement tant que la commande n'est pas
-  // terminée ou annulée — après 2h on stoppe pour éviter un polling infini).
+  // Polling 15s sur le statut.
+  //
+  // Particularités :
+  // 1. Fetch immédiat à t=0 (pas d'attente 15s au premier tick) pour
+  //    refléter tout de suite un changement de statut qui aurait eu lieu
+  //    entre la création de l'order et l'arrivée sur la page.
+  // 2. Dépendances du useEffect : uniquement order.id. On utilise des refs
+  //    pour le status courant afin d'éviter de relancer le timer à chaque
+  //    update (ce qui resetterait le MAX_MS à chaque tick).
+  // 3. Stop auto sur terminal status (completed/cancelled) ou après 2h.
+  // 4. Logs détaillés pour diagnostiquer en prod si le polling ne reflète
+  //    pas un status réel (format préfixé [timeline-poll] pour grep).
   useEffect(() => {
-    if (order.status === "completed" || order.status === "cancelled") return;
-
+    const orderId = order.id;
+    const orderNumber = order.order_number;
     const startedAt = Date.now();
     const MAX_MS = 2 * 60 * 60 * 1000; // 2h
 
+    let stopped = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const stop = (reason: string) => {
+      if (stopped) return;
+      stopped = true;
+      if (intervalId) clearInterval(intervalId);
+      console.log(
+        `[timeline-poll] polling stopped orderNumber=${orderNumber} reason=${reason} ticks=${tickCountRef.current}`,
+      );
+    };
+
     const tick = async () => {
-      if (Date.now() - startedAt > MAX_MS) return;
+      if (stopped) return;
+      tickCountRef.current += 1;
+      const tickId = tickCountRef.current;
+
+      if (Date.now() - startedAt > MAX_MS) {
+        stop("max_duration_2h");
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/orders/${order.id}`, { cache: "no-store" });
-        if (res.ok) {
-          const body = (await res.json()) as { order?: OrderData };
-          if (body.order) setOrder(body.order);
+        const res = await fetch(`/api/orders/${orderId}`, {
+          cache: "no-store",
+          headers: { "x-poll-tick": String(tickId) },
+        });
+        if (!res.ok) {
+          console.warn(
+            `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} http_error=${res.status}`,
+          );
+          return;
         }
-      } catch {
-        /* ignore transient errors */
+        const body = (await res.json()) as { order?: OrderData };
+        if (!body.order) {
+          console.warn(
+            `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} no_order_in_response`,
+          );
+          return;
+        }
+        const newStatus = body.order.status;
+        const oldStatus = statusRef.current;
+        console.log(
+          `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} current_status=${newStatus}`,
+        );
+        if (newStatus !== oldStatus) {
+          console.log(
+            `[timeline-poll] status CHANGED from ${oldStatus} to ${newStatus} orderNumber=${orderNumber}`,
+          );
+          statusRef.current = newStatus;
+          setOrder(body.order);
+        }
+        if (newStatus === "completed" || newStatus === "cancelled") {
+          stop(`terminal_status_${newStatus}`);
+        }
+      } catch (err) {
+        console.warn(
+          `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} network_error`,
+          err,
+        );
       }
     };
 
-    const id = setInterval(tick, 15_000);
-    return () => clearInterval(id);
-  }, [order.id, order.status]);
+    // Fetch immédiat à t=0 (pas d'attente 15s)
+    console.log(
+      `[timeline-poll] START orderNumber=${orderNumber} order_id=${orderId} initial_status=${statusRef.current}`,
+    );
+    void tick();
+
+    // Si déjà en statut terminal à l'arrivée, on ne démarre pas d'intervalle
+    if (
+      statusRef.current === "completed" ||
+      statusRef.current === "cancelled"
+    ) {
+      stop(`already_terminal_${statusRef.current}`);
+    } else {
+      intervalId = setInterval(tick, 15_000);
+    }
+
+    return () => stop("unmount");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.id]);
 
   const currentStep = stepIndex(order.status);
   const firstName = order.customer_name.split(" ")[0] ?? "";

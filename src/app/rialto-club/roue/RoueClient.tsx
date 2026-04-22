@@ -1,8 +1,13 @@
 "use client";
 
 /**
- * Page /rialto-club/roue — 4 états contextuels.
- * Voir brief Phase 6 FIX 3 : A/B/C/D.
+ * Page /rialto-club/roue — 5 états contextuels (Phase 7).
+ *
+ * A — can_spin=true : affiche la roue + bouton Tourner
+ * B — review_required : ReviewGateModal (hack 60s ou mode normal)
+ * C — frequency_wait : countdown jours + rappel code si valide
+ * D — wrong_day : message + prochain créneau jour
+ * E — disabled : "pas de roue prévue pour l'instant"
  */
 
 import Link from "next/link";
@@ -12,27 +17,40 @@ import ReviewGateModal from "@/components/ReviewGateModal";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { readCustomerSession } from "@/lib/customerSession";
 
-type State = "A" | "B" | "C" | "D" | "INACTIVE";
+type State = "A" | "B" | "C" | "D" | "E";
 
 type AvailabilityResponse = {
   state: State;
   can_spin: boolean;
-  reason: string;
-  frequency_days: number;
-  wait_days_remaining?: number | null;
-  next_spin_at?: string | null;
-  min_orders?: number;
-  orders_since_last_spin?: number;
-  requires_review?: boolean;
-  last_prize?: {
+  config_mode: "frequency" | "weekdays" | "disabled";
+  message: string;
+  last_prize: {
     code: string;
     description: string;
     used: boolean;
+    expires_at: string | null;
   } | null;
-  segments?: Array<{ label?: string; color?: string }>;
+  wait_info: {
+    next_available_date: string;
+    days_remaining: number;
+  } | null;
+  frequency_days: number | null;
+  allowed_weekdays: number[];
+  require_google_review: boolean;
 };
 
 const RIALTO_PLACE_ID = "ChIJrbzJL6cvjEcRHK7RrA9M3ic";
+
+function formatDateFR(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString("fr-CH", {
+      day: "numeric",
+      month: "long",
+    });
+  } catch {
+    return iso;
+  }
+}
 
 export default function RoueClient() {
   const [data, setData] = useState<AvailabilityResponse | null>(null);
@@ -55,10 +73,15 @@ export default function RoueClient() {
       const res = await fetch(url.toString(), { cache: "no-store" });
       if (!res.ok) {
         setData({
-          state: "INACTIVE",
+          state: "E",
           can_spin: false,
-          reason: "fetch_failed",
-          frequency_days: 30,
+          config_mode: "disabled",
+          message: "Erreur de chargement. Réessaye plus tard.",
+          last_prize: null,
+          wait_info: null,
+          frequency_days: null,
+          allowed_weekdays: [],
+          require_google_review: false,
         });
         return;
       }
@@ -86,17 +109,14 @@ export default function RoueClient() {
     setSpinning(true);
     setSpinError(null);
     try {
-      const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/spin`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            phone: session.phone,
-            first_name: session.first_name,
-          }),
-        },
-      );
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/spin`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          phone: session.phone,
+          first_name: session.first_name,
+        }),
+      });
       const body = (await res.json()) as {
         ok?: boolean;
         reward?: string;
@@ -156,18 +176,20 @@ export default function RoueClient() {
     );
   }
 
-  /* ─── ÉTAT roue inactive ─── */
-  if (data.state === "INACTIVE") {
+  /* ─── État E : roue désactivée ou pas de roue ─── */
+  if (data.state === "E") {
     return (
       <StateWrapper>
         <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
-          <div className="text-5xl">🎰</div>
+          <div className="text-5xl grayscale opacity-60">🎰</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
-            La roue n&apos;est pas active
+            Il n&apos;y a pas de roue prévue
           </h1>
           <p className="mt-3 text-base text-mute">
-            Rialto a désactivé la roue temporairement. Tu peux tenter ta chance
-            avec la loterie en attendant.
+            Tu seras prévenu par SMS quand une nouvelle roue sera lancée.
+          </p>
+          <p className="mt-1 text-xs text-mute">
+            Tous les membres Rialto Club sont automatiquement alertés.
           </p>
           <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Link href="/rialto-club/loterie" className="btn-primary">
@@ -183,7 +205,7 @@ export default function RoueClient() {
     );
   }
 
-  /* ─── ÉTAT A : peut spinner (post-spin ou avant) ─── */
+  /* ─── État A : peut spinner (avec ou sans résultat) ─── */
   if (data.state === "A") {
     if (spinResult) {
       return (
@@ -244,7 +266,9 @@ export default function RoueClient() {
             Tourne la roue pour découvrir ton cadeau. Le code promo te sera
             envoyé par SMS.
           </p>
-          <WheelPreview segments={data.segments} />
+          <div className="mx-auto mt-6 flex h-48 w-48 items-center justify-center rounded-full bg-gradient-to-br from-rialto to-rialto-dark text-6xl">
+            🎰
+          </div>
           {spinError && (
             <div className="mt-4 rounded-xl border border-rialto/30 bg-rialto/10 p-3 text-sm text-rialto">
               {spinError}
@@ -264,7 +288,7 @@ export default function RoueClient() {
     );
   }
 
-  /* ─── ÉTAT B : doit laisser un avis Google ─── */
+  /* ─── État B : doit laisser avis Google ─── */
   if (data.state === "B" && customerId) {
     return (
       <StateWrapper>
@@ -273,10 +297,7 @@ export default function RoueClient() {
           <h1 className="mt-4 font-display text-h1 font-bold">
             Un avis pour débloquer la roue
           </h1>
-          <p className="mt-3 text-base text-ink/80">
-            Laisse un avis 5 étoiles sur Google pour débloquer la roue pendant{" "}
-            {data.frequency_days} jours. Un geste qui nous aide beaucoup.
-          </p>
+          <p className="mt-3 text-base text-ink/80">{data.message}</p>
           <button
             type="button"
             onClick={() => setReviewOpen(true)}
@@ -303,42 +324,45 @@ export default function RoueClient() {
     );
   }
 
-  /* ─── ÉTAT C : a déjà spinné, doit attendre ─── */
+  /* ─── État C : fréquence pas écoulée ─── */
   if (data.state === "C") {
     return (
       <StateWrapper>
         <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
-          <div className="text-5xl">🎯</div>
+          <div className="text-5xl">⏳</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
             Tu as déjà tourné la roue
           </h1>
-          <p className="mt-3 text-base text-mute">
-            Prochaine chance dans{" "}
-            <strong className="text-ink">
-              {data.wait_days_remaining} jour
-              {(data.wait_days_remaining ?? 0) > 1 ? "s" : ""}
-            </strong>
-            . Tu seras prévenu par SMS.
-          </p>
-          {data.last_prize && !data.last_prize.used && data.last_prize.code && (
-            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left">
-              <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                💡 Ton code actuel est toujours valable
+          <p className="mt-3 text-base text-mute">{data.message}</p>
+          {data.last_prize &&
+            !data.last_prize.used &&
+            data.last_prize.code && (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left">
+                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                  💡 Ton code actuel est toujours valable
+                </div>
+                <div className="tabular mt-2 font-mono text-xl font-bold text-emerald-800">
+                  {data.last_prize.code}
+                </div>
+                <div className="mt-1 text-sm text-emerald-800">
+                  {data.last_prize.description}
+                </div>
+                {data.last_prize.expires_at && (
+                  <div className="mt-1 text-xs text-emerald-700">
+                    Valable jusqu&apos;au {formatDateFR(data.last_prize.expires_at)}
+                  </div>
+                )}
               </div>
-              <div className="tabular mt-2 font-mono text-xl font-bold text-emerald-800">
-                {data.last_prize.code}
-              </div>
-              <div className="mt-1 text-sm text-emerald-800">
-                {data.last_prize.description}
-              </div>
-            </div>
-          )}
-          {data.last_prize?.used && (
+            )}
+          {data.last_prize?.used && data.last_prize.code && (
             <div className="mt-6 rounded-xl bg-cream p-3 text-xs text-mute">
               Ton dernier code (<strong>{data.last_prize.code}</strong>) a déjà
               été utilisé.
             </div>
           )}
+          <p className="mt-4 text-xs text-mute">
+            Tu seras automatiquement prévenu par SMS dès que tu peux retenter.
+          </p>
           <Link href="/menu" className="btn-ghost mt-6">
             Voir le menu
           </Link>
@@ -348,42 +372,48 @@ export default function RoueClient() {
     );
   }
 
-  /* ─── ÉTAT D : doit passer une commande pour respin ─── */
+  /* ─── État D : pas le bon jour (mode weekdays) ─── */
   if (data.state === "D") {
     return (
       <StateWrapper>
         <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
-          <div className="text-5xl">🍕</div>
+          <div className="text-5xl">📅</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
-            Une commande pour retenter ta chance
+            La roue n&apos;est pas disponible aujourd&apos;hui
           </h1>
-          <p className="mt-3 text-base text-mute">
-            Pour respinner, il faut{" "}
-            <strong className="text-ink">
-              {data.min_orders ?? 1} commande
-              {(data.min_orders ?? 1) > 1 ? "s" : ""}
-            </strong>{" "}
-            depuis ton dernier spin. Tu en as{" "}
-            <strong className="text-ink">
-              {data.orders_since_last_spin ?? 0}
-            </strong>{" "}
-            pour l&apos;instant.
-          </p>
-          {data.last_prize && !data.last_prize.used && data.last_prize.code && (
-            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <div className="text-xs text-emerald-700">
-                Rappel : ton code{" "}
-                <strong className="font-mono">{data.last_prize.code}</strong> (
-                {data.last_prize.description}) est encore valable.
+          <p className="mt-3 text-base text-mute">{data.message}</p>
+          {data.wait_info && data.wait_info.days_remaining > 0 && (
+            <div className="mt-5 rounded-2xl bg-saffron/15 p-4 text-sm">
+              <div className="text-xs font-semibold uppercase tracking-wider text-saffron-dark">
+                Prochain créneau
+              </div>
+              <div className="mt-1 font-display text-lg font-bold text-ink">
+                {formatDateFR(data.wait_info.next_available_date)}
+              </div>
+              <div className="text-xs text-mute">
+                Dans {data.wait_info.days_remaining} jour
+                {data.wait_info.days_remaining > 1 ? "s" : ""}
               </div>
             </div>
           )}
-          <Link href="/menu" className="btn-primary-lg mt-6 w-full">
-            Commander maintenant →
-          </Link>
-          <p className="mt-3 text-xs text-mute">
-            On te préviendra par SMS dès que tu peux respinner.
+          {data.last_prize &&
+            !data.last_prize.used &&
+            data.last_prize.code && (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+                <div className="text-xs text-emerald-700">
+                  Rappel : ton code{" "}
+                  <strong className="font-mono">{data.last_prize.code}</strong>
+                  {" "}
+                  ({data.last_prize.description}) est encore valable.
+                </div>
+              </div>
+            )}
+          <p className="mt-4 text-xs text-mute">
+            Tu seras automatiquement prévenu par SMS.
           </p>
+          <Link href="/menu" className="btn-ghost mt-6">
+            Voir le menu
+          </Link>
         </div>
         <BackHome />
       </StateWrapper>
@@ -391,66 +421,6 @@ export default function RoueClient() {
   }
 
   return null;
-}
-
-/* ─── Preview visuelle de la roue ─────────────────────────────────── */
-
-function WheelPreview({
-  segments,
-}: {
-  segments?: Array<{ label?: string; color?: string }>;
-}) {
-  if (!segments || segments.length === 0) {
-    return (
-      <div className="mx-auto mt-6 flex h-48 w-48 items-center justify-center rounded-full bg-cream text-4xl">
-        🎰
-      </div>
-    );
-  }
-  const size = 200;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = cx - 6;
-  const slice = (2 * Math.PI) / segments.length;
-  let angle = -Math.PI / 2;
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className="mx-auto mt-6 drop-shadow-lg"
-      role="img"
-      aria-label="Aperçu de la roue"
-    >
-      <circle cx={cx} cy={cy} r={r + 4} fill="#1A1A1A" />
-      {segments.map((seg, i) => {
-        const x1 = cx + r * Math.cos(angle);
-        const y1 = cy + r * Math.sin(angle);
-        const end = angle + slice;
-        const x2 = cx + r * Math.cos(end);
-        const y2 = cy + r * Math.sin(end);
-        const large = slice > Math.PI ? 1 : 0;
-        const d = `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`;
-        const color = seg.color ?? (i % 2 === 0 ? "#C73E1D" : "#E6A12C");
-        const result = (
-          <path
-            key={i}
-            d={d}
-            fill={color}
-            stroke="#FFFFFF"
-            strokeWidth={2}
-          />
-        );
-        angle = end;
-        return result;
-      })}
-      <circle cx={cx} cy={cy} r={18} fill="#F9F1E4" stroke="#C73E1D" strokeWidth={3} />
-      <polygon
-        points={`${cx - 10},4 ${cx + 10},4 ${cx},22`}
-        fill="#C73E1D"
-      />
-    </svg>
-  );
 }
 
 /* ─── Wrapper commun ──────────────────────────────────────────────── */

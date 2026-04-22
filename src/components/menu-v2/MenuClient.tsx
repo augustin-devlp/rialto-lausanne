@@ -288,31 +288,11 @@ export default function MenuClient({ categories, items, options }: Props) {
     <main className="min-h-screen bg-cream">
       {/* ─── Header sticky ─────────────────────────────────────── */}
       <header className="sticky top-0 z-30 border-b border-border bg-cream/95 backdrop-blur-lg">
-        <div className="container-hero flex h-14 items-center gap-3 sm:h-16">
-          <Link
-            href="/"
-            className="flex shrink-0 items-center gap-2 text-ink"
-            aria-label="Accueil Rialto"
-          >
-            <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden>
-              <circle cx="16" cy="16" r="15" fill="#C73E1D" />
-              <text
-                x="50%"
-                y="54%"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontFamily="var(--font-fraunces), Georgia, serif"
-                fontSize="17"
-                fontWeight="700"
-                fill="#F9F1E4"
-              >
-                R
-              </text>
-            </svg>
-            <span className="hidden font-display text-xl font-bold sm:inline">
-              Rialto
-            </span>
-          </Link>
+        <div className="container-hero flex h-14 items-center gap-3 pl-[72px] pr-[56px] sm:h-16 sm:pl-[88px] sm:pr-[60px]">
+          {/* Logo retiré du header sticky — le logo global fixed top-left
+              (layout.tsx, Phase 7 FIX 3) prend le relais. On garde un
+              padding gauche pour réserver l'espace du logo et à droite
+              pour le hamburger. */}
 
           {address && (
             <Link

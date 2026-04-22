@@ -47,29 +47,11 @@ export default function SiteHeader({ transparentOnTop = false }: Props) {
       className={`fixed inset-x-0 top-0 z-40 transition-all duration-300 ${bg}`}
     >
       <div className="container-hero flex h-14 items-center justify-between gap-4 sm:h-16">
-        <Link
-          href="/"
-          className={`flex items-center gap-2 ${textColor} transition`}
-        >
-          <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden>
-            <circle cx="16" cy="16" r="15" fill="#C73E1D" />
-            <text
-              x="50%"
-              y="54%"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontFamily="var(--font-fraunces), Georgia, serif"
-              fontSize="17"
-              fontWeight="700"
-              fill="#F9F1E4"
-            >
-              R
-            </text>
-          </svg>
-          <span className="font-display text-xl font-bold leading-none tracking-tight">
-            Rialto
-          </span>
-        </Link>
+        {/* Logo retiré du SiteHeader — le logo global fixed top-left
+            (layout.tsx, Phase 7 FIX 3) le remplace pour éviter
+            la double-identité. On garde un spacer invisible pour
+            préserver le layout flex justify-between. */}
+        <span aria-hidden className="h-8 w-20 sm:w-28" />
 
         {/* Adresse qualifiée (affichée que sur md+ pour ne pas encombrer mobile) */}
         {address && scrolled && (

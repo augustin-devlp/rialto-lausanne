@@ -66,35 +66,14 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
 
   return (
     <>
-      <main className="min-h-[100dvh] bg-cream pb-16">
-        <div className="mx-auto max-w-md px-4 pt-6">
-          {/* Header */}
-          <header className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2 text-ink">
-              <svg width="36" height="36" viewBox="0 0 32 32" aria-hidden>
-                <circle cx="16" cy="16" r="15" fill="#C73E1D" />
-                <text
-                  x="50%"
-                  y="55%"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontFamily="var(--font-fraunces), Georgia, serif"
-                  fontSize="18"
-                  fontWeight="700"
-                  fill="#F9F1E4"
-                >
-                  R
-                </text>
-              </svg>
-              <div>
-                <div className="font-display text-xl font-bold leading-tight">
-                  Rialto
-                </div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-rialto">
-                  Rialto Club
-                </div>
-              </div>
-            </Link>
+      <main className="min-h-[100dvh] bg-cream pb-16 pt-20">
+        <div className="mx-auto max-w-md px-4 pt-2">
+          {/* Header — logo global fixed (Phase 7 FIX 3) sert d'identité,
+              on garde juste un titre contextuel "Rialto Club" à droite. */}
+          <header className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-rialto/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-rialto">
+              🎴 Rialto Club
+            </span>
             <span className="rounded-full border border-border bg-white px-2.5 py-1 font-mono text-[10px] font-semibold text-mute">
               #{card.short_code}
             </span>

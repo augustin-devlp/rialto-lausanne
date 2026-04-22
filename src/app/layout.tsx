@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import HamburgerMenu from "@/components/layout/HamburgerMenu";
+import RialtoLogo from "@/components/brand/RialtoLogo";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -53,6 +54,8 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${fraunces.variable} ${inter.variable}`}>
       <body className="font-sans antialiased bg-cream text-ink">
+        {/* Logo Rialto top-left fixed, cliquable -> / (Phase 7 FIX 3) */}
+        <RialtoLogo variant="fixed" size="sm" />
         <HamburgerMenu />
         {children}
       </body>

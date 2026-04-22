@@ -1,4 +1,4 @@
-import ClubPlaceholder from "../ClubPlaceholder";
+import RoueClient from "./RoueClient";
 
 export const metadata = {
   title: "Roue de la chance · Rialto Club",
@@ -6,13 +6,5 @@ export const metadata = {
 };
 
 export default function RouePage() {
-  return (
-    <ClubPlaceholder
-      eyebrow="Rialto Club"
-      title="Roue de la chance"
-      emoji="🎰"
-      description="Bientôt disponible ici. En attendant, tu peux tourner la roue depuis la page de confirmation d'une commande."
-      cta={{ label: "Commander maintenant", href: "/menu" }}
-    />
-  );
+  return <RoueClient />;
 }

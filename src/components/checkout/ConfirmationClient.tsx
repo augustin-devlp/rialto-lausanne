@@ -15,6 +15,7 @@ import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { supabaseBrowser } from "@/lib/supabase";
+import { writeCustomerSession } from "@/lib/customerSession";
 
 type OrderStatus =
   | "new"
@@ -271,6 +272,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       );
       if (res.ok) {
         const body = (await res.json()) as {
+          customer?: { id: string; first_name: string } | null;
           card?: {
             short_code: string | null;
             current_stamps: number;
@@ -278,7 +280,15 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             reward_description: string;
           } | null;
         };
-        if (body.card && body.card.short_code) {
+        if (body.card && body.card.short_code && body.customer) {
+          // Sync la session customer côté navigateur (utilisée par le
+          // HamburgerMenu pour afficher les liens club connecté)
+          writeCustomerSession({
+            customer_id: body.customer.id,
+            short_code: body.card.short_code,
+            phone: order.customer_phone,
+            first_name: body.customer.first_name ?? firstName,
+          });
           setLoyalty({
             status: "has_card",
             short_code: body.card.short_code,
@@ -293,7 +303,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     } catch {
       setLoyalty({ status: "needs_signup" });
     }
-  }, [order.customer_phone]);
+  }, [order.customer_phone, firstName]);
 
   useEffect(() => {
     void lookupCard();
@@ -320,6 +330,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         return;
       }
       const body = (await res.json()) as {
+        customer: { id: string };
         card: {
           short_code: string | null;
           current_stamps: number;
@@ -333,6 +344,12 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         await lookupCard();
         return;
       }
+      writeCustomerSession({
+        customer_id: body.customer.id,
+        short_code: body.card.short_code,
+        phone: order.customer_phone,
+        first_name: firstName,
+      });
       setLoyalty({
         status: "has_card",
         short_code: body.card.short_code,

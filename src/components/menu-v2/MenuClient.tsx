@@ -41,30 +41,12 @@ type Props = {
   options: MenuItemOption[];
 };
 
-type FilterKey = "vegetarian" | "spicy" | "gluten_free" | "anatolian" | "seafood" | "meat";
-
-const FILTERS: { key: FilterKey; label: string; icon: string }[] = [
-  { key: "vegetarian", label: "Végétarien", icon: "🌱" },
-  { key: "spicy", label: "Piquant", icon: "🌶" },
-  { key: "gluten_free", label: "Sans gluten", icon: "🌾" },
-  { key: "anatolian", label: "Anatolien", icon: "🇹🇷" },
-  { key: "seafood", label: "Fruits de mer", icon: "🐟" },
-  { key: "meat", label: "Viande", icon: "🥩" },
-];
-
-function itemMatchesFilters(item: MenuItem, active: Set<FilterKey>): boolean {
-  if (active.size === 0) return true;
-  // OR logique : au moins un filtre actif satisfait
-  for (const f of active) {
-    if (f === "vegetarian" && item.is_vegetarian) return true;
-    if (f === "spicy" && item.is_spicy) return true;
-    if (f === "gluten_free" && item.is_gluten_free) return true;
-    if (f === "anatolian" && item.tags?.includes("anatolian")) return true;
-    if (f === "seafood" && item.tags?.includes("seafood")) return true;
-    if (f === "meat" && item.tags?.includes("meat")) return true;
-  }
-  return false;
-}
+import FilterModal, {
+  itemMatchesFilters,
+  readStoredFilters,
+  writeStoredFilters,
+  type FilterKey,
+} from "./FilterModal";
 
 export default function MenuClient({ categories, items, options }: Props) {
   const router = useRouter();
@@ -77,8 +59,19 @@ export default function MenuClient({ categories, items, options }: Props) {
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
     new Set(),
   );
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryNavRef = useRef<HTMLDivElement | null>(null);
+
+  // Restore filters depuis localStorage au mount
+  useEffect(() => {
+    setActiveFilters(readStoredFilters());
+  }, []);
+
+  // Persiste à chaque changement
+  useEffect(() => {
+    writeStoredFilters(activeFilters);
+  }, [activeFilters]);
 
   useEffect(() => {
     // Hydrate from localStorage
@@ -139,22 +132,33 @@ export default function MenuClient({ categories, items, options }: Props) {
     }
   }, [activeCategory]);
 
+  // Pré-calcule un map category_id → name pour la logique de filtre
+  // (certains filtres comme "Pizzas"/"Pâtes" matchent sur le nom de catégorie)
+  const categoryById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const c of categories) map[c.id] = c.name;
+    return map;
+  }, [categories]);
+
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
     for (const it of items) {
-      if (!itemMatchesFilters(it, activeFilters)) continue;
+      const catName = categoryById[it.category_id];
+      if (!itemMatchesFilters(it, activeFilters, catName)) continue;
       (map[it.category_id] ??= []).push(it);
     }
     return map;
-  }, [items, activeFilters]);
+  }, [items, activeFilters, categoryById]);
 
-  const toggleFilter = (f: FilterKey) => {
-    setActiveFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(f)) next.delete(f);
-      else next.add(f);
-      return next;
-    });
+  // Compteur utilisé dans le bouton "Appliquer (X résultats)" de la modale
+  const countResults = (filters: Set<FilterKey>): number => {
+    if (filters.size === 0) return items.length;
+    let n = 0;
+    for (const it of items) {
+      const catName = categoryById[it.category_id];
+      if (itemMatchesFilters(it, filters, catName)) n++;
+    }
+    return n;
   };
 
   const subtotal = cartSubtotal(cart);
@@ -297,61 +301,60 @@ export default function MenuClient({ categories, items, options }: Props) {
           </div>
         </div>
 
-        {/* Nav catégories */}
-        <div
-          ref={categoryNavRef}
-          className="scrollbar-none container-hero flex gap-2 overflow-x-auto pb-2 pt-1"
-        >
-          {categories.map((c) => (
-            <button
-              key={c.id}
-              data-cat={c.id}
-              type="button"
-              onClick={() => {
-                const el = sectionRefs.current[c.id];
-                if (el) {
-                  const y = el.getBoundingClientRect().top + window.scrollY - 160;
-                  window.scrollTo({ top: y, behavior: "smooth" });
-                }
-              }}
-              className={`chip ${activeCategory === c.id ? "chip-active" : ""}`}
-            >
-              {c.icon && <span>{c.icon}</span>}
-              {c.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Filtres — rangée sous les catégories */}
-        <div className="scrollbar-none container-hero flex gap-2 overflow-x-auto border-t border-border/50 pb-3 pt-2">
-          {FILTERS.map((f) => {
-            const active = activeFilters.has(f.key);
-            return (
+        {/* Nav catégories + bouton Filtrer à droite (sticky fin) */}
+        <div className="container-hero flex items-center gap-2 pb-3 pt-1">
+          <div
+            ref={categoryNavRef}
+            className="scrollbar-none flex flex-1 gap-2 overflow-x-auto"
+          >
+            {categories.map((c) => (
               <button
-                key={f.key}
+                key={c.id}
+                data-cat={c.id}
                 type="button"
-                onClick={() => toggleFilter(f.key)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition ${
-                  active
-                    ? "border-rialto bg-rialto text-white"
-                    : "border-border bg-white text-ink hover:border-ink"
-                }`}
-                aria-pressed={active}
+                onClick={() => {
+                  const el = sectionRefs.current[c.id];
+                  if (el) {
+                    const y = el.getBoundingClientRect().top + window.scrollY - 130;
+                    window.scrollTo({ top: y, behavior: "smooth" });
+                  }
+                }}
+                className={`chip ${activeCategory === c.id ? "chip-active" : ""}`}
               >
-                <span>{f.icon}</span>
-                {f.label}
+                {c.icon && <span>{c.icon}</span>}
+                {c.name}
               </button>
-            );
-          })}
-          {activeFilters.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setActiveFilters(new Set())}
-              className="shrink-0 text-xs font-medium text-mute underline hover:text-ink"
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setFilterModalOpen(true)}
+            className={`relative shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              activeFilters.size > 0
+                ? "border-rialto bg-rialto text-white"
+                : "border-border bg-white text-ink hover:border-ink"
+            }`}
+            aria-label="Filtrer le menu"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              Effacer
-            </button>
-          )}
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            Filtrer
+            {activeFilters.size > 0 && (
+              <span className="tabular inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-rialto">
+                {activeFilters.size}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -399,7 +402,7 @@ export default function MenuClient({ categories, items, options }: Props) {
                 ref={(el) => {
                   sectionRefs.current[category.id] = el;
                 }}
-                className="scroll-mt-[220px] pt-10 md:pt-14"
+                className="scroll-mt-[150px] pt-10 md:pt-14"
               >
                 <h2 className="mb-5 flex items-center gap-3 font-display text-h2 font-bold md:mb-7">
                   {category.icon && (
@@ -435,6 +438,15 @@ export default function MenuClient({ categories, items, options }: Props) {
           }
         />
       )}
+
+      {/* ─── Modale filtres ────────────────────────────────────── */}
+      <FilterModal
+        open={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        initialFilters={activeFilters}
+        onApply={setActiveFilters}
+        countResults={countResults}
+      />
 
       {/* ─── Bandeau sticky bas ────────────────────────────────── */}
       {count > 0 && (

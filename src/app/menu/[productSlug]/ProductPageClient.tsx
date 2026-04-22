@@ -8,7 +8,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   MenuItem,
   MenuItemOption,
@@ -16,7 +16,7 @@ import type {
 } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { matchDishImage } from "@/lib/rialto-data";
-import { cartLineKey, readCart, writeCart } from "@/lib/clientStore";
+import { cartLineKey, readAddress, readCart, writeCart } from "@/lib/clientStore";
 
 type EnrichedItem = MenuItem & {
   is_gluten_free?: boolean | null;
@@ -113,6 +113,13 @@ export default function ProductPageClient({
   const [notes, setNotes] = useState("");
   const [descExpanded, setDescExpanded] = useState(false);
   const [added, setAdded] = useState(false);
+
+  // Phase 7 FIX 1 : guard adresse qualifiée, redirect vers / avec toast
+  useEffect(() => {
+    if (!readAddress()) {
+      router.replace("/?need_address=1");
+    }
+  }, [router]);
 
   const toggleOption = (group: string, name: string, max: number) => {
     setSelected((prev) => {

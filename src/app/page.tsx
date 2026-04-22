@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { supabaseServer, RESTAURANT_ID } from "@/lib/supabase";
 import SiteHeader from "@/components/home/SiteHeader";
 import HeroSection from "@/components/home/HeroSection";
@@ -6,6 +7,7 @@ import WhyOrderDirect from "@/components/home/WhyOrderDirect";
 import LocationHours from "@/components/home/LocationHours";
 import ReviewsCarousel from "@/components/home/ReviewsCarousel";
 import SiteFooter from "@/components/home/SiteFooter";
+import AddressRequiredToast from "@/components/home/AddressRequiredToast";
 
 export const revalidate = 300;
 
@@ -30,6 +32,11 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen">
+      {/* Toast adresse requise (Phase 7 FIX 1) — lit ?need_address=1
+          dans les searchParams, client-only donc wrapped en Suspense */}
+      <Suspense fallback={null}>
+        <AddressRequiredToast />
+      </Suspense>
       <SiteHeader transparentOnTop />
       <HeroSection
         restaurantId={restaurantId}

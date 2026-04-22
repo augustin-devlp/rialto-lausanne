@@ -128,6 +128,7 @@ export default function AddressGate({
             onChange={(e) => setStreetAddress(e.target.value)}
             placeholder="Votre rue et numéro"
             autoComplete="street-address"
+            data-address-input
             className="w-full border-0 bg-transparent py-2 text-sm text-ink placeholder-mute outline-none sm:text-base"
             required
           />

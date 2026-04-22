@@ -301,12 +301,21 @@ export async function POST(req: NextRequest) {
       .single();
     if (newCustomer) {
       customerId = newCustomer.id;
+      // FIX 2 phase 6 : on génère aussi short_code côté app (le trigger
+      // DB customer_cards_generate_short_code le fait sinon, mais filet
+      // redondant = pas de risque de /c/null dans les SMS).
+      const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+      let shortCode = "";
+      for (let i = 0; i < 8; i++) {
+        shortCode += alphabet[Math.floor(Math.random() * alphabet.length)];
+      }
       await sb.from("customer_cards").insert({
         customer_id: newCustomer.id,
         card_id: RIALTO_CARD_ID,
         current_stamps: 0,
         qr_code_value: crypto.randomUUID(),
         rewards_claimed: 0,
+        short_code: shortCode,
       });
     }
   }

@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cartCount, readCart } from "@/lib/clientStore";
 import {
+  clearCustomerSession,
   readCustomerSession,
   type CustomerSession,
 } from "@/lib/customerSession";
@@ -141,6 +142,18 @@ export default function HamburgerMenu() {
 
         {/* Contenu scrollable */}
         <nav className="flex-1 overflow-y-auto px-3 py-5">
+          {/* ─── Bonjour {prénom} (si connecté, Phase 7 FIX 6) ─── */}
+          {session && session.first_name && (
+            <div className="mb-4 rounded-2xl bg-rialto/5 px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-rialto">
+                Connecté
+              </div>
+              <div className="mt-1 font-display text-lg font-bold leading-tight">
+                Bonjour {session.first_name} 👋
+              </div>
+            </div>
+          )}
+
           {/* ─── Navigation ─────────────────────────── */}
           <Section title="Navigation">
             <Item href="/" icon="🏠" label="Accueil" />
@@ -171,6 +184,24 @@ export default function HamburgerMenu() {
                   icon="📜"
                   label="Historique des commandes"
                 />
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        "Tu vas te déconnecter de ton compte Rialto Club. Continuer ?",
+                      );
+                      if (!confirmed) return;
+                      clearCustomerSession();
+                      setSession(null);
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-mute transition hover:bg-white hover:text-rialto"
+                  >
+                    <span className="text-lg leading-none">🔓</span>
+                    <span>Se déconnecter</span>
+                  </button>
+                </li>
               </>
             ) : (
               <Item

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import LoyaltyCardView from "./LoyaltyCardView";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
@@ -50,5 +51,10 @@ export default async function RialtoCardPage({
 }) {
   const card = await loadCard(decodeURIComponent(params.shortCode));
   if (!card) return notFound();
-  return <LoyaltyCardView card={card} />;
+  // Suspense : LoyaltyCardView utilise useSearchParams (toast welcome)
+  return (
+    <Suspense fallback={null}>
+      <LoyaltyCardView card={card} />
+    </Suspense>
+  );
 }

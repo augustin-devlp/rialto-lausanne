@@ -204,12 +204,19 @@ export default function HamburgerMenu() {
                 </li>
               </>
             ) : (
-              <Item
-                href="/rialto-club/join"
-                icon="🎴"
-                label="Rejoindre Rialto Club"
-                highlight
-              />
+              <>
+                <Item
+                  href="/rialto-club/join"
+                  icon="🎴"
+                  label="Rejoindre Rialto Club"
+                  highlight
+                />
+                <Item
+                  href="/rialto-club/connexion"
+                  icon="🔑"
+                  label="Se connecter"
+                />
+              </>
             )}
           </Section>
 

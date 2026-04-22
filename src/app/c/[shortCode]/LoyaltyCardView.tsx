@@ -11,8 +11,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import SiteFooter from "@/components/home/SiteFooter";
+import Toast from "@/components/ui/Toast";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 
 type Card = {
@@ -30,6 +32,24 @@ type Card = {
 export default function LoyaltyCardView({ card }: { card: Card }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [downloadUrl, setDownloadUrl] = useState<string>("");
+
+  // Phase 8 FIX 2d : toast "Bon retour" si arrivée via /connexion
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  useEffect(() => {
+    if (searchParams.get("welcome") === "1") {
+      setWelcomeOpen(true);
+      // Clean le query param de l'URL sans reload
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("welcome");
+      const qs = params.toString();
+      router.replace(qs ? `?${qs}` : window.location.pathname, {
+        scroll: false,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,6 +86,15 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
 
   return (
     <>
+      {/* Toast bienvenue après connexion (Phase 8 FIX 2d) */}
+      <Toast
+        open={welcomeOpen}
+        variant="success"
+        icon="🎴"
+        message={`Bon retour, ${card.first_name || "ami"} !`}
+        autoCloseMs={3500}
+        onClose={() => setWelcomeOpen(false)}
+      />
       <main className="min-h-[100dvh] bg-cream pb-16 pt-20">
         <div className="mx-auto max-w-md px-4 pt-2">
           {/* Header — logo global fixed (Phase 7 FIX 3) sert d'identité,

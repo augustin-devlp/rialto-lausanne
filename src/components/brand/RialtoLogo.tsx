@@ -84,10 +84,15 @@ export default function RialtoLogo({
   // Conteneur arrondi blanc semi-transparent pour lisibilité sur fond
   // sombre (hero) ET fond clair (menu).
   if (variant === "fixed") {
+    // Phase 8 FIX 1 : desktop-only (md:≥768px). Sur mobile, le
+    // hamburger top-left + les headers internes de chaque page jouent
+    // le rôle de navigation. Évite la superposition + gain de place
+    // visuelle sur petits écrans.
     return (
       <Link
         href="/"
-        className="fixed left-4 top-4 z-[99] inline-flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:left-5 md:top-5"
+        aria-label="Rialto — Retour à l'accueil"
+        className="fixed left-5 top-5 z-[99] hidden items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:inline-flex"
       >
         {content}
       </Link>

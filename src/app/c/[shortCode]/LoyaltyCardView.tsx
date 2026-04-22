@@ -37,12 +37,24 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [smsFallbackVisible, setSmsFallbackVisible] = useState(false);
   useEffect(() => {
     if (searchParams.get("welcome") === "1") {
       setWelcomeOpen(true);
       // Clean le query param de l'URL sans reload
       const params = new URLSearchParams(searchParams.toString());
       params.delete("welcome");
+      const qs = params.toString();
+      router.replace(qs ? `?${qs}` : window.location.pathname, {
+        scroll: false,
+      });
+    }
+    // Phase 10 C2D : si ?sms=ko, afficher un bandeau discret "ajoute
+    // ce lien en favori" car le SMS n'est pas parti (crédits Brevo).
+    if (searchParams.get("sms") === "ko") {
+      setSmsFallbackVisible(true);
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("sms");
       const qs = params.toString();
       router.replace(qs ? `?${qs}` : window.location.pathname, {
         scroll: false,
@@ -107,6 +119,34 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               #{card.short_code}
             </span>
           </header>
+
+          {/* Phase 10 C2D : fallback si SMS non parti (?sms=ko) */}
+          {smsFallbackVisible && (
+            <div className="mt-4 rounded-2xl border-2 border-saffron bg-[#FFF2D1] p-3 text-xs text-ink">
+              <div className="flex items-start gap-2">
+                <span className="shrink-0 text-base">💡</span>
+                <div className="flex-1">
+                  <div className="font-semibold">
+                    Ajoute ce lien à tes favoris
+                  </div>
+                  <p className="mt-0.5 text-ink/80">
+                    Le SMS n&apos;est pas parti — copie l&apos;URL de
+                    cette page pour y revenir facilement, ou ajoute-la à
+                    l&apos;écran d&apos;accueil de ton téléphone (menu
+                    Partager → Sur l&apos;écran d&apos;accueil).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSmsFallbackVisible(false)}
+                  className="shrink-0 text-ink/40 hover:text-ink"
+                  aria-label="Fermer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Card principale terracotta */}
           <section className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark text-white shadow-[0_20px_50px_-10px_rgba(199,62,29,0.35)]">

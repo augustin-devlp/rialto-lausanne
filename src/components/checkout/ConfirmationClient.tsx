@@ -94,6 +94,10 @@ type LoyaltyCardState =
       current_stamps: number;
       stamps_required: number;
       reward_description: string;
+      /** Phase 10 C2D : false = SMS non parti (crédits Brevo, etc.)
+       *  → afficher un fallback "copie ce lien en favori". */
+      sms_sent?: boolean;
+      sms_fallback_url?: string | null;
     }
   | { status: "needs_signup" }
   | { status: "signing_up" }
@@ -347,6 +351,8 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
           stamps_required: number;
           reward_description: string;
         };
+        sms_sent?: boolean;
+        sms_fallback_url?: string | null;
       };
       if (!body.card.short_code) {
         // Re-lookup pour récupérer le short_code (cas où le backfill vient
@@ -366,6 +372,8 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         current_stamps: body.card.current_stamps,
         stamps_required: body.card.stamps_required,
         reward_description: body.card.reward_description,
+        sms_sent: body.sms_sent !== false, // undefined ou true → considéré envoyé
+        sms_fallback_url: body.sms_fallback_url ?? null,
       });
     } catch (err) {
       setLoyalty({
@@ -672,6 +680,38 @@ function LoyaltyCardSection({
         <p className="mt-3 text-center text-[11px] text-white/60">
           Code : <span className="font-mono font-semibold text-white/90">{loyalty.short_code}</span>
         </p>
+
+        {/* Phase 10 C2D : fallback si SMS non envoyé (crédits Brevo KO) */}
+        {loyalty.sms_sent === false && (
+          <div className="mt-4 rounded-2xl bg-white/10 p-3 text-center text-[11px] text-white/90">
+            <div className="font-semibold">💡 Garde ce lien en favori</div>
+            <p className="mt-0.5 text-white/75">
+              Tu n&apos;as pas reçu de SMS ? Copie ce lien pour retrouver
+              ta carte fidélité plus tard :
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                readOnly
+                value={cardUrl}
+                className="flex-1 rounded-lg bg-white/15 px-2 py-1.5 font-mono text-[10px] text-white"
+                onClick={(e) => e.currentTarget.select()}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    navigator.clipboard.writeText(cardUrl);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+                className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-rialto hover:bg-cream"
+              >
+                Copier
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

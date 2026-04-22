@@ -57,6 +57,7 @@ export default function JoinClient() {
       const body = (await res.json()) as {
         customer: { id: string };
         card: { short_code: string | null };
+        sms_sent?: boolean;
       };
       if (!body.card.short_code) {
         setError(
@@ -71,7 +72,10 @@ export default function JoinClient() {
         phone: cleanPhone,
         first_name: firstName.trim(),
       });
-      router.push(`/c/${body.card.short_code}`);
+      // Phase 10 C2D : signale au destination page si le SMS a échoué,
+      // pour qu'elle affiche un fallback "copie ce lien en favori".
+      const smsFlag = body.sms_sent === false ? "?sms=ko" : "";
+      router.push(`/c/${body.card.short_code}${smsFlag}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur réseau");
       setLoading(false);

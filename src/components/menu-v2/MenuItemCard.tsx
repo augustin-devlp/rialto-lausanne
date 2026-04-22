@@ -1,14 +1,21 @@
 "use client";
 
 /**
- * Card plat dans la grille du menu. Photo à gauche (ratio 4:3), contenu
- * à droite. Bouton "+" ou "Ajouter" selon viewport.
+ * Card plat dans la grille du menu.
+ *
+ * Layout : photo à droite, contenu à gauche.
+ * La photo + le nom + la description sont un LIEN vers /menu/[slug]
+ * (page produit dédiée). Le bouton "Ajouter" reste un bouton d'action
+ * indépendant. Un second lien subtil "Voir en détail" renforce la
+ * découvrabilité de la page produit.
  */
 
 import Image from "next/image";
+import Link from "next/link";
 import type { MenuItem } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { matchDishImage } from "@/lib/rialto-data";
+import { menuItemSlug } from "@/lib/slug";
 
 type Props = {
   item: MenuItem;
@@ -19,19 +26,19 @@ type Props = {
 export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
   const src = item.image_url || matchDishImage(item.name, categoryName);
   const unavailable = !item.is_available;
+  const href = `/menu/${menuItemSlug({ id: item.id, name: item.name })}`;
 
   return (
     <article
-      className={`dish-card group flex items-stretch overflow-hidden border border-border ${
+      className={`dish-card group relative flex items-stretch overflow-hidden border border-border ${
         unavailable ? "opacity-50" : ""
       }`}
     >
-      <button
-        type="button"
-        onClick={() => !unavailable && onAdd(item)}
-        className="flex flex-1 items-stretch text-left"
-        aria-label={`Ajouter ${item.name}`}
-        disabled={unavailable}
+      {/* Lien principal enveloppant le contenu éditorial + la photo */}
+      <Link
+        href={href}
+        className="flex min-w-0 flex-1 items-stretch"
+        aria-label={`Voir le détail de ${item.name}`}
       >
         <div className="flex min-w-0 flex-1 flex-col justify-between gap-2 p-4">
           <div>
@@ -70,37 +77,9 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
             <span className="tabular font-display text-base font-semibold text-ink md:text-lg">
               {formatCHF(Number(item.price))}
             </span>
-            {!unavailable && (
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-rialto text-white shadow-card transition group-hover:bg-rialto-dark md:hidden">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-            )}
-            {!unavailable && (
-              <span className="hidden items-center gap-1.5 rounded-full bg-rialto px-4 py-2 text-xs font-semibold text-white transition group-hover:bg-rialto-dark md:inline-flex">
-                Ajouter
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.8"
-                  strokeLinecap="round"
-                >
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-            )}
+            <span className="text-[11px] font-medium text-mute underline underline-offset-2 group-hover:text-rialto">
+              Voir en détail
+            </span>
           </div>
         </div>
         <div className="relative w-[34%] shrink-0 sm:w-[40%] md:w-[38%]">
@@ -117,7 +96,33 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
             </div>
           )}
         </div>
-      </button>
+      </Link>
+
+      {/* Bouton Ajouter — absolute overlay sur la photo, échappe au Link */}
+      {!unavailable && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onAdd(item);
+          }}
+          className="absolute bottom-3 right-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-rialto text-white shadow-card transition hover:scale-110 hover:bg-rialto-dark md:h-11 md:w-11"
+          aria-label={`Ajouter ${item.name} au panier`}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.8"
+            strokeLinecap="round"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      )}
     </article>
   );
 }

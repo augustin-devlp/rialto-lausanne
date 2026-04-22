@@ -49,7 +49,12 @@ export type MenuItem = {
   is_vegetarian: boolean;
   is_spicy: boolean;
   is_gluten_free?: boolean;
+  is_vegan?: boolean;
+  is_lactose_free?: boolean;
+  is_halal?: boolean;
+  is_kids_friendly?: boolean;
   tags?: string[];
+  allergens?: string[];
   has_options: boolean;
   display_order: number;
 };

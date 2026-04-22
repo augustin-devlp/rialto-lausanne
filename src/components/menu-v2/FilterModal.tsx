@@ -28,6 +28,24 @@ export type FilterKey =
   | "pizza"
   | "pasta";
 
+/** Code allergène UE → libellé FR affiché dans l'UI */
+export const ALLERGEN_LABELS_FR: Record<string, string> = {
+  gluten: "Gluten",
+  crustaceans: "Crustacés",
+  eggs: "Œufs",
+  fish: "Poisson",
+  peanuts: "Arachides",
+  soybeans: "Soja",
+  milk: "Lait",
+  nuts: "Fruits à coque",
+  celery: "Céleri",
+  mustard: "Moutarde",
+  sesame: "Sésame",
+  sulphites: "Sulfites",
+  lupin: "Lupin",
+  molluscs: "Mollusques",
+};
+
 type FilterSection = {
   title: string;
   filters: { key: FilterKey; icon: string; label: string }[];
@@ -75,6 +93,7 @@ const FILTER_TO_SECTION: Record<FilterKey, number> = (() => {
 })();
 
 const STORAGE_KEY = "RIALTO:FILTERS:V1";
+const STORAGE_KEY_EXCLUDED = "RIALTO:FILTERS_EXCLUDED:V1";
 
 export function readStoredFilters(): Set<FilterKey> {
   if (typeof window === "undefined") return new Set();
@@ -96,6 +115,25 @@ export function writeStoredFilters(filters: Set<FilterKey>): void {
   );
 }
 
+export function readStoredExcludedAllergens(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY_EXCLUDED);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+export function writeStoredExcludedAllergens(excluded: Set<string>): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    STORAGE_KEY_EXCLUDED,
+    JSON.stringify(Array.from(excluded)),
+  );
+}
+
 /* ─── Matching : OR dans section, AND entre sections ────────────────── */
 type MatchableItem = {
   is_vegetarian?: boolean;
@@ -106,6 +144,7 @@ type MatchableItem = {
   is_spicy?: boolean;
   is_kids_friendly?: boolean;
   tags?: string[] | null;
+  allergens?: string[] | null;
   name?: string;
   category_name?: string | null;
 };
@@ -146,7 +185,17 @@ export function itemMatchesFilters(
   item: MatchableItem,
   active: Set<FilterKey>,
   categoryName?: string | null,
+  excludedAllergens?: Set<string>,
 ): boolean {
+  // Exclusion allergènes (AND) : si l'item contient UN SEUL allergène
+  // exclu → rejeté
+  if (excludedAllergens && excludedAllergens.size > 0) {
+    const itemAllergens = item.allergens ?? [];
+    for (const ex of excludedAllergens) {
+      if (itemAllergens.includes(ex)) return false;
+    }
+  }
+
   if (active.size === 0) return true;
   // Regroupe par section : dans une section, un seul filtre actif suffit
   const activeBySection: Record<number, FilterKey[]> = {};
@@ -170,26 +219,46 @@ type Props = {
   open: boolean;
   onClose: () => void;
   initialFilters: Set<FilterKey>;
-  onApply: (filters: Set<FilterKey>) => void;
-  // Compteur live de résultats pour l'affichage bouton Appliquer
-  countResults: (filters: Set<FilterKey>) => number;
+  initialExcludedAllergens: Set<string>;
+  onApply: (filters: Set<FilterKey>, excluded: Set<string>) => void;
+  /** Clés de filtres avec ≥ 1 item dans le menu (les autres sont cachées) */
+  availableFilterKeys: Set<FilterKey>;
+  /** Allergènes présents dans ≥ 1 item (section "Je ne veux PAS") */
+  availableAllergens: Set<string>;
+  /** Compteur live de résultats pour l'affichage bouton Appliquer */
+  countResults: (
+    filters: Set<FilterKey>,
+    excluded: Set<string>,
+  ) => number;
 };
 
 export default function FilterModal({
   open,
   onClose,
   initialFilters,
+  initialExcludedAllergens,
   onApply,
+  availableFilterKeys,
+  availableAllergens,
   countResults,
 }: Props) {
   const [draft, setDraft] = useState<Set<FilterKey>>(initialFilters);
+  const [draftExcluded, setDraftExcluded] = useState<Set<string>>(
+    initialExcludedAllergens,
+  );
 
   // Resync quand l'utilisateur réouvre avec un état parent différent
   useEffect(() => {
-    if (open) setDraft(new Set(initialFilters));
-  }, [open, initialFilters]);
+    if (open) {
+      setDraft(new Set(initialFilters));
+      setDraftExcluded(new Set(initialExcludedAllergens));
+    }
+  }, [open, initialFilters, initialExcludedAllergens]);
 
-  const count = useMemo(() => countResults(draft), [draft, countResults]);
+  const count = useMemo(
+    () => countResults(draft, draftExcluded),
+    [draft, draftExcluded, countResults],
+  );
 
   // Empêche le scroll du body pendant que le popup est ouvert
   useEffect(() => {
@@ -210,6 +279,15 @@ export default function FilterModal({
       const next = new Set(prev);
       if (next.has(k)) next.delete(k);
       else next.add(k);
+      return next;
+    });
+  };
+
+  const toggleExcluded = (allergen: string) => {
+    setDraftExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(allergen)) next.delete(allergen);
+      else next.add(allergen);
       return next;
     });
   };
@@ -249,44 +327,98 @@ export default function FilterModal({
 
         {/* Sections */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {FILTER_SECTIONS.map((section) => (
-            <section key={section.title} className="mb-5 last:mb-0">
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-rialto">
-                {section.title}
+          {FILTER_SECTIONS.map((section) => {
+            // FIX 4 phase 6 : ne garde que les filtres avec ≥ 1 item
+            const visibleFilters = section.filters.filter((f) =>
+              availableFilterKeys.has(f.key),
+            );
+            if (visibleFilters.length === 0) return null;
+            return (
+              <section key={section.title} className="mb-5">
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-rialto">
+                  {section.title}
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {visibleFilters.map((f) => {
+                    const checked = draft.has(f.key);
+                    return (
+                      <label
+                        key={f.key}
+                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                          checked
+                            ? "border-rialto bg-rialto/5"
+                            : "border-border bg-white hover:border-ink"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(f.key)}
+                          className="accent-rialto"
+                        />
+                        <span className="text-lg leading-none">{f.icon}</span>
+                        <span className="font-medium">{f.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {/* FIX 5 phase 6 : section exclusion allergènes */}
+          {availableAllergens.size > 0 && (
+            <section className="mb-5">
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-rialto">
+                Je ne veux PAS
               </h4>
+              <p className="mb-2 text-[11px] text-mute">
+                Exclure les plats contenant ces allergènes
+              </p>
               <div className="grid grid-cols-2 gap-2">
-                {section.filters.map((f) => {
-                  const checked = draft.has(f.key);
-                  return (
-                    <label
-                      key={f.key}
-                      className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
-                        checked
-                          ? "border-rialto bg-rialto/5"
-                          : "border-border bg-white hover:border-ink"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggle(f.key)}
-                        className="accent-rialto"
-                      />
-                      <span className="text-lg leading-none">{f.icon}</span>
-                      <span className="font-medium">{f.label}</span>
-                    </label>
-                  );
-                })}
+                {Array.from(availableAllergens)
+                  .sort((a, b) =>
+                    (ALLERGEN_LABELS_FR[a] ?? a).localeCompare(
+                      ALLERGEN_LABELS_FR[b] ?? b,
+                    ),
+                  )
+                  .map((allergen) => {
+                    const checked = draftExcluded.has(allergen);
+                    return (
+                      <label
+                        key={allergen}
+                        className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition ${
+                          checked
+                            ? "border-rialto bg-rialto/10"
+                            : "border-border bg-white hover:border-ink"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleExcluded(allergen)}
+                          className="accent-rialto"
+                        />
+                        <span className="text-sm leading-none">🚫</span>
+                        <span className="font-medium">
+                          {ALLERGEN_LABELS_FR[allergen] ?? allergen}
+                        </span>
+                      </label>
+                    );
+                  })}
               </div>
             </section>
-          ))}
+          )}
         </div>
 
         {/* Footer actions */}
         <footer className="flex items-center gap-2 border-t border-border bg-cream px-4 py-3">
           <button
             type="button"
-            onClick={() => setDraft(new Set())}
+            onClick={() => {
+              setDraft(new Set());
+              setDraftExcluded(new Set());
+            }}
             className="btn-ghost"
           >
             Effacer tout
@@ -294,7 +426,7 @@ export default function FilterModal({
           <button
             type="button"
             onClick={() => {
-              onApply(draft);
+              onApply(draft, draftExcluded);
               onClose();
             }}
             className="btn-primary flex-1"

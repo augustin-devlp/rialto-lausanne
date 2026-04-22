@@ -45,6 +45,8 @@ import FilterModal, {
   itemMatchesFilters,
   readStoredFilters,
   writeStoredFilters,
+  readStoredExcludedAllergens,
+  writeStoredExcludedAllergens,
   type FilterKey,
 } from "./FilterModal";
 
@@ -59,19 +61,26 @@ export default function MenuClient({ categories, items, options }: Props) {
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
     new Set(),
   );
+  const [excludedAllergens, setExcludedAllergens] = useState<Set<string>>(
+    new Set(),
+  );
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryNavRef = useRef<HTMLDivElement | null>(null);
 
-  // Restore filters depuis localStorage au mount
+  // Restore filters + exclusions depuis localStorage au mount
   useEffect(() => {
     setActiveFilters(readStoredFilters());
+    setExcludedAllergens(readStoredExcludedAllergens());
   }, []);
 
   // Persiste à chaque changement
   useEffect(() => {
     writeStoredFilters(activeFilters);
   }, [activeFilters]);
+  useEffect(() => {
+    writeStoredExcludedAllergens(excludedAllergens);
+  }, [excludedAllergens]);
 
   useEffect(() => {
     // Hydrate from localStorage
@@ -144,22 +153,67 @@ export default function MenuClient({ categories, items, options }: Props) {
     const map: Record<string, MenuItem[]> = {};
     for (const it of items) {
       const catName = categoryById[it.category_id];
-      if (!itemMatchesFilters(it, activeFilters, catName)) continue;
+      if (!itemMatchesFilters(it, activeFilters, catName, excludedAllergens))
+        continue;
       (map[it.category_id] ??= []).push(it);
     }
     return map;
-  }, [items, activeFilters, categoryById]);
+  }, [items, activeFilters, excludedAllergens, categoryById]);
 
-  // Compteur utilisé dans le bouton "Appliquer (X résultats)" de la modale
-  const countResults = (filters: Set<FilterKey>): number => {
-    if (filters.size === 0) return items.length;
+  // Compteur live pour le bouton "Appliquer (X résultats)" de la modale
+  const countResults = (
+    filters: Set<FilterKey>,
+    excluded: Set<string>,
+  ): number => {
     let n = 0;
     for (const it of items) {
       const catName = categoryById[it.category_id];
-      if (itemMatchesFilters(it, filters, catName)) n++;
+      if (itemMatchesFilters(it, filters, catName, excluded)) n++;
     }
     return n;
   };
+
+  // FIX 4 phase 6 : clés de filtres avec ≥ 1 item correspondant.
+  // Utilisé pour cacher les filtres "0 résultats" dans la modale.
+  const availableFilterKeys = useMemo(() => {
+    const keys = new Set<FilterKey>();
+    for (const it of items) {
+      const catName = categoryById[it.category_id];
+      if (it.is_vegetarian) keys.add("vegetarian");
+      if (it.is_vegan) keys.add("vegan");
+      if (it.is_lactose_free) keys.add("lactose_free");
+      if (it.is_gluten_free) keys.add("gluten_free");
+      if (it.is_halal) keys.add("halal");
+      if (it.is_spicy) keys.add("spicy");
+      if (it.is_kids_friendly) keys.add("kids_friendly");
+      if (it.tags?.includes("seafood")) keys.add("seafood");
+      if (it.tags?.includes("meat")) keys.add("meat");
+      if (it.tags?.includes("anatolian")) keys.add("anatolian");
+      const cn = (catName ?? "").toLowerCase();
+      const name = (it.name ?? "").toLowerCase();
+      if (cn.includes("pizza") || name.includes("pizza")) keys.add("pizza");
+      if (
+        cn.includes("pâte") ||
+        cn.includes("pasta") ||
+        /tagliatelle|spaghetti|linguine|tortellini|lasagne/.test(name)
+      )
+        keys.add("pasta");
+    }
+    return keys;
+  }, [items, categoryById]);
+
+  // FIX 5 phase 6 : allergènes présents dans au moins 1 plat.
+  // Source pour la section "Je ne veux PAS" dans la modale.
+  const availableAllergens = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const al = (it as MenuItem & { allergens?: string[] | null }).allergens;
+      if (Array.isArray(al)) {
+        for (const a of al) if (a) set.add(a);
+      }
+    }
+    return set;
+  }, [items]);
 
   const subtotal = cartSubtotal(cart);
   const count = cartCount(cart);
@@ -330,7 +384,7 @@ export default function MenuClient({ categories, items, options }: Props) {
             type="button"
             onClick={() => setFilterModalOpen(true)}
             className={`relative shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-              activeFilters.size > 0
+              activeFilters.size + excludedAllergens.size > 0
                 ? "border-rialto bg-rialto text-white"
                 : "border-border bg-white text-ink hover:border-ink"
             }`}
@@ -349,9 +403,9 @@ export default function MenuClient({ categories, items, options }: Props) {
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
             </svg>
             Filtrer
-            {activeFilters.size > 0 && (
+            {activeFilters.size + excludedAllergens.size > 0 && (
               <span className="tabular inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-rialto">
-                {activeFilters.size}
+                {activeFilters.size + excludedAllergens.size}
               </span>
             )}
           </button>
@@ -385,7 +439,10 @@ export default function MenuClient({ categories, items, options }: Props) {
             </p>
             <button
               type="button"
-              onClick={() => setActiveFilters(new Set())}
+              onClick={() => {
+                setActiveFilters(new Set());
+                setExcludedAllergens(new Set());
+              }}
               className="btn-ghost mt-4"
             >
               Effacer les filtres
@@ -444,7 +501,13 @@ export default function MenuClient({ categories, items, options }: Props) {
         open={filterModalOpen}
         onClose={() => setFilterModalOpen(false)}
         initialFilters={activeFilters}
-        onApply={setActiveFilters}
+        initialExcludedAllergens={excludedAllergens}
+        availableFilterKeys={availableFilterKeys}
+        availableAllergens={availableAllergens}
+        onApply={(f, ex) => {
+          setActiveFilters(f);
+          setExcludedAllergens(ex);
+        }}
         countResults={countResults}
       />
 

@@ -60,7 +60,10 @@ export function buildConfirmationContext(params: {
     pickup_time: toZurichHHMM(params.order.requested_pickup_time),
     customer_name: firstName,
     total: params.order.total_amount.toFixed(2),
-    order_url: `${params.siteUrl.replace(/\/$/, "")}/order/${params.order.id}`,
+    // Phase 7 FIX 2 : /confirmation/[orderNumber] (nouveau flow) au lieu
+    // de /order/[id] (ancien flow qui pointait parfois vers un vieux
+    // site Just Eat chez certains clients)
+    order_url: `${params.siteUrl.replace(/\/$/, "")}/confirmation/${params.order.order_number}`,
     restaurant_name: params.restaurant.name,
     restaurant_phone: params.restaurant.phone ?? "",
     restaurant_address: params.restaurant.address ?? "",

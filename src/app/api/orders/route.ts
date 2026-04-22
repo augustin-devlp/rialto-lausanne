@@ -342,7 +342,11 @@ export async function POST(req: NextRequest) {
           phone: restaurant.phone,
           address: restaurant.address,
         },
-        siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? "https://rialto-lausanne.ch",
+        // Phase 7 FIX 2 : defaut vercel.app jusqu'a la bascule DNS
+        siteUrl:
+          process.env.NEXT_PUBLIC_SITE_URL ??
+          process.env.NEXT_PUBLIC_RIALTO_BASE_URL ??
+          "https://rialto-lausanne.vercel.app",
       });
       const content = renderConfirmationTemplate(tmpl.content, ctx);
       await sendSMS(body.customer_phone, content);

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
+import { supabaseBrowser } from "@/lib/supabase";
 
 type OrderStatus =
   | "new"
@@ -99,108 +100,160 @@ type LoyaltyCardState =
 
 export default function ConfirmationClient({ order: initialOrder }: Props) {
   const [order, setOrder] = useState<OrderData>(initialOrder);
-  const statusRef = useRef<OrderStatus>(initialOrder.status);
-  const tickCountRef = useRef(0);
   const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
+  const [pollDebug, setPollDebug] = useState<{
+    last_check: string;
+    last_status: OrderStatus;
+    source: string;
+    tick: number;
+  } | null>(null);
 
-  // Polling 15s sur le statut.
-  //
-  // Particularités :
-  // 1. Fetch immédiat à t=0 (pas d'attente 15s au premier tick) pour
-  //    refléter tout de suite un changement de statut qui aurait eu lieu
-  //    entre la création de l'order et l'arrivée sur la page.
-  // 2. Dépendances du useEffect : uniquement order.id. On utilise des refs
-  //    pour le status courant afin d'éviter de relancer le timer à chaque
-  //    update (ce qui resetterait le MAX_MS à chaque tick).
-  // 3. Stop auto sur terminal status (completed/cancelled) ou après 2h.
-  // 4. Logs détaillés pour diagnostiquer en prod si le polling ne reflète
-  //    pas un status réel (format préfixé [timeline-poll] pour grep).
+  /* ─── Mise à jour du statut en TEMPS RÉEL ─────────────────────────────
+   *
+   * On combine 3 mécanismes pour maximiser la fiabilité :
+   *
+   *   1. Supabase Realtime (websocket postgres_changes) — source primaire,
+   *      push < 1s quand le dashboard Stampify update le statut en DB.
+   *      C'est le pattern qu'utilisait l'ancien StatusTracker.tsx avant
+   *      la refonte et qui fonctionnait parfaitement.
+   *
+   *   2. Polling toutes les 15s — fallback au cas où le websocket
+   *      se déconnecte (mobile 4G bascule Wifi, etc.).
+   *
+   *   3. Fetch immédiat à l'arrivée sur la page + refetch à chaque
+   *      focus tab (visibilitychange) — couvre le cas où le user
+   *      revient sur l'onglet après 10 min.
+   *
+   * Tous les mécanismes appellent le même handleStatusUpdate qui :
+   *   - Met à jour le state local SEULEMENT si le status a changé
+   *   - Log ça dans la console avec préfixe [timeline]
+   *   - Met à jour le bandeau debug visible (source = realtime/poll/focus)
+   */
   useEffect(() => {
     const orderId = order.id;
     const orderNumber = order.order_number;
-    const startedAt = Date.now();
-    const MAX_MS = 2 * 60 * 60 * 1000; // 2h
 
     let stopped = false;
+    let tickCount = 0;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    let realtimeChannel: ReturnType<
+      ReturnType<typeof supabaseBrowser>["channel"]
+    > | null = null;
+    // statusSeen : le dernier status qu'on A VU — source de vérité client-side.
+    // Déclaré ici pour être capturé par la closure et non soumis à React state.
+    let statusSeen: OrderStatus = initialOrder.status;
 
-    const stop = (reason: string) => {
+    const handleStatusUpdate = (
+      newOrder: OrderData | Partial<OrderData>,
+      source: "realtime" | "poll" | "focus" | "initial",
+    ) => {
       if (stopped) return;
-      stopped = true;
-      if (intervalId) clearInterval(intervalId);
+      const newStatus = newOrder.status as OrderStatus;
+      tickCount += 1;
       console.log(
-        `[timeline-poll] polling stopped orderNumber=${orderNumber} reason=${reason} ticks=${tickCountRef.current}`,
+        `[timeline] ${source} #${tickCount} orderNumber=${orderNumber} status=${newStatus} statusSeen=${statusSeen}`,
       );
+      setPollDebug({
+        last_check: new Date().toLocaleTimeString("fr-CH"),
+        last_status: newStatus,
+        source,
+        tick: tickCount,
+      });
+      if (newStatus !== statusSeen) {
+        console.log(
+          `[timeline] ✅ status CHANGED from ${statusSeen} to ${newStatus} via ${source}`,
+        );
+        statusSeen = newStatus;
+        // Remplace l'order complet si on en a un, sinon merge juste le status
+        setOrder((prev) =>
+          "id" in newOrder && newOrder.id
+            ? (newOrder as OrderData)
+            : { ...prev, status: newStatus },
+        );
+      }
+      if (newStatus === "completed" || newStatus === "cancelled") {
+        console.log(`[timeline] terminal status ${newStatus} — stopping`);
+        stop();
+      }
     };
 
-    const tick = async () => {
+    const stop = () => {
       if (stopped) return;
-      tickCountRef.current += 1;
-      const tickId = tickCountRef.current;
-
-      if (Date.now() - startedAt > MAX_MS) {
-        stop("max_duration_2h");
-        return;
+      stopped = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
       }
+      if (realtimeChannel) {
+        void supabaseBrowser().removeChannel(realtimeChannel);
+        realtimeChannel = null;
+      }
+    };
 
+    // ─── 1. Fetch HTTP : tick de polling OU refresh manuel
+    const fetchStatus = async (source: "poll" | "focus") => {
+      if (stopped) return;
       try {
-        const res = await fetch(`/api/orders/${orderId}`, {
-          cache: "no-store",
-          headers: { "x-poll-tick": String(tickId) },
-        });
+        const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
         if (!res.ok) {
-          console.warn(
-            `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} http_error=${res.status}`,
-          );
+          console.warn(`[timeline] ${source} http=${res.status}`);
           return;
         }
         const body = (await res.json()) as { order?: OrderData };
-        if (!body.order) {
-          console.warn(
-            `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} no_order_in_response`,
-          );
-          return;
-        }
-        const newStatus = body.order.status;
-        const oldStatus = statusRef.current;
-        console.log(
-          `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} current_status=${newStatus}`,
-        );
-        if (newStatus !== oldStatus) {
-          console.log(
-            `[timeline-poll] status CHANGED from ${oldStatus} to ${newStatus} orderNumber=${orderNumber}`,
-          );
-          statusRef.current = newStatus;
-          setOrder(body.order);
-        }
-        if (newStatus === "completed" || newStatus === "cancelled") {
-          stop(`terminal_status_${newStatus}`);
-        }
+        if (body.order) handleStatusUpdate(body.order, source);
       } catch (err) {
-        console.warn(
-          `[timeline-poll] tick #${tickId} orderNumber=${orderNumber} network_error`,
-          err,
-        );
+        console.warn(`[timeline] ${source} network_error`, err);
       }
     };
 
-    // Fetch immédiat à t=0 (pas d'attente 15s)
-    console.log(
-      `[timeline-poll] START orderNumber=${orderNumber} order_id=${orderId} initial_status=${statusRef.current}`,
-    );
-    void tick();
-
-    // Si déjà en statut terminal à l'arrivée, on ne démarre pas d'intervalle
-    if (
-      statusRef.current === "completed" ||
-      statusRef.current === "cancelled"
-    ) {
-      stop(`already_terminal_${statusRef.current}`);
-    } else {
-      intervalId = setInterval(tick, 15_000);
+    // ─── 2. Supabase Realtime — abonnement sur UPDATE orders
+    try {
+      const sb = supabaseBrowser();
+      realtimeChannel = sb
+        .channel(`order:${orderId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "orders",
+            filter: `id=eq.${orderId}`,
+          },
+          (payload) => {
+            console.log(`[timeline] 🔔 realtime UPDATE received`, payload.new);
+            handleStatusUpdate(payload.new as Partial<OrderData>, "realtime");
+          },
+        )
+        .subscribe((status) => {
+          console.log(`[timeline] realtime channel status=${status}`);
+        });
+    } catch (err) {
+      console.warn("[timeline] realtime setup failed — polling only", err);
     }
 
-    return () => stop("unmount");
+    // ─── 3. Polling 15s (fallback si realtime down)
+    console.log(
+      `[timeline] START orderNumber=${orderNumber} order_id=${orderId} initial_status=${statusSeen}`,
+    );
+    // Fetch immédiat
+    void fetchStatus("poll");
+
+    if (statusSeen !== "completed" && statusSeen !== "cancelled") {
+      intervalId = setInterval(() => void fetchStatus("poll"), 15_000);
+    } else {
+      stop();
+    }
+
+    // ─── 4. Refetch quand l'onglet redevient visible
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void fetchStatus("focus");
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
@@ -364,9 +417,24 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         </div>
       </section>
 
+      {/* Debug bandeau temporaire — visible pour diagnostic timeline.
+          À retirer une fois que la démo Mehmet est OK. */}
+      {pollDebug && (
+        <div className="container-hero mt-4">
+          <div className="mx-auto max-w-xl rounded-xl border border-saffron/30 bg-saffron/5 px-3 py-2 text-[10px] font-mono text-ink/70">
+            <span className="font-semibold text-saffron-dark">DEBUG</span> ·
+            status={" "}
+            <span className="font-semibold text-ink">{pollDebug.last_status}</span>
+            {" · "}source={pollDebug.source}
+            {" · "}tick #{pollDebug.tick}
+            {" · "}last {pollDebug.last_check}
+          </div>
+        </div>
+      )}
+
       {/* Timeline */}
       {!isCancelled && (
-        <section className="container-hero mt-10">
+        <section className="container-hero mt-6">
           <div className="mx-auto max-w-xl rounded-3xl border border-border bg-white p-6 shadow-card md:p-8">
             <h2 className="mb-6 font-display text-xl font-bold">
               Suivi de la commande

@@ -208,7 +208,7 @@ export default function ProductPageClient({
         {/* Bouton retour */}
         <Link
           href="/menu"
-          className="absolute left-16 top-5 inline-flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-4 text-sm font-medium text-ink shadow-card backdrop-blur-lg transition hover:bg-white md:left-20"
+          className="absolute left-4 top-5 inline-flex h-10 items-center gap-1.5 rounded-full bg-white/95 px-4 text-sm font-medium text-ink shadow-card backdrop-blur-lg transition hover:bg-white md:left-5"
         >
           <svg
             width="14"

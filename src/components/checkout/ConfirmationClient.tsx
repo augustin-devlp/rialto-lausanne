@@ -102,12 +102,6 @@ type LoyaltyCardState =
 export default function ConfirmationClient({ order: initialOrder }: Props) {
   const [order, setOrder] = useState<OrderData>(initialOrder);
   const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
-  const [pollDebug, setPollDebug] = useState<{
-    last_check: string;
-    last_status: OrderStatus;
-    source: string;
-    tick: number;
-  } | null>(null);
 
   /* ─── Mise à jour du statut en TEMPS RÉEL ─────────────────────────────
    *
@@ -154,12 +148,6 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       console.log(
         `[timeline] ${source} #${tickCount} orderNumber=${orderNumber} status=${newStatus} statusSeen=${statusSeen}`,
       );
-      setPollDebug({
-        last_check: new Date().toLocaleTimeString("fr-CH"),
-        last_status: newStatus,
-        source,
-        tick: tickCount,
-      });
       if (newStatus !== statusSeen) {
         console.log(
           `[timeline] ✅ status CHANGED from ${statusSeen} to ${newStatus} via ${source}`,
@@ -434,24 +422,9 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         </div>
       </section>
 
-      {/* Debug bandeau temporaire — visible pour diagnostic timeline.
-          À retirer une fois que la démo Mehmet est OK. */}
-      {pollDebug && (
-        <div className="container-hero mt-4">
-          <div className="mx-auto max-w-xl rounded-xl border border-saffron/30 bg-saffron/5 px-3 py-2 text-[10px] font-mono text-ink/70">
-            <span className="font-semibold text-saffron-dark">DEBUG</span> ·
-            status={" "}
-            <span className="font-semibold text-ink">{pollDebug.last_status}</span>
-            {" · "}source={pollDebug.source}
-            {" · "}tick #{pollDebug.tick}
-            {" · "}last {pollDebug.last_check}
-          </div>
-        </div>
-      )}
-
       {/* Timeline */}
       {!isCancelled && (
-        <section className="container-hero mt-6">
+        <section className="container-hero mt-10">
           <div className="mx-auto max-w-xl rounded-3xl border border-border bg-white p-6 shadow-card md:p-8">
             <h2 className="mb-6 font-display text-xl font-bold">
               Suivi de la commande

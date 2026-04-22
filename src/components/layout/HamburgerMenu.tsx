@@ -55,11 +55,12 @@ export default function HamburgerMenu() {
 
   return (
     <>
-      {/* Bouton hamburger fixé */}
+      {/* Bouton hamburger fixé — top-right, z-index max pour toujours
+          rester au-dessus des autres headers (SiteHeader, menu sticky…) */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed left-4 top-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:left-5 md:top-5"
+        className="fixed right-4 top-4 z-[100] inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:right-5 md:top-5"
         aria-label="Ouvrir le menu"
       >
         <svg
@@ -77,19 +78,19 @@ export default function HamburgerMenu() {
         </svg>
       </button>
 
-      {/* Overlay sombre */}
+      {/* Overlay sombre — z-[90] pour être sous le hamburger mais au-dessus du reste */}
       <div
-        className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
           open ? "opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={() => setOpen(false)}
         aria-hidden
       />
 
-      {/* Sidebar */}
+      {/* Sidebar — glisse depuis la DROITE (right-0 + translate-x-full) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-cream shadow-2xl transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 right-0 z-[95] flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-cream shadow-2xl transition-transform duration-300 ease-out ${
+          open ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!open}
       >

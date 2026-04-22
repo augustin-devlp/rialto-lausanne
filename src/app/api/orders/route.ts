@@ -11,6 +11,7 @@ import {
   getConfirmationTemplate,
   renderConfirmationTemplate,
 } from "@/lib/smsTemplate";
+import { phoneLookupVariants } from "@/lib/phoneVariants";
 
 type IncomingItem = {
   menu_item_id: string;
@@ -278,44 +279,88 @@ export async function POST(req: NextRequest) {
   const [firstName, ...rest] = body.customer_name.split(" ");
   const lastName = rest.join(" ") || "";
 
-  const { data: existingCards } = await sb
-    .from("customer_cards")
-    .select("id, customer_id, customers!inner (id, phone)")
-    .eq("card_id", RIALTO_CARD_ID)
-    .eq("customers.phone", body.customer_phone)
-    .limit(1);
+  // Phase 9 FIX 2 : lookup tolérant aux formats mixtes en DB
+  // (+41..., 41..., 0..., etc.) pour retrouver un customer existant
+  // avant de tenter un INSERT qui violerait customers_phone_unique.
+  const { variants: phoneVariants, digitsOnly: phoneDigits } =
+    phoneLookupVariants(body.customer_phone);
+
+  const { data: matchedCustomers } = await sb
+    .from("customers")
+    .select("id, phone")
+    .in("phone", phoneVariants)
+    .limit(10);
+
+  let candidates: Array<{ id: string; phone: string | null }> =
+    (matchedCustomers as Array<{ id: string; phone: string | null }> | null) ??
+    [];
+
+  if (candidates.length === 0 && phoneDigits.length >= 8) {
+    const { data: all } = await sb.from("customers").select("id, phone");
+    const suffix = phoneDigits.slice(-8);
+    candidates = ((all as Array<{ id: string; phone: string | null }> | null) ??
+      []).filter((c) => {
+      const d = (c.phone ?? "").replace(/[^\d]/g, "");
+      return d.length >= 8 && d.endsWith(suffix);
+    });
+  }
+
+  const existingCustomerId: string | null =
+    candidates.length > 0 ? candidates[0].id : null;
+
+  const { data: existingCards } = existingCustomerId
+    ? await sb
+        .from("customer_cards")
+        .select("id, customer_id")
+        .eq("card_id", RIALTO_CARD_ID)
+        .eq("customer_id", existingCustomerId)
+        .limit(1)
+    : { data: [] as Array<{ id: string; customer_id: string }> };
+
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const makeShortCode = () => {
+    let s = "";
+    for (let i = 0; i < 8; i++) {
+      s += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return s;
+  };
 
   let customerId: string | null = null;
   if (existingCards && existingCards.length > 0) {
     customerId = existingCards[0].customer_id as string;
+  } else if (existingCustomerId) {
+    // Customer existe déjà (autre format tél), mais pas de carte Rialto
+    // → on réutilise son id (évite duplicate key sur phone_unique)
+    customerId = existingCustomerId;
+    await sb.from("customer_cards").insert({
+      customer_id: customerId,
+      card_id: RIALTO_CARD_ID,
+      current_stamps: 0,
+      qr_code_value: crypto.randomUUID(),
+      rewards_claimed: 0,
+      short_code: makeShortCode(),
+    });
   } else {
-    // Crée un customer + customer_card vide
+    // Nouveau customer + nouvelle carte
     const { data: newCustomer } = await sb
       .from("customers")
       .insert({
         first_name: firstName || "Client",
         last_name: lastName,
-        phone: body.customer_phone,
+        phone: body.customer_phone, // déjà normalisé E.164 avec "+" côté client
       })
       .select("id")
       .single();
     if (newCustomer) {
       customerId = newCustomer.id;
-      // FIX 2 phase 6 : on génère aussi short_code côté app (le trigger
-      // DB customer_cards_generate_short_code le fait sinon, mais filet
-      // redondant = pas de risque de /c/null dans les SMS).
-      const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-      let shortCode = "";
-      for (let i = 0; i < 8; i++) {
-        shortCode += alphabet[Math.floor(Math.random() * alphabet.length)];
-      }
       await sb.from("customer_cards").insert({
         customer_id: newCustomer.id,
         card_id: RIALTO_CARD_ID,
         current_stamps: 0,
         qr_code_value: crypto.randomUUID(),
         rewards_claimed: 0,
-        short_code: shortCode,
+        short_code: makeShortCode(),
       });
     }
   }

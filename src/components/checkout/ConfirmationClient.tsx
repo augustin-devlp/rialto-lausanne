@@ -143,7 +143,14 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       source: "realtime" | "poll" | "focus" | "initial",
     ) => {
       if (stopped) return;
-      const newStatus = newOrder.status as OrderStatus;
+      const newStatus = newOrder.status as OrderStatus | undefined;
+      if (!newStatus) {
+        console.warn(
+          `[timeline] ${source} payload without status, ignoring`,
+          newOrder,
+        );
+        return;
+      }
       tickCount += 1;
       console.log(
         `[timeline] ${source} #${tickCount} orderNumber=${orderNumber} status=${newStatus} statusSeen=${statusSeen}`,
@@ -153,12 +160,27 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
           `[timeline] ✅ status CHANGED from ${statusSeen} to ${newStatus} via ${source}`,
         );
         statusSeen = newStatus;
-        // Remplace l'order complet si on en a un, sinon merge juste le status
-        setOrder((prev) =>
-          "id" in newOrder && newOrder.id
-            ? (newOrder as OrderData)
-            : { ...prev, status: newStatus },
-        );
+        // Phase 9 FIX 3 : TOUJOURS merger avec prev pour préserver
+        // les items (le payload Realtime postgres_changes ne contient
+        // que les colonnes de la table orders, SANS les order_items
+        // qui sont dans une table séparée). Si on remplace l'order
+        // complet, `order.items` devient undefined et le JSX crashe.
+        //
+        // Pour les poll HTTP, `newOrder.items` EST inclus (endpoint
+        // /api/orders/[id] imbrique items). On l'utilise si dispo.
+        setOrder((prev) => {
+          const hasItems =
+            "items" in newOrder &&
+            Array.isArray((newOrder as OrderData).items);
+          const mergedItems = hasItems
+            ? (newOrder as OrderData).items
+            : prev.items;
+          return {
+            ...prev,
+            ...newOrder,
+            items: mergedItems,
+          } as OrderData;
+        });
       }
       if (newStatus === "completed" || newStatus === "cancelled") {
         console.log(`[timeline] terminal status ${newStatus} — stopping`);
@@ -495,7 +517,9 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         <div className="mx-auto max-w-xl rounded-3xl border border-border bg-white p-6 shadow-card md:p-8">
           <h2 className="font-display text-xl font-bold">Votre commande</h2>
           <ul className="mt-4 divide-y divide-border">
-            {order.items.map((it, i) => (
+            {/* Phase 9 FIX 3 : fallback défensif si items absent (cas
+                théorique où un merge partiel les aurait perdus) */}
+            {(order.items ?? []).map((it, i) => (
               <li key={i} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="font-display font-semibold text-ink">

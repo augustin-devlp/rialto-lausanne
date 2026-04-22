@@ -366,14 +366,14 @@ export default function FilterModal({
             );
           })}
 
-          {/* FIX 5 phase 6 : section exclusion allergènes */}
+          {/* FIX 5 phase 6 + FIX 4 phase 7 : section exclusion allergènes */}
           {availableAllergens.size > 0 && (
             <section className="mb-5">
               <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-rialto">
-                Je ne veux PAS
+                Je suis allergique à…
               </h4>
               <p className="mb-2 text-[11px] text-mute">
-                Exclure les plats contenant ces allergènes
+                Les plats contenant ces allergènes seront masqués
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {Array.from(availableAllergens)

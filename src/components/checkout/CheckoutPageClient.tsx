@@ -24,6 +24,7 @@ import {
 } from "@/lib/clientStore";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
+import UpsellPanel from "./UpsellPanel";
 
 type Props = {
   restaurantId: string;
@@ -97,6 +98,48 @@ export default function CheckoutPageClient({ restaurantId, accepting }: Props) {
       .filter(Boolean) as CartItem[];
     setCart(next);
     writeCart(next);
+  }
+
+  // Phase 11 C12 : ajout d'un item suggéré par l'IA upsell
+  async function addUpsellItem(menuItemId: string) {
+    try {
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`);
+      let item: { id: string; name: string; price: number } | null = null;
+      if (res.ok) {
+        item = (await res.json()).item ?? null;
+      }
+      if (!item) return;
+      const key = `${item.id}::::`;
+      const existing = cart.find((c) => c.key === key);
+      const next: CartItem[] = existing
+        ? cart.map((c) =>
+            c.key === key
+              ? {
+                  ...c,
+                  quantity: c.quantity + 1,
+                  subtotal: c.unit_price * (c.quantity + 1),
+                }
+              : c,
+          )
+        : [
+            ...cart,
+            {
+              key,
+              menu_item_id: item.id,
+              name: item.name,
+              base_price: item.price,
+              quantity: 1,
+              options: [],
+              notes: "",
+              unit_price: item.price,
+              subtotal: item.price,
+            },
+          ];
+      setCart(next);
+      writeCart(next);
+    } catch (err) {
+      console.error("[upsell] add failed", err);
+    }
   }
 
   async function applyPromo() {
@@ -273,6 +316,8 @@ export default function CheckoutPageClient({ restaurantId, accepting }: Props) {
                 />
               ))}
             </div>
+            {/* Phase 11 C12 : upsell IA Gemini */}
+            <UpsellPanel cart={cart} onAdd={addUpsellItem} />
           </Section>
 
           {/* Où livrer */}

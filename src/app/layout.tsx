@@ -4,6 +4,8 @@ import "./globals.css";
 import HamburgerMenu from "@/components/layout/HamburgerMenu";
 import RialtoLogo from "@/components/brand/RialtoLogo";
 import PwaRegister from "@/components/PwaRegister";
+import { I18nProvider } from "@/i18n/I18nProvider";
+import LanguageToggle from "@/components/LanguageToggle";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -70,10 +72,16 @@ export default function RootLayout({
     <html lang="fr" className={`${fraunces.variable} ${inter.variable}`}>
       <body className="font-sans antialiased bg-cream text-ink">
         {/* Logo Rialto top-left fixed, cliquable -> / (Phase 7 FIX 3) */}
-        <RialtoLogo variant="fixed" size="sm" />
-        <HamburgerMenu />
-        {children}
-        <PwaRegister />
+        <I18nProvider>
+          <RialtoLogo variant="fixed" size="sm" />
+          <HamburgerMenu />
+          {/* Phase 11 C10 : sélecteur de langue flottant top-right */}
+          <div className="fixed right-3 top-3 z-40 md:right-6 md:top-5">
+            <LanguageToggle />
+          </div>
+          {children}
+          <PwaRegister />
+        </I18nProvider>
       </body>
     </html>
   );

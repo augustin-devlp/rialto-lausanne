@@ -17,6 +17,7 @@ type PublicCard = {
   phone_masked: string;
   is_fully_activated?: boolean;
   has_birthday?: boolean;
+  customer_id?: string | null;
 };
 
 async function loadCard(shortCode: string): Promise<PublicCard | null> {

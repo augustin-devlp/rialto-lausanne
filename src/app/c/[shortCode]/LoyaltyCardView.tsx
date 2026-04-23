@@ -16,6 +16,7 @@ import QRCode from "qrcode";
 import SiteFooter from "@/components/home/SiteFooter";
 import Toast from "@/components/ui/Toast";
 import ActivationModal from "@/components/ui/ActivationModal";
+import PushToggle from "@/components/PushToggle";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 
 type Card = {
@@ -30,6 +31,7 @@ type Card = {
   phone_masked: string;
   is_fully_activated?: boolean;
   has_birthday?: boolean;
+  customer_id?: string | null;
 };
 
 export default function LoyaltyCardView({ card }: { card: Card }) {
@@ -365,6 +367,13 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               </div>
             </div>
           </section>
+
+          {/* Phase 11 C6 : Push toggle — utilise customer_id pour lier */}
+          {card.customer_id && (
+            <section className="mt-5">
+              <PushToggle customerId={card.customer_id} />
+            </section>
+          )}
 
           {/* Hint "Ajouter à l'écran d'accueil" */}
           <section className="mt-5 rounded-2xl bg-ink p-5 text-white">

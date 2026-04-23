@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { formatCHF } from "@/lib/format";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { readCustomerSession } from "@/lib/customerSession";
+import { readCart, writeCart } from "@/lib/clientStore";
+import type { CartItem } from "@/lib/types";
 
 type OrderRow = {
   id: string;
@@ -25,11 +28,60 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function MesCommandesClient() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [authState, setAuthState] = useState<"unknown" | "logged_in" | "guest">(
     "unknown",
   );
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+
+  async function handleReorder(orderNumber: string) {
+    setReorderingId(orderNumber);
+    try {
+      const res = await fetch(
+        `${STAMPIFY_BASE}/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as {
+        cart_items: CartItem[];
+        unavailable_count: number;
+      };
+      if (!body.cart_items || body.cart_items.length === 0) {
+        alert(
+          body.unavailable_count > 0
+            ? `Désolé, aucun des plats de cette commande n'est plus disponible aujourd'hui.`
+            : "Impossible de recharger cette commande.",
+        );
+        return;
+      }
+      // Merge avec cart actuel : si même key, incrément quantité
+      const currentCart = readCart();
+      const merged: CartItem[] = [...currentCart];
+      for (const newItem of body.cart_items) {
+        const existing = merged.find((c) => c.key === newItem.key);
+        if (existing) {
+          existing.quantity += newItem.quantity;
+          existing.subtotal = existing.unit_price * existing.quantity;
+        } else {
+          merged.push(newItem);
+        }
+      }
+      writeCart(merged);
+      const note =
+        body.unavailable_count > 0
+          ? ` (${body.unavailable_count} plat${body.unavailable_count > 1 ? "s" : ""} indisponible${body.unavailable_count > 1 ? "s" : ""} ignoré${body.unavailable_count > 1 ? "s" : ""})`
+          : "";
+      // Petite notification native avant redirect
+      console.log(`[reorder] ${body.cart_items.length} items ajoutés${note}`);
+      router.push("/checkout");
+    } catch (err) {
+      console.error("[reorder] failed", err);
+      alert("Erreur lors de la re-commande. Réessaie dans un instant.");
+    } finally {
+      setReorderingId(null);
+    }
+  }
 
   useEffect(() => {
     const session = readCustomerSession();
@@ -149,34 +201,59 @@ export default function MesCommandesClient() {
                     year: "numeric",
                   },
                 );
+                const isReordering = reorderingId === order.order_number;
                 return (
-                  <li key={order.id}>
-                    <Link
-                      href={`/confirmation/${order.order_number}`}
-                      className="group flex items-center gap-4 rounded-2xl border border-border bg-white p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-display font-bold">
-                            {order.order_number}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.color}`}
-                          >
-                            {status.label}
-                          </span>
+                  <li
+                    key={order.id}
+                    className="rounded-2xl border border-border bg-white shadow-card transition hover:shadow-pop"
+                  >
+                    <div className="flex items-center gap-4 p-4">
+                      <Link
+                        href={`/confirmation/${order.order_number}`}
+                        className="flex flex-1 items-center gap-3 hover:opacity-90"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-display font-bold">
+                              {order.order_number}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.color}`}
+                            >
+                              {status.label}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-xs text-mute">
+                            {date}
+                          </div>
                         </div>
-                        <div className="mt-0.5 text-xs text-mute">{date}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="tabular font-display text-base font-bold">
-                          {formatCHF(Number(order.total_amount))}
+                        <div className="text-right">
+                          <div className="tabular font-display text-base font-bold">
+                            {formatCHF(Number(order.total_amount))}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-mute">
-                          Voir le détail →
-                        </div>
-                      </div>
-                    </Link>
+                      </Link>
+                    </div>
+                    {/* Phase 11 C7 : bouton recommander */}
+                    <div className="border-t border-border px-4 py-2.5">
+                      <button
+                        type="button"
+                        onClick={() => handleReorder(order.order_number)}
+                        disabled={isReordering}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-rialto/10 px-3 py-2 text-sm font-semibold text-rialto transition hover:bg-rialto hover:text-white disabled:opacity-60"
+                      >
+                        {isReordering ? (
+                          <>
+                            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Ajout au panier…
+                          </>
+                        ) : (
+                          <>
+                            🔁 Recommander en 1 clic
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </li>
                 );
               })}

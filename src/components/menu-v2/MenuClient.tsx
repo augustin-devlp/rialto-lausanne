@@ -152,11 +152,29 @@ export default function MenuClient({ categories, items, options }: Props) {
 
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
     for (const it of items) {
+      // Phase 11 C13 : filtre saisonnier hors de la fenêtre de saison
+      if (it.is_seasonal) {
+        const start = it.season_start ? String(it.season_start).slice(0, 10) : null;
+        const end = it.season_end ? String(it.season_end).slice(0, 10) : null;
+        if (start && todayKey < start) continue;
+        if (end && todayKey > end) continue;
+      }
       const catName = categoryById[it.category_id];
       if (!itemMatchesFilters(it, activeFilters, catName, excludedAllergens))
         continue;
       (map[it.category_id] ??= []).push(it);
+    }
+    // Phase 11 C13 : tri is_priority first, puis display_order ASC
+    for (const catId of Object.keys(map)) {
+      map[catId].sort((a, b) => {
+        const pa = a.is_priority ? 0 : 1;
+        const pb = b.is_priority ? 0 : 1;
+        if (pa !== pb) return pa - pb;
+        return (a.display_order ?? 999) - (b.display_order ?? 999);
+      });
     }
     return map;
   }, [items, activeFilters, excludedAllergens, categoryById]);

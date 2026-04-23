@@ -20,7 +20,7 @@ async function loadMenu() {
     sb
       .from("menu_items")
       .select(
-        "id, category_id, name, description, price, image_url, is_available, is_out_of_stock, out_of_stock_reason, is_vegetarian, is_spicy, is_gluten_free, is_vegan, is_lactose_free, is_halal, is_kids_friendly, tags, allergens, has_options, display_order",
+        "id, category_id, name, description, price, image_url, is_available, is_out_of_stock, out_of_stock_reason, is_seasonal, season_start, season_end, is_priority, similar_to, is_vegetarian, is_spicy, is_gluten_free, is_vegan, is_lactose_free, is_halal, is_kids_friendly, tags, allergens, has_options, display_order",
       )
       .eq("restaurant_id", RESTAURANT_ID)
       .order("display_order"),

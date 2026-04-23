@@ -40,6 +40,17 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
           Épuisé
         </span>
       )}
+      {/* Phase 11 C13 : badges saisonnier & priorité */}
+      {!outOfStock && item.is_priority && (
+        <span className="absolute left-3 top-3 z-10 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink shadow-md">
+          ⭐ Coup de cœur
+        </span>
+      )}
+      {!outOfStock && !item.is_priority && item.is_seasonal && (
+        <span className="absolute left-3 top-3 z-10 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
+          🍂 Saison
+        </span>
+      )}
       {/* Lien principal enveloppant le contenu éditorial + la photo */}
       <Link
         href={href}

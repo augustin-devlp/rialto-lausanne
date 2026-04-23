@@ -48,6 +48,11 @@ export type MenuItem = {
   is_available: boolean;
   is_out_of_stock?: boolean;
   out_of_stock_reason?: string | null;
+  is_seasonal?: boolean;
+  season_start?: string | null;
+  season_end?: string | null;
+  is_priority?: boolean;
+  similar_to?: string[] | null;
   is_vegetarian: boolean;
   is_spicy: boolean;
   is_gluten_free?: boolean;

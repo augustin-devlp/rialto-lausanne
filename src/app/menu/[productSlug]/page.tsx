@@ -35,6 +35,8 @@ async function loadProduct(slug: string) {
     .select(
       `
       id, category_id, name, description, price, image_url, is_available,
+      is_out_of_stock, is_seasonal, season_start, season_end, is_priority,
+      similar_to,
       is_vegetarian, is_spicy, is_gluten_free, is_vegan, is_lactose_free,
       is_halal, is_kids_friendly, has_options, display_order,
       tags, ingredients, allergens, description_long
@@ -72,9 +74,35 @@ async function loadProduct(slug: string) {
     category_name: (category?.name as string) ?? null,
   };
 
+  // Phase 11 C13 : suggestions similaires
+  // 1) Si similar_to[] défini, prend ces items
+  // 2) Sinon, même category, 4 premiers (exclus lui-même)
+  const similarIds = Array.isArray(
+    (match as unknown as { similar_to?: string[] }).similar_to,
+  )
+    ? ((match as unknown as { similar_to: string[] }).similar_to ?? [])
+    : [];
+  let similar: MenuItem[] = [];
+  if (similarIds.length > 0) {
+    similar = (items as MenuItem[]).filter((it) =>
+      similarIds.includes(it.id),
+    );
+  } else {
+    similar = (items as MenuItem[])
+      .filter(
+        (it) =>
+          it.id !== match.id &&
+          it.category_id === match.category_id &&
+          it.is_available !== false &&
+          (it as { is_out_of_stock?: boolean }).is_out_of_stock !== true,
+      )
+      .slice(0, 4);
+  }
+
   return {
     item: enriched,
     options: (options ?? []) as MenuItemOption[],
+    similar,
   };
 }
 
@@ -133,7 +161,11 @@ export default async function ProductPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <ProductPageClient item={data.item} options={data.options} />
+      <ProductPageClient
+        item={data.item}
+        options={data.options}
+        similar={data.similar}
+      />
     </>
   );
 }

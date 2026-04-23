@@ -89,9 +89,11 @@ function dietTags(item: EnrichedItem): DietTag[] {
 export default function ProductPageClient({
   item,
   options,
+  similar = [],
 }: {
   item: EnrichedItem;
   options: MenuItemOption[];
+  similar?: MenuItem[];
 }) {
   const router = useRouter();
   const image = item.image_url || matchDishImage(item.name, item.category_name);
@@ -437,6 +439,39 @@ export default function ProductPageClient({
           </div>
         </article>
       </div>
+
+      {/* Phase 11 C13 : suggestions similaires */}
+      {similar.length > 0 && (
+        <section className="container-hero pb-24 pt-4">
+          <h2 className="mb-4 font-display text-xl font-bold">
+            Tu pourrais aussi aimer
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            {similar.slice(0, 4).map((s) => (
+              <a
+                key={s.id}
+                href={`/menu/${(s.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${s.id.replace(/-/g, "").slice(0, 8)}`}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+              >
+                <div
+                  className="aspect-square w-full bg-cream bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url('${s.image_url || matchDishImage(s.name, item.category_name)}')`,
+                  }}
+                />
+                <div className="p-3">
+                  <div className="line-clamp-1 font-display font-semibold text-ink">
+                    {s.name}
+                  </div>
+                  <div className="tabular mt-0.5 text-sm font-bold text-rialto">
+                    {formatCHF(Number(s.price))}
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* CTA sticky bas */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 backdrop-blur-lg">

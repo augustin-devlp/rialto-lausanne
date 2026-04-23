@@ -18,6 +18,9 @@ type PublicCard = {
   is_fully_activated?: boolean;
   has_birthday?: boolean;
   customer_id?: string | null;
+  vip_tier?: "bronze" | "silver" | "gold" | null;
+  vip_lifetime_spend?: number;
+  vip_order_count?: number;
 };
 
 async function loadCard(shortCode: string): Promise<PublicCard | null> {

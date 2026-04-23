@@ -32,6 +32,15 @@ type Card = {
   is_fully_activated?: boolean;
   has_birthday?: boolean;
   customer_id?: string | null;
+  vip_tier?: "bronze" | "silver" | "gold" | null;
+  vip_lifetime_spend?: number;
+  vip_order_count?: number;
+};
+
+const VIP_META: Record<"bronze" | "silver" | "gold", { label: string; color: string; discount: number }> = {
+  bronze: { label: "Bronze", color: "#B08D57", discount: 5 },
+  silver: { label: "Silver", color: "#A8A9AD", discount: 10 },
+  gold: { label: "Gold", color: "#E6A12C", discount: 15 },
 };
 
 export default function LoyaltyCardView({ card }: { card: Card }) {
@@ -367,6 +376,39 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               </div>
             </div>
           </section>
+
+          {/* Phase 11 C11 : Badge VIP tier si tier unlock */}
+          {card.vip_tier && VIP_META[card.vip_tier] && (
+            <section className="mt-5">
+              <div
+                className="flex items-center gap-3 rounded-2xl border-2 p-3.5 shadow-md"
+                style={{
+                  background: `linear-gradient(135deg, ${VIP_META[card.vip_tier].color}22, ${VIP_META[card.vip_tier].color}11)`,
+                  borderColor: VIP_META[card.vip_tier].color,
+                }}
+              >
+                <span className="text-3xl">
+                  {card.vip_tier === "gold" ? "🏆" : card.vip_tier === "silver" ? "🥈" : "🥉"}
+                </span>
+                <div className="flex-1">
+                  <div
+                    className="text-xs font-bold uppercase tracking-wider"
+                    style={{ color: VIP_META[card.vip_tier].color }}
+                  >
+                    Membre VIP {VIP_META[card.vip_tier].label}
+                  </div>
+                  <div className="text-sm text-ink">
+                    <strong>-{VIP_META[card.vip_tier].discount}%</strong>{" "}
+                    permanent sur tes commandes
+                    {card.vip_tier === "silver" || card.vip_tier === "gold"
+                      ? " + dessert anniversaire"
+                      : ""}
+                    {card.vip_tier === "gold" ? " + pizza offerte / 5 commandes" : ""}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Phase 11 C6 : Push toggle — utilise customer_id pour lier */}
           {card.customer_id && (

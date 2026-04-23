@@ -59,6 +59,28 @@ export function cartCount(cart: CartItem[]): number {
   return cart.reduce((s, it) => s + Number(it.quantity), 0);
 }
 
+/**
+ * Phase 11 C4 : met à jour la quantité d'une ligne (ou supprime si 0).
+ * Retourne le nouveau cart — à passer à writeCart + setCart.
+ */
+export function updateCartQuantity(
+  cart: CartItem[],
+  key: string,
+  quantity: number,
+): CartItem[] {
+  if (quantity <= 0) {
+    return cart.filter((c) => c.key !== key);
+  }
+  return cart.map((c) => {
+    if (c.key !== key) return c;
+    return {
+      ...c,
+      quantity,
+      subtotal: c.unit_price * quantity,
+    };
+  });
+}
+
 /* Clé canonique pour fusionner 2 lignes identiques (même item + options) */
 export function cartLineKey(
   itemId: string,

@@ -23,6 +23,7 @@ import type {
 } from "@/lib/types";
 import DishModal from "./DishModal";
 import MenuItemCard from "./MenuItemCard";
+import CartPanel from "./CartPanel";
 import { formatCHF } from "@/lib/format";
 import {
   cartCount,
@@ -392,8 +393,11 @@ export default function MenuClient({ categories, items, options }: Props) {
         </div>
       </header>
 
+      {/* Phase 11 C4 : layout desktop avec sidebar panier 380px */}
+      <div className="container-hero pt-8 md:pt-12 lg:flex lg:gap-8">
+        <div className="min-w-0 flex-1">
       {/* ─── Intro ─────────────────────────────────────────────── */}
-      <section className="container-hero pt-8 md:pt-12">
+      <section>
         <span className="eyebrow">Menu</span>
         <h1 className="mt-3 font-display text-h1 font-bold">
           {categories.length > 0 ? categories.length : 11} catégories,{" "}
@@ -407,7 +411,7 @@ export default function MenuClient({ categories, items, options }: Props) {
       </section>
 
       {/* ─── Sections catégories ───────────────────────────────── */}
-      <div className="container-hero pb-40 pt-8">
+      <div className="pb-40 pt-8 lg:pb-10">
         {categories.every((c) => (itemsByCategory[c.id] ?? []).length === 0) ? (
           <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center">
             <div className="mb-3 text-4xl">🤔</div>
@@ -491,54 +495,15 @@ export default function MenuClient({ categories, items, options }: Props) {
         countResults={countResults}
       />
 
-      {/* ─── Bandeau sticky bas ────────────────────────────────── */}
-      {count > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white/95 backdrop-blur-lg animate-fade-up">
-          <div className="container-hero py-3">
-            {missing > 0 ? (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm">
-                  <span className="font-display font-semibold text-ink">
-                    {formatCHF(missing)}
-                  </span>{" "}
-                  <span className="text-mute">de plus pour la livraison</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-cream-dark sm:flex-1 sm:max-w-xs">
-                  <div
-                    className="h-full rounded-full bg-rialto transition-all"
-                    style={{ width: `${Math.min(100, (subtotal / minAmount) * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <Link
-                href="/checkout"
-                className="btn-primary-lg group flex w-full items-center justify-between"
-              >
-                <span>Voir mon panier</span>
-                <span className="tabular flex items-center gap-2 text-white/90">
-                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-sm">
-                    {count}
-                  </span>
-                  <span className="font-semibold">{formatCHF(subtotal)}</span>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    className="transition-transform group-hover:translate-x-0.5"
-                  >
-                    <path d="M5 12h14M13 6l6 6-6 6" />
-                  </svg>
-                </span>
-              </Link>
-            )}
-          </div>
         </div>
-      )}
+        {/* Phase 11 C4 : desktop sidebar panier (sticky) + mobile drawer */}
+        <CartPanel
+          cart={cart}
+          setCart={setCart}
+          minOrderAmount={minAmount}
+          fulfillmentType={address ? "delivery" : "pickup"}
+        />
+      </div>
     </main>
   );
 }

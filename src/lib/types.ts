@@ -46,6 +46,8 @@ export type MenuItem = {
   price: number;
   image_url: string | null;
   is_available: boolean;
+  is_out_of_stock?: boolean;
+  out_of_stock_reason?: string | null;
   is_vegetarian: boolean;
   is_spicy: boolean;
   is_gluten_free?: boolean;

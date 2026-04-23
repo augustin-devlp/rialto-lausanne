@@ -25,7 +25,8 @@ type Props = {
 
 export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
   const src = item.image_url || matchDishImage(item.name, categoryName);
-  const unavailable = !item.is_available;
+  const outOfStock = item.is_out_of_stock === true;
+  const unavailable = !item.is_available || outOfStock;
   const href = `/menu/${menuItemSlug({ id: item.id, name: item.name })}`;
 
   return (
@@ -34,6 +35,11 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
         unavailable ? "opacity-50" : ""
       }`}
     >
+      {outOfStock && (
+        <span className="absolute left-3 top-3 z-10 rounded-full bg-rialto px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
+          Épuisé
+        </span>
+      )}
       {/* Lien principal enveloppant le contenu éditorial + la photo */}
       <Link
         href={href}

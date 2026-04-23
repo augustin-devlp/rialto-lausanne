@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C73E1D"/>
+      <stop offset="100%" stop-color="#8F2B14"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <text x="50%" y="58%" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="295" font-weight="700" fill="#F9F1E4">R</text>
+  <circle cx="384" cy="128" r="28" fill="#E6A12C"/>
+  <text x="50%" y="82%" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="500" fill="#F9F1E4" fill-opacity="0.7">Rialto</text>
+</svg>

@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import HamburgerMenu from "@/components/layout/HamburgerMenu";
 import RialtoLogo from "@/components/brand/RialtoLogo";
+import PwaRegister from "@/components/PwaRegister";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -18,10 +19,24 @@ const inter = Inter({
   display: "swap",
 });
 
+// Phase 11 C5 : PWA viewport + theme color
+export const viewport: Viewport = {
+  themeColor: "#C73E1D",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "Rialto — Pizzeria & livraison à Lausanne",
   description:
     "Commandez vos pizzas Rialto livrées en 30 min à Lausanne et environs. Pizzas artisanales, spécialités anatoliennes, paiement au livreur.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Rialto",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "Rialto — Pizzeria & livraison à Lausanne",
     description:
@@ -58,6 +73,7 @@ export default function RootLayout({
         <RialtoLogo variant="fixed" size="sm" />
         <HamburgerMenu />
         {children}
+        <PwaRegister />
       </body>
     </html>
   );

@@ -15,6 +15,8 @@ type PublicCard = {
   qr_code_value: string;
   first_name: string;
   phone_masked: string;
+  is_fully_activated?: boolean;
+  has_birthday?: boolean;
 };
 
 async function loadCard(shortCode: string): Promise<PublicCard | null> {

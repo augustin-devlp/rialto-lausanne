@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import SiteFooter from "@/components/home/SiteFooter";
 import Toast from "@/components/ui/Toast";
+import ActivationModal from "@/components/ui/ActivationModal";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 
 type Card = {
@@ -27,6 +28,8 @@ type Card = {
   qr_code_value: string;
   first_name: string;
   phone_masked: string;
+  is_fully_activated?: boolean;
+  has_birthday?: boolean;
 };
 
 export default function LoyaltyCardView({ card }: { card: Card }) {
@@ -38,6 +41,12 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
   const searchParams = useSearchParams();
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [smsFallbackVisible, setSmsFallbackVisible] = useState(false);
+
+  // Phase 11 C1 : bandeau + modal d'activation 2e étape
+  const needsActivation =
+    card.is_fully_activated === false || card.has_birthday === false;
+  const [activationOpen, setActivationOpen] = useState(false);
+  const [activationDoneOpen, setActivationDoneOpen] = useState(false);
   useEffect(() => {
     if (searchParams.get("welcome") === "1") {
       setWelcomeOpen(true);
@@ -107,6 +116,28 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
         autoCloseMs={3500}
         onClose={() => setWelcomeOpen(false)}
       />
+      {/* Phase 11 C1 : Toast succès activation */}
+      <Toast
+        open={activationDoneOpen}
+        variant="success"
+        icon="🎂"
+        message="C'est tout bon ! Tu recevras un cadeau le jour de ton anniversaire."
+        autoCloseMs={4000}
+        onClose={() => setActivationDoneOpen(false)}
+      />
+      {/* Phase 11 C1 : Modal activation 2e étape */}
+      <ActivationModal
+        open={activationOpen}
+        cardId={card.id}
+        firstName={card.first_name}
+        onClose={() => setActivationOpen(false)}
+        onSuccess={() => {
+          setActivationOpen(false);
+          setActivationDoneOpen(true);
+          // Refresh pour mettre à jour is_fully_activated côté serveur
+          setTimeout(() => router.refresh(), 1500);
+        }}
+      />
       <main className="min-h-[100dvh] bg-cream pb-16 pt-20">
         <div className="mx-auto max-w-md px-4 pt-2">
           {/* Header — logo global fixed (Phase 7 FIX 3) sert d'identité,
@@ -119,6 +150,38 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               #{card.short_code}
             </span>
           </header>
+
+          {/* Phase 11 C1 : Bandeau activation 2e étape */}
+          {needsActivation && (
+            <button
+              type="button"
+              onClick={() => setActivationOpen(true)}
+              className="mt-4 flex w-full items-start gap-3 rounded-2xl border-2 border-saffron bg-gradient-to-br from-[#FFF2D1] to-[#FFE9B8] p-3.5 text-left transition hover:border-rialto hover:shadow-pop"
+            >
+              <span className="shrink-0 text-2xl leading-none">🎂</span>
+              <div className="flex-1">
+                <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
+                  Complète ta carte
+                </div>
+                <div className="mt-0.5 text-sm font-medium text-ink">
+                  Ajoute ta date d&apos;anniversaire — on t&apos;offre{" "}
+                  <strong>-20%</strong> ou un dessert 🎁
+                </div>
+              </div>
+              <svg
+                className="mt-1 shrink-0 text-rialto"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+          )}
 
           {/* Phase 10 C2D : fallback si SMS non parti (?sms=ko) */}
           {smsFallbackVisible && (

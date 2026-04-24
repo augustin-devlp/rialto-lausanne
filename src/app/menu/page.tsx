@@ -6,7 +6,9 @@ import type {
 } from "@/lib/types";
 import MenuClient from "@/components/menu-v2/MenuClient";
 
-export const revalidate = 120;
+// Cache court pour que les badges Coup de cœur / Épuisé / Saison se
+// propagent rapidement quand le merchant toggle un plat dans /dashboard/stocks.
+export const revalidate = 30;
 
 async function loadMenu() {
   const sb = supabaseServer();

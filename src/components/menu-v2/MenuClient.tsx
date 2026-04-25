@@ -24,6 +24,7 @@ import type {
 import DishModal from "./DishModal";
 import MenuItemCard from "./MenuItemCard";
 import CartPanel from "./CartPanel";
+import SidebarMenu from "@/components/layout/SidebarMenu";
 import { formatCHF } from "@/lib/format";
 import {
   cartCount,
@@ -354,8 +355,8 @@ export default function MenuClient({ categories, items, options }: Props) {
           </div>
         </div>
 
-        {/* Nav catégories + bouton Filtrer à droite (sticky fin) */}
-        <div className="container-hero flex items-center gap-2 pb-3 pt-1">
+        {/* Nav catégories chips (mobile/tablet uniquement — la sidebar la remplace en lg+) + bouton Filtrer */}
+        <div className="container-hero flex items-center gap-2 pb-2 pt-1 lg:hidden">
           <div
             ref={categoryNavRef}
             className="scrollbar-none flex flex-1 gap-2 overflow-x-auto"
@@ -411,25 +412,68 @@ export default function MenuClient({ categories, items, options }: Props) {
         </div>
       </header>
 
-      {/* Phase 11 C4 : layout desktop avec sidebar panier 380px */}
-      <div className="container-hero pt-8 md:pt-12 lg:flex lg:gap-8">
+      {/* Phase 13 polish iPad — layout 3 colonnes : Sidebar tab | Content | CartPanel */}
+      <div className="flex">
+        {/* Sidebar tab catégories — sticky, rétractable, iPad-first */}
+        <SidebarMenu
+          categories={categories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            icon: c.icon,
+            count: itemsByCategory[c.id]?.length ?? 0,
+          }))}
+          activeId={activeCategory ?? undefined}
+          onSelect={(id) => {
+            setActiveCategory(id);
+            const el = sectionRefs.current[id];
+            if (el) {
+              const y = el.getBoundingClientRect().top + window.scrollY - 130;
+              window.scrollTo({ top: y, behavior: "smooth" });
+            }
+          }}
+        />
+
+        {/* Content principal */}
+        <div className="min-w-0 flex-1 px-3 sm:px-4 md:px-5 pt-4 md:pt-5 lg:flex lg:gap-5">
+          <div className="min-w-0 flex-1">
+      {/* ─── Intro compacte ──────────────────────────────────── */}
+      <section className="pb-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-      {/* ─── Intro ─────────────────────────────────────────────── */}
-      <section>
-        <span className="eyebrow">Menu</span>
-        <h1 className="mt-3 font-display text-h1 font-bold">
-          {categories.length > 0 ? categories.length : 11} catégories,{" "}
-          <em className="italic text-rialto">
-            {items.length > 0 ? items.length : 106} plats.
-          </em>
-        </h1>
-        <p className="mt-2 text-sm text-mute md:text-base">
-          Pizzas Ø33&nbsp;cm, pâtes faites maison, spécialités anatoliennes.
-        </p>
+          <span className="eyebrow">Menu</span>
+          <h1 className="mt-2 font-display text-2xl sm:text-3xl font-bold">
+            {categories.length > 0 ? categories.length : 11} catégories,{" "}
+            <em className="italic text-rialto">
+              {items.length > 0 ? items.length : 106} plats.
+            </em>
+          </h1>
+          <p className="mt-1 text-sm text-mute">
+            Pizzas Ø33&nbsp;cm, pâtes faites maison, spécialités anatoliennes.
+          </p>
+        </div>
+        {/* Bouton filtrer visible en lg+ (sidebar a remplacé la nav chips) */}
+        <button
+          type="button"
+          onClick={() => setFilterModalOpen(true)}
+          className={`hidden lg:inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            activeFilters.size + excludedAllergens.size > 0
+              ? "border-rialto bg-rialto text-white"
+              : "border-border bg-white text-ink hover:border-ink"
+          }`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+          </svg>
+          Filtrer
+          {activeFilters.size + excludedAllergens.size > 0 && (
+            <span className="tabular inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-bold text-rialto">
+              {activeFilters.size + excludedAllergens.size}
+            </span>
+          )}
+        </button>
       </section>
 
       {/* ─── Sections catégories ───────────────────────────────── */}
-      <div className="pb-40 pt-8 lg:pb-10">
+      <div className="pb-32 pt-3 lg:pb-6">
         {categories.every((c) => (itemsByCategory[c.id] ?? []).length === 0) ? (
           <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center">
             <div className="mb-3 text-4xl">🤔</div>
@@ -461,15 +505,15 @@ export default function MenuClient({ categories, items, options }: Props) {
                 ref={(el) => {
                   sectionRefs.current[category.id] = el;
                 }}
-                className="scroll-mt-[150px] pt-10 md:pt-14"
+                className="scroll-mt-[140px] pt-5 md:pt-7"
               >
-                <h2 className="mb-5 flex items-center gap-3 font-display text-h2 font-bold md:mb-7">
+                <h2 className="mb-3 flex items-center gap-2 font-display text-lg sm:text-xl font-bold md:mb-4">
                   {category.icon && (
-                    <span className="text-2xl">{category.icon}</span>
+                    <span className="text-xl">{category.icon}</span>
                   )}
                   {category.name}
                 </h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
                   {catItems.map((item) => (
                     <MenuItemCard
                       key={item.id}
@@ -513,14 +557,15 @@ export default function MenuClient({ categories, items, options }: Props) {
         countResults={countResults}
       />
 
+          </div>
+          {/* Phase 11 C4 : desktop sidebar panier (sticky) + mobile drawer */}
+          <CartPanel
+            cart={cart}
+            setCart={setCart}
+            minOrderAmount={minAmount}
+            fulfillmentType={address ? "delivery" : "pickup"}
+          />
         </div>
-        {/* Phase 11 C4 : desktop sidebar panier (sticky) + mobile drawer */}
-        <CartPanel
-          cart={cart}
-          setCart={setCart}
-          minOrderAmount={minAmount}
-          fulfillmentType={address ? "delivery" : "pickup"}
-        />
       </div>
     </main>
   );

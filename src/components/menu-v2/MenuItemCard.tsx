@@ -57,10 +57,10 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
         className="flex min-w-0 flex-1 items-stretch"
         aria-label={`Voir le détail de ${item.name}`}
       >
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-2 p-4">
+        <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5 p-3">
           <div>
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="font-display text-base font-semibold leading-tight text-ink md:text-lg">
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="font-display text-sm font-semibold leading-tight text-ink md:text-base line-clamp-2 min-w-0 flex-1">
                 {item.name}
               </h3>
               {(item.is_vegetarian || item.is_spicy) && (
@@ -91,11 +91,11 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
             )}
           </div>
           <div className="flex items-end justify-between gap-2">
-            <span className="tabular font-display text-base font-semibold text-ink md:text-lg">
+            <span className="tabular whitespace-nowrap flex-shrink-0 font-display text-sm font-semibold text-rialto-dark md:text-base">
               {formatCHF(Number(item.price))}
             </span>
-            <span className="text-[11px] font-medium text-mute underline underline-offset-2 group-hover:text-rialto">
-              Voir en détail
+            <span className="text-[10px] font-medium text-mute underline underline-offset-2 group-hover:text-rialto truncate">
+              Voir détail
             </span>
           </div>
         </div>

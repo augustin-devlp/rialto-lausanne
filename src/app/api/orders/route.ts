@@ -27,6 +27,7 @@ type Payload = {
   restaurant_id: string;
   customer_name: string;
   customer_phone: string;
+  customer_email?: string | null;
   payer_phone?: string | null;
   requested_pickup_time: string | null;
   notes: string | null;
@@ -39,6 +40,16 @@ type Payload = {
   delivery_floor_door?: string | null;
   delivery_instructions?: string | null;
   delivery_zone_id?: string | null;
+  // Phase 1 checkout refonte
+  housing_type?: "house" | "apartment" | null;
+  entry_code_1?: string | null;
+  entry_code_2?: string | null;
+  floor?: string | null;
+  apartment_number?: string | null;
+  doorbell_name?: string | null;
+  payment_method?: "card" | "cash" | "twint" | null;
+  payment_card_timing?: "on_delivery" | "remote" | null;
+  payment_cash_bills?: number | null;
 };
 
 function parsePickupISO(value: string): string | null {
@@ -217,6 +228,7 @@ export async function POST(req: NextRequest) {
       order_number: orderNumber,
       customer_name: body.customer_name,
       customer_phone: body.customer_phone,
+      customer_email: body.customer_email ?? null,
       payer_phone: body.payer_phone ?? null,
       requested_pickup_time: pickupISO,
       status: "new",
@@ -230,6 +242,16 @@ export async function POST(req: NextRequest) {
       delivery_instructions: body.delivery_instructions ?? null,
       delivery_fee: deliveryFee,
       delivery_zone_id: deliveryZoneId,
+      // Phase 1 checkout refonte
+      housing_type: body.housing_type ?? null,
+      entry_code_1: body.entry_code_1 ?? null,
+      entry_code_2: body.entry_code_2 ?? null,
+      floor: body.floor ?? null,
+      apartment_number: body.apartment_number ?? null,
+      doorbell_name: body.doorbell_name ?? null,
+      payment_method: body.payment_method ?? null,
+      payment_card_timing: body.payment_card_timing ?? null,
+      payment_cash_bills: body.payment_cash_bills ?? null,
     })
     .select("id, order_number")
     .single();

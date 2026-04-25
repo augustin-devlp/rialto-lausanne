@@ -7,7 +7,7 @@
  * - Background sync stub pour C6 (push notifications)
  */
 
-const CACHE_VERSION = "rialto-v11-c5-1";
+const CACHE_VERSION = "rialto-v13-upsell-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 

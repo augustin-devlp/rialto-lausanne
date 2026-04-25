@@ -14,8 +14,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CartItem } from "@/lib/types";
-import { cartCount, cartSubtotal, updateCartQuantity, writeCart } from "@/lib/clientStore";
+import { cartCount, cartSubtotal, updateCartQuantity, writeCart, cartLineKey } from "@/lib/clientStore";
 import { formatCHF } from "@/lib/format";
+import UpsellPanel from "@/components/checkout/UpsellPanel";
+import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Props = {
   cart: CartItem[];
@@ -66,6 +68,43 @@ export default function CartPanel({
     const next = updateCartQuantity(cart, key, 0);
     setCart(next);
     writeCart(next);
+  }
+
+  // Phase 12 V3 — ajout depuis UpsellPanel : fetch le menu_item, ajoute au cart
+  async function handleUpsellAdd(menuItemId: string) {
+    try {
+      const resp = await fetch(`${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`);
+      if (!resp.ok) return;
+      const body = await resp.json();
+      const item = body.item;
+      if (!item) return;
+      const key = cartLineKey(item.id, [], "");
+      const existing = cart.find((c) => c.key === key);
+      const next: CartItem[] = existing
+        ? cart.map((c) =>
+            c.key === key
+              ? { ...c, quantity: c.quantity + 1, subtotal: c.unit_price * (c.quantity + 1) }
+              : c,
+          )
+        : [
+            ...cart,
+            {
+              key,
+              menu_item_id: item.id,
+              name: item.name,
+              base_price: Number(item.price),
+              quantity: 1,
+              options: [],
+              notes: "",
+              unit_price: Number(item.price),
+              subtotal: Number(item.price),
+            },
+          ];
+      setCart(next);
+      writeCart(next);
+    } catch {
+      /* noop */
+    }
   }
 
   const CartContent = (
@@ -178,6 +217,13 @@ export default function CartPanel({
           </ul>
         )}
       </div>
+
+      {/* Phase 12 V3 — Upsell suggestions */}
+      {count > 0 && (
+        <div className="border-t border-border bg-cream/40 px-3 pt-3 pb-1">
+          <UpsellPanel cart={cart} onAdd={handleUpsellAdd} />
+        </div>
+      )}
 
       {/* Footer */}
       {count > 0 && (

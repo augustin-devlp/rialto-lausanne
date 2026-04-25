@@ -6,6 +6,7 @@ import RialtoLogo from "@/components/brand/RialtoLogo";
 import PwaRegister from "@/components/PwaRegister";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import LanguageToggle from "@/components/LanguageToggle";
+import GoogleAnalytics from "@/components/analytics/GoogleAnalytics";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -81,6 +82,7 @@ export default function RootLayout({
           </div>
           {children}
           <PwaRegister />
+          <GoogleAnalytics />
         </I18nProvider>
       </body>
     </html>

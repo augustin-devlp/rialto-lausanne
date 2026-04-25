@@ -300,7 +300,7 @@ export default function CheckoutPageClient({ restaurantId, accepting }: Props) {
 
       <form
         onSubmit={handleSubmit}
-        className="container-hero grid grid-cols-1 gap-10 py-10 lg:grid-cols-[1fr,420px] lg:gap-14 lg:py-16"
+        className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[1fr,380px] lg:gap-6 lg:py-6"
       >
         {/* ─── Colonne gauche : sections ─────────────────────── */}
         <div className="space-y-10">

@@ -109,10 +109,10 @@ export default function CartPanel({
 
   const CartContent = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-5 py-4">
-        <div>
-          <h2 className="font-display text-lg font-bold">Mon panier</h2>
-          <p className="text-xs text-mute">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-base font-bold truncate">Mon panier</h2>
+          <p className="text-[11px] text-mute truncate">
             {count} {count > 1 ? "articles" : "article"} ·{" "}
             {fulfillmentType === "delivery" ? "Livraison" : "Retrait"}
           </p>
@@ -146,14 +146,14 @@ export default function CartPanel({
                 className="rounded-2xl border border-border bg-white p-3 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="font-display font-semibold leading-tight">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-display text-sm font-semibold leading-tight truncate">
                       {item.name}
                     </div>
                     {item.options.length > 0 && (
                       <ul className="mt-1 space-y-0.5 text-[11px] text-mute">
                         {item.options.map((o, i) => (
-                          <li key={i}>
+                          <li key={i} className="truncate">
                             + {o.name}
                             {o.extra_price > 0 && ` (+${formatCHF(o.extra_price)})`}
                           </li>
@@ -161,7 +161,7 @@ export default function CartPanel({
                       </ul>
                     )}
                     {item.notes && (
-                      <div className="mt-1 text-[11px] italic text-mute">
+                      <div className="mt-1 text-[11px] italic text-mute truncate">
                         « {item.notes} »
                       </div>
                     )}
@@ -169,7 +169,7 @@ export default function CartPanel({
                   <button
                     type="button"
                     onClick={() => handleRemove(item.key)}
-                    className="shrink-0 rounded-full p-1 text-mute hover:bg-rialto/10 hover:text-rialto"
+                    className="flex-shrink-0 rounded-full p-1 text-mute hover:bg-rialto/10 hover:text-rialto"
                     aria-label="Supprimer"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -180,9 +180,9 @@ export default function CartPanel({
                   </button>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between">
+                <div className="mt-2 flex items-center justify-between gap-2">
                   {/* Quantity control */}
-                  <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-cream">
+                  <div className="inline-flex items-center gap-1 rounded-full border border-border bg-cream flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => handleQuantity(item.key, -1)}
@@ -203,11 +203,11 @@ export default function CartPanel({
                       +
                     </button>
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] text-mute">
-                      {formatCHF(item.unit_price)}/unité
+                  <div className="text-right flex-shrink-0 min-w-0">
+                    <div className="text-[10px] text-mute whitespace-nowrap">
+                      {formatCHF(item.unit_price)}/u
                     </div>
-                    <div className="font-display font-bold">
+                    <div className="font-display font-bold text-sm whitespace-nowrap text-rialto-dark">
                       {formatCHF(item.subtotal)}
                     </div>
                   </div>
@@ -227,10 +227,10 @@ export default function CartPanel({
 
       {/* Footer */}
       {count > 0 && (
-        <div className="border-t border-border bg-white px-5 py-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-mute">Sous-total</span>
-            <span className="font-display text-lg font-bold">
+        <div className="border-t border-border bg-white px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-2 text-sm">
+            <span className="text-mute flex-shrink-0">Sous-total</span>
+            <span className="font-display text-base font-bold whitespace-nowrap text-rialto-dark">
               {formatCHF(subtotal)}
             </span>
           </div>
@@ -276,9 +276,9 @@ export default function CartPanel({
 
   return (
     <>
-      {/* Desktop sidebar (lg+) */}
+      {/* Desktop sidebar (lg+) — width adaptée iPad : 320 sur lg, 380 sur xl */}
       <aside
-        className={`hidden lg:sticky lg:top-[calc(var(--header-h,4rem)+1rem)] lg:flex lg:h-[calc(100vh-var(--header-h,4rem)-2rem)] lg:w-[380px] lg:shrink-0 lg:overflow-hidden lg:rounded-3xl lg:border lg:border-border lg:bg-white lg:shadow-card ${className}`}
+        className={`hidden lg:sticky lg:top-[calc(var(--header-h,4rem)+0.75rem)] lg:flex lg:h-[calc(100vh-var(--header-h,4rem)-1.5rem)] lg:w-[320px] xl:w-[360px] lg:flex-shrink-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:shadow-card ${className}`}
       >
         {CartContent}
       </aside>
@@ -290,16 +290,16 @@ export default function CartPanel({
           onClick={() => setMobileOpen(true)}
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-4 py-3 backdrop-blur-lg animate-fade-up lg:hidden"
         >
-          <div className={`flex items-center justify-between gap-3 rounded-2xl px-4 py-3 ${canCheckout ? "bg-gradient-to-r from-rialto to-rialto-dark text-white" : "bg-cream-dark text-ink"}`}>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
+          <div className={`flex items-center justify-between gap-2 rounded-2xl px-4 py-3 ${canCheckout ? "bg-gradient-to-r from-rialto to-rialto-dark text-white" : "bg-cream-dark text-ink"}`}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold flex-shrink-0">
                 {count}
               </span>
-              <span className="font-display text-sm font-semibold">
+              <span className="font-display text-sm font-semibold truncate">
                 {canCheckout ? "Voir mon panier" : `${formatCHF(missing)} restants`}
               </span>
             </div>
-            <span className="font-display font-bold tabular-nums">
+            <span className="font-display font-bold tabular-nums whitespace-nowrap flex-shrink-0">
               {formatCHF(subtotal)}
             </span>
           </div>

@@ -113,11 +113,11 @@ export default function MesCommandesClient() {
 
   return (
     <>
-      <main className="min-h-screen bg-cream pb-16 pt-20 md:pt-24">
+      <main className="min-h-screen bg-cream pb-12 pt-16 md:pt-20">
         <div className="container-hero">
           <Link
             href="/"
-            className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink"
+            className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink"
           >
             <svg
               width="14"
@@ -133,18 +133,18 @@ export default function MesCommandesClient() {
             Retour
           </Link>
 
-          <header className="mb-8 max-w-prose-wide">
+          <header className="mb-5 max-w-prose-wide">
             <span className="eyebrow">Rialto Club</span>
-            <h1 className="mt-3 font-display text-h1 font-bold">
+            <h1 className="mt-2 font-display text-2xl sm:text-3xl font-bold">
               Mes commandes
             </h1>
-            <p className="mt-2 text-base text-mute">
+            <p className="mt-1 text-sm text-mute">
               Historique de tes commandes Rialto.
             </p>
           </header>
 
           {authState === "guest" && (
-            <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-card">
+            <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-5 text-center shadow-card">
               <div className="mx-auto mb-4 text-4xl">🔑</div>
               <h2 className="font-display text-xl font-bold">
                 Pas de compte Rialto Club
@@ -174,7 +174,7 @@ export default function MesCommandesClient() {
           )}
 
           {authState === "logged_in" && !loading && orders.length === 0 && (
-            <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center">
+            <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-5 text-center">
               <div className="mx-auto mb-4 text-4xl">🍕</div>
               <h2 className="font-display text-xl font-bold">
                 Pas encore de commande

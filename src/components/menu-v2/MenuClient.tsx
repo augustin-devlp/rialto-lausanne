@@ -243,10 +243,12 @@ export default function MenuClient({ categories, items, options }: Props) {
 
   const subtotal = cartSubtotal(cart);
   const count = cartCount(cart);
+  // Livraison : minimum de la zone. À emporter : minimum de base du restaurant
+  // (le backend l'exige aussi — on ne saute QUE la vérif de zone, pas le min).
   const minAmount =
-    mode === "pickup"
-      ? 0
-      : address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
+    mode === "delivery"
+      ? address?.min_order_amount ?? RIALTO_INFO.minOrderCHF
+      : RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
 

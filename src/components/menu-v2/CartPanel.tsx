@@ -46,7 +46,8 @@ export default function CartPanel({
   const isPickup = fulfillmentType === "pickup";
   const count = cartCount(cart);
   const subtotal = cartSubtotal(cart);
-  const missing = isPickup ? 0 : Math.max(0, minOrderAmount - subtotal);
+  // Minimum s'applique aux deux modes (zone pour livraison, base resto pour retrait).
+  const missing = Math.max(0, minOrderAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
   const progressPct =
     minOrderAmount > 0 ? Math.min(100, (subtotal / minOrderAmount) * 100) : 100;
@@ -269,7 +270,7 @@ export default function CartPanel({
             </span>
           </div>
 
-          {!isPickup && missing > 0 ? (
+          {missing > 0 ? (
             <>
               <div className="mb-1.5 text-xs text-ink/75">
                 Encore <strong className="text-ink">{formatCHF(missing)}</strong> pour

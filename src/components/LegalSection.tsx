@@ -20,7 +20,7 @@ export default function LegalSection() {
             <br />
             Avenue de Béthusy 29B, 1012 Lausanne, Suisse
             <br />
-            Téléphone : <a href="tel:+41213126460" className="text-rialto hover:underline">+41 21 312 64 60</a>
+            Téléphone : <a href="tel:+41213126464" className="text-rialto hover:underline">+41 21 312 64 64</a>
           </p>
         </section>
 

@@ -1,7 +1,7 @@
 "use client";
 
 const ADDRESS = "Avenue de Béthusy 29B, 1012 Lausanne";
-const PHONE = "+41 21 312 64 60";
+const PHONE = "+41 21 312 64 64";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
   "Rialto Lausanne " + ADDRESS,
 )}`;

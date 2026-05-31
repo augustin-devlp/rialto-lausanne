@@ -13,9 +13,9 @@
 export const RIALTO_INFO = {
   name: "Rialto",
   address: "Avenue de Béthusy 29, 1012 Lausanne",
-  phone: "021 312 64 60",
-  phoneDisplay: "021 312 64 60",
-  phoneTel: "+41213126460",
+  phone: "021 312 64 64",
+  phoneDisplay: "021 312 64 64",
+  phoneTel: "+41213126464",
   openingHours: "Tous les jours · 11h30 – 23h30",
   openingHoursShort: "11h30 – 23h30",
   quartier: "Entre Place de l'Ours et Chailly",

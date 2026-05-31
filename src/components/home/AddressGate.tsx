@@ -205,7 +205,7 @@ export default function AddressGate({
                 </ul>
                 <p className="mt-3 text-xs text-mute">
                   Vous pouvez aussi appeler le restaurant pour vérifier votre
-                  adresse : <strong>021 312 64 60</strong>
+                  adresse : <strong>021 312 64 64</strong>
                 </p>
               </div>
             </div>

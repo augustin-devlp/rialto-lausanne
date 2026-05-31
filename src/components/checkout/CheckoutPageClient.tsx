@@ -40,8 +40,8 @@ type Props = {
 
 const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
 
-// TODO: numéro Mehmet — Augustin remplace ce placeholder
-const PHONE_OF_MEHMET = "+41 XX XXX XX XX";
+// Numéro du restaurant Rialto (paiement carte à distance / contact commande)
+const PHONE_OF_MEHMET = "021 312 64 64";
 
 const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
 

@@ -12,7 +12,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cartCount, readCart } from "@/lib/clientStore";
 import {
-  clearCustomerSession,
   readCustomerSession,
   type CustomerSession,
 } from "@/lib/customerSession";
@@ -168,57 +167,10 @@ export default function HamburgerMenu() {
             )}
           </Section>
 
-          {/* ─── Rialto Club ────────────────────────── */}
-          <Section title="Rialto Club">
-            {session ? (
-              <>
-                <Item
-                  href={`/c/${session.short_code}`}
-                  icon="🎴"
-                  label="Ma carte fidélité"
-                />
-                <Item href="/rialto-club/roue" icon="🎰" label="Roue de la chance" />
-                <Item href="/rialto-club/loterie" icon="🎟️" label="Loterie" />
-                <Item
-                  href="/mes-commandes"
-                  icon="📜"
-                  label="Historique des commandes"
-                />
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const confirmed = window.confirm(
-                        "Tu vas te déconnecter de ton compte Rialto Club. Continuer ?",
-                      );
-                      if (!confirmed) return;
-                      clearCustomerSession();
-                      setSession(null);
-                      setOpen(false);
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-mute transition hover:bg-white hover:text-rialto"
-                  >
-                    <span className="text-lg leading-none">🔓</span>
-                    <span>Se déconnecter</span>
-                  </button>
-                </li>
-              </>
-            ) : (
-              <>
-                <Item
-                  href="/rialto-club/join"
-                  icon="🎴"
-                  label="Rejoindre Rialto Club"
-                  highlight
-                />
-                <Item
-                  href="/rialto-club/connexion"
-                  icon="🔑"
-                  label="Se connecter"
-                />
-              </>
-            )}
-          </Section>
+          {/* ─── Rialto Club ─ MASQUÉ au lancement (fidélité pas encore prête).
+              Les pages /rialto-club/* restent dans le code ; seul l'accès
+              depuis la navigation est retiré. Réactiver = restaurer cette
+              section (cf. historique git). ─────────────────────────────── */}
 
           {/* ─── Infos ──────────────────────────────── */}
           <Section title="Infos">

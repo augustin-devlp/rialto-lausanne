@@ -32,10 +32,14 @@ import {
   cartSubtotal,
   readAddress,
   readCart,
+  readFulfillment,
   writeCart,
+  writeFulfillment,
+  type FulfillmentMode,
   type QualifiedAddress,
 } from "@/lib/clientStore";
 import { RIALTO_INFO } from "@/lib/rialto-data";
+import FulfillmentToggle from "@/components/ui/FulfillmentToggle";
 
 type Props = {
   categories: MenuCategory[];
@@ -59,6 +63,7 @@ export default function MenuClient({ categories, items, options }: Props) {
   );
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<QualifiedAddress | null>(null);
+  const [mode, setMode] = useState<FulfillmentMode>("delivery");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
     new Set(),
@@ -85,23 +90,24 @@ export default function MenuClient({ categories, items, options }: Props) {
   }, [excludedAllergens]);
 
   useEffect(() => {
-    // Hydrate from localStorage
-    setCart(readCart());
-    setAddress(readAddress());
-
-    // Si pas d'adresse qualifiée → renvoie vers home
+    // Hydrate depuis localStorage. Plus de redirection forcée vers la home :
+    // sans adresse on bascule simplement en "à emporter". Le client choisit la
+    // livraison via le toggle, qui qualifie alors l'adresse (home AddressGate).
     const a = readAddress();
-    if (!a) {
-      router.replace("/?need_address=1");
-    }
+    setCart(readCart());
+    setAddress(a);
+    setMode(readFulfillment() ?? (a ? "delivery" : "pickup"));
 
     const onCartUpdate = () => setCart(readCart());
     const onAddrUpdate = () => setAddress(readAddress());
+    const onModeUpdate = () => setMode(readFulfillment() ?? "delivery");
     window.addEventListener("rialto:cart-updated", onCartUpdate);
     window.addEventListener("rialto:address-updated", onAddrUpdate);
+    window.addEventListener("rialto:fulfillment-updated", onModeUpdate);
     return () => {
       window.removeEventListener("rialto:cart-updated", onCartUpdate);
       window.removeEventListener("rialto:address-updated", onAddrUpdate);
+      window.removeEventListener("rialto:fulfillment-updated", onModeUpdate);
     };
   }, [router]);
 
@@ -237,9 +243,24 @@ export default function MenuClient({ categories, items, options }: Props) {
 
   const subtotal = cartSubtotal(cart);
   const count = cartCount(cart);
-  const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
+  const minAmount =
+    mode === "pickup"
+      ? 0
+      : address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
+
+  function handleModeChange(next: FulfillmentMode) {
+    // Passer en livraison sans adresse qualifiée → on passe par le gate
+    // adresse de la home (étalon intouchable), qui reviendra ensuite sur /menu.
+    if (next === "delivery" && !address) {
+      writeFulfillment("delivery");
+      router.push("/?need_address=1");
+      return;
+    }
+    writeFulfillment(next);
+    setMode(next);
+  }
 
   function handleSelectItem(item: MenuItem) {
     if (item.has_options) {
@@ -314,19 +335,20 @@ export default function MenuClient({ categories, items, options }: Props) {
               padding gauche pour réserver l'espace du logo et à droite
               pour le hamburger. */}
 
-          {address && (
+          {mode === "pickup" ? (
+            <span className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs text-ink sm:text-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#C73E1D" className="shrink-0">
+                <path d="M12 2C7.58 2 4 5.58 4 10c0 7 8 12 8 12s8-5 8-12c0-4.42-3.58-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z" />
+              </svg>
+              <span className="truncate">Retrait · {RIALTO_INFO.address}</span>
+            </span>
+          ) : address ? (
             <Link
               href="/"
               className="group flex min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs text-ink transition hover:shadow-card sm:text-sm"
               title="Changer d'adresse"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="#C73E1D"
-                className="shrink-0"
-              >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#C73E1D" className="shrink-0">
                 <path d="M12 2C7.58 2 4 5.58 4 10c0 7 8 12 8 12s8-5 8-12c0-4.42-3.58-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z" />
               </svg>
               <span className="truncate">
@@ -335,6 +357,16 @@ export default function MenuClient({ categories, items, options }: Props) {
               <span className="ml-auto shrink-0 text-mute group-hover:text-ink">
                 ✎
               </span>
+            </Link>
+          ) : (
+            <Link
+              href="/?need_address=1"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-rialto transition hover:shadow-card sm:text-sm"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#C73E1D" className="shrink-0">
+                <path d="M12 2C7.58 2 4 5.58 4 10c0 7 8 12 8 12s8-5 8-12c0-4.42-3.58-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z" />
+              </svg>
+              <span className="truncate">Ajouter mon adresse de livraison</span>
             </Link>
           )}
 
@@ -351,7 +383,9 @@ export default function MenuClient({ categories, items, options }: Props) {
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            ~{address?.estimated_delivery_minutes ?? 30}&nbsp;min
+            {mode === "pickup"
+              ? `Prêt en ~${RIALTO_INFO.prepTimeMinutes} min`
+              : `~${address?.estimated_delivery_minutes ?? 30} min`}
           </div>
         </div>
 
@@ -472,6 +506,22 @@ export default function MenuClient({ categories, items, options }: Props) {
         </button>
       </section>
 
+      {/* Mode de commande — choix clair en haut du parcours */}
+      <div className="mb-2 max-w-md">
+        <FulfillmentToggle
+          value={mode}
+          onChange={handleModeChange}
+          className="w-full"
+        />
+        <p className="mt-2 px-1 text-xs text-mute">
+          {mode === "pickup"
+            ? `À récupérer au restaurant · ${RIALTO_INFO.address.split(",")[0]}`
+            : address
+              ? `Livraison à ${address.postal_code} · minimum ${formatCHF(minAmount)}`
+              : "Indiquez votre adresse pour la livraison à domicile."}
+        </p>
+      </div>
+
       {/* ─── Sections catégories ───────────────────────────────── */}
       <div className="pb-32 pt-3 lg:pb-6">
         {categories.every((c) => (itemsByCategory[c.id] ?? []).length === 0) ? (
@@ -563,7 +613,7 @@ export default function MenuClient({ categories, items, options }: Props) {
             cart={cart}
             setCart={setCart}
             minOrderAmount={minAmount}
-            fulfillmentType={address ? "delivery" : "pickup"}
+            fulfillmentType={mode}
           />
         </div>
       </div>

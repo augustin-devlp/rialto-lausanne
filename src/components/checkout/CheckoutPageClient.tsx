@@ -1,16 +1,14 @@
 "use client";
 
 /**
- * Page /checkout — Phase 1 refonte (logement + paiement).
+ * Page /checkout — livraison OU à emporter.
  *
- * 4 sections successives :
- *   1. Logement (maison / appartement)
- *   2. Adresse de livraison (champs adaptatifs)
- *   3. Mode de paiement (carte / espèces / twint) + sous-options
- *   4. Coordonnées (prénom + téléphone + email optionnel)
+ * Livraison : type de logement → adresse (champs adaptatifs) → heure → paiement
+ *   → coordonnées. Minimum + frais selon la zone qualifiée sur la home.
+ * À emporter : retrait au restaurant → heure de retrait → paiement → coordonnées.
+ *   Pas d'adresse ni de zone ; minimum de base du restaurant conservé.
  *
  * Préremplissage silencieux via localStorage RIALTO:CHECKOUT_PREFILL:V1.
- * Numéro WhatsApp Mehmet en placeholder — Augustin remplace.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -26,11 +24,15 @@ import {
   clearCart,
   readAddress,
   readCart,
+  readFulfillment,
   writeCart,
+  writeFulfillment,
+  type FulfillmentMode,
   type QualifiedAddress,
 } from "@/lib/clientStore";
 import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
+import FulfillmentToggle from "@/components/ui/FulfillmentToggle";
 import UpsellPanel from "./UpsellPanel";
 
 type Props = {
@@ -44,6 +46,10 @@ const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
 const PHONE_OF_MEHMET = "021 312 64 64";
 
 const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
+
+// Marge de sécurité (min) ajoutée au temps de prépa pour le retrait "ASAP",
+// afin de passer la validation backend (heure >= maintenant + prep).
+const PICKUP_ASAP_BUFFER_MIN = 5;
 
 type HousingType = "house" | "apartment";
 type PaymentMethod = "card" | "cash" | "twint";
@@ -86,6 +92,15 @@ function writePrefill(p: Prefill): void {
   }
 }
 
+/** Classe d'une carte de sélection (logement, paiement, heure…). */
+function selectionCard(active: boolean): string {
+  return `rounded-2xl border-2 p-4 text-left transition-all ${
+    active
+      ? "border-rialto bg-rialto-50 shadow-card"
+      : "border-border bg-white hover:border-ink/25"
+  }`;
+}
+
 /* ─── Calcul des billets cash (CHF) ─────────────────────────────────── */
 type CashOption = { label: string; value: number; notes: string };
 
@@ -93,19 +108,16 @@ function getCashOptions(total: number): CashOption[] {
   const billets = [10, 20, 50, 100, 200];
   const options: CashOption[] = [];
 
-  // 1 billet seul
   for (const b of billets) {
     if (b >= total && b <= total + 100) {
       const rendu = b - total;
       options.push({
         label: `1 billet de ${b} CHF`,
         value: b,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
+        notes: rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
       });
     }
   }
-  // 2 billets identiques
   for (const b of billets) {
     const sum = b * 2;
     if (sum >= total && sum <= total + 50) {
@@ -113,12 +125,10 @@ function getCashOptions(total: number): CashOption[] {
       options.push({
         label: `2 billets de ${b} CHF`,
         value: sum,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
+        notes: rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
       });
     }
   }
-  // Combinaisons logiques
   const combos: [number, number][] = [
     [50, 20],
     [50, 50],
@@ -136,12 +146,10 @@ function getCashOptions(total: number): CashOption[] {
       options.push({
         label: `${a} CHF + ${b} CHF`,
         value: sum,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
+        notes: rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
       });
     }
   }
-  // Dédupliquer + tri par rendu croissant
   const seen = new Set<number>();
   return options
     .filter((o) => {
@@ -149,24 +157,22 @@ function getCashOptions(total: number): CashOption[] {
       seen.add(o.value);
       return true;
     })
-    .sort((a, b) => a.value - b.value - (a.value - total - (b.value - total)))
     .sort((a, b) => a.value - total - (b.value - total))
     .slice(0, 4);
 }
 
-export default function CheckoutPageClient({
-  restaurantId,
-  accepting,
-}: Props) {
+export default function CheckoutPageClient({ restaurantId, accepting }: Props) {
   const router = useRouter();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<QualifiedAddress | null>(null);
+  const [mode, setMode] = useState<FulfillmentMode>("delivery");
+  const [hydrated, setHydrated] = useState(false);
 
-  // Section 1 : logement
+  // Section 1 : logement (livraison)
   const [housingType, setHousingType] = useState<HousingType | null>(null);
 
-  // Section 2 : adresse + apt fields
+  // Section 2 : adresse + apt fields (livraison)
   const [street, setStreet] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [city, setCity] = useState("");
@@ -177,23 +183,21 @@ export default function CheckoutPageClient({
   const [doorbellName, setDoorbellName] = useState("");
   const [instructions, setInstructions] = useState("");
 
-  // Heure (asap / précise) — gardée du checkout existant car utile à Mehmet
+  // Heure (asap / précise)
   const [asap, setAsap] = useState(true);
   const [pickupTime, setPickupTime] = useState("");
 
-  // Section 3 : paiement
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(
-    null,
-  );
+  // Section paiement
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cardTiming, setCardTiming] = useState<CardTiming | null>(null);
   const [cashBills, setCashBills] = useState<number>(0);
 
-  // Section 4 : coordonnées
+  // Coordonnées
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
 
-  // Promo (kept)
+  // Promo
   const [promoInput, setPromoInput] = useState("");
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoChecking, setPromoChecking] = useState(false);
@@ -209,25 +213,32 @@ export default function CheckoutPageClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Init : cart + address + prefill silencieux
+  const isPickup = mode === "pickup";
+
+  // Init : cart + address + mode + prefill silencieux
   useEffect(() => {
     const c = readCart();
     const a = readAddress();
     const p = readPrefill();
+    const m = readFulfillment() ?? (a ? "delivery" : "pickup");
     setCart(c);
     setAddress(a);
-    if (!a) {
-      router.replace("/?need_address=1");
-      return;
-    }
+    setMode(m);
+    setHydrated(true);
+
     if (c.length === 0) {
       router.replace("/menu");
       return;
     }
-    // Prérempli adresse depuis QualifiedAddress homepage si rien en prefill
-    setStreet(p.street ?? a.address ?? "");
-    setPostalCode(p.postalCode ?? a.postal_code ?? "");
-    setCity(p.city ?? a.city ?? "");
+    // Livraison sans adresse qualifiée → qualification sur la home (étalon).
+    if (m === "delivery" && !a) {
+      router.replace("/?need_address=1");
+      return;
+    }
+
+    setStreet(p.street ?? a?.address ?? "");
+    setPostalCode(p.postalCode ?? a?.postal_code ?? "");
+    setCity(p.city ?? a?.city ?? "");
     setHousingType(p.housingType ?? null);
     setEntryCode1(p.entryCode1 ?? "");
     setEntryCode2(p.entryCode2 ?? "");
@@ -242,11 +253,24 @@ export default function CheckoutPageClient({
 
   const subtotal = useMemo(() => cartSubtotal(cart), [cart]);
   const count = cartCount(cart);
-  const deliveryFee = address?.delivery_fee ?? 0;
+  const deliveryFee = isPickup ? 0 : address?.delivery_fee ?? 0;
   const promoDiscount = promo?.discount_amount ?? 0;
-  const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
+  const minAmount = isPickup
+    ? RIALTO_INFO.minOrderCHF
+    : address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);
   const total = Math.max(0, subtotal + deliveryFee - promoDiscount);
+
+  function handleModeChange(next: FulfillmentMode) {
+    if (next === mode) return;
+    if (next === "delivery" && !address) {
+      writeFulfillment("delivery");
+      router.push("/?need_address=1");
+      return;
+    }
+    writeFulfillment(next);
+    setMode(next);
+  }
 
   function updateQuantity(key: string, delta: number) {
     const next = cart
@@ -263,9 +287,7 @@ export default function CheckoutPageClient({
 
   async function addUpsellItem(menuItemId: string) {
     try {
-      const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`,
-      );
+      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`);
       let item: { id: string; name: string; price: number } | null = null;
       if (res.ok) {
         item = (await res.json()).item ?? null;
@@ -313,11 +335,7 @@ export default function CheckoutPageClient({
       const res = await fetch(`${STAMPIFY_BASE}/api/promo-codes/validate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          business_id: STAMPIFY_BUSINESS_ID,
-          code,
-          subtotal,
-        }),
+        body: JSON.stringify({ business_id: STAMPIFY_BUSINESS_ID, code, subtotal }),
       });
       const body = (await res.json()) as {
         valid: boolean;
@@ -348,9 +366,11 @@ export default function CheckoutPageClient({
     }
   }
 
-  // Validation cumulative
-  const housingValid = housingType !== null;
-  const addressValid = street.trim().length >= 3;
+  // Validation cumulative (selon le mode)
+  const showRest = isPickup || housingType !== null;
+  const housingValid = isPickup ? true : housingType !== null;
+  const addressValid = isPickup ? true : street.trim().length >= 3;
+  const timeValid = asap || pickupTime.trim().length >= 4;
   const paymentBaseValid = paymentMethod !== null;
   const paymentSubValid =
     paymentMethod === "card"
@@ -360,23 +380,24 @@ export default function CheckoutPageClient({
         : paymentMethod === "twint"
           ? true
           : false;
-  const contactValid =
-    firstName.trim().length >= 2 && phone.trim().length >= 8;
+  const contactValid = firstName.trim().length >= 2 && phone.trim().length >= 8;
   const amountValid = missing === 0;
   const canSubmit =
     housingValid &&
     addressValid &&
+    timeValid &&
     paymentBaseValid &&
     paymentSubValid &&
     contactValid &&
     amountValid &&
     !loading &&
-    !!address &&
-    accepting;
+    accepting &&
+    (isPickup || !!address);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || !address) return;
+    if (!canSubmit) return;
+    if (!isPickup && !address) return;
     setLoading(true);
     setError(null);
     try {
@@ -387,15 +408,21 @@ export default function CheckoutPageClient({
         return;
       }
 
+      // Heure de retrait / livraison.
       let pickupISO: string | null = null;
       if (!asap && pickupTime) {
         const [h, m] = pickupTime.split(":").map(Number);
         const d = new Date();
         d.setHours(h, m, 0, 0);
         pickupISO = d.toISOString();
+      } else if (isPickup) {
+        // Retrait "dès que possible" : le backend EXIGE une heure → prépa + marge.
+        const d = new Date(
+          Date.now() + (RIALTO_INFO.prepTimeMinutes + PICKUP_ASAP_BUFFER_MIN) * 60_000,
+        );
+        pickupISO = d.toISOString();
       }
 
-      // Persist prefill silencieusement avant POST
       writePrefill({
         housingType: housingType ?? undefined,
         street: street.trim(),
@@ -421,25 +448,23 @@ export default function CheckoutPageClient({
           customer_phone: cleanPhone,
           customer_email: email.trim() || null,
           requested_pickup_time: pickupISO,
-          fulfillment_type: "delivery",
-          delivery_address: street.trim(),
-          delivery_postal_code:
-            postalCode.trim() || address.postal_code,
-          delivery_city: city.trim() || address.city,
-          delivery_zone_id: address.zone_id,
-          delivery_instructions: instructions.trim() || null,
-          // Phase 1 checkout refonte
-          housing_type: housingType,
-          entry_code_1: entryCode1.trim() || null,
-          entry_code_2: entryCode2.trim() || null,
-          floor: floor.trim() || null,
-          apartment_number: apartmentNumber.trim() || null,
-          doorbell_name: doorbellName.trim() || null,
+          fulfillment_type: mode,
+          delivery_address: isPickup ? null : street.trim(),
+          delivery_postal_code: isPickup
+            ? null
+            : postalCode.trim() || address?.postal_code || null,
+          delivery_city: isPickup ? null : city.trim() || address?.city || null,
+          delivery_zone_id: isPickup ? null : address?.zone_id ?? null,
+          delivery_instructions: isPickup ? null : instructions.trim() || null,
+          housing_type: isPickup ? null : housingType,
+          entry_code_1: isPickup ? null : entryCode1.trim() || null,
+          entry_code_2: isPickup ? null : entryCode2.trim() || null,
+          floor: isPickup ? null : floor.trim() || null,
+          apartment_number: isPickup ? null : apartmentNumber.trim() || null,
+          doorbell_name: isPickup ? null : doorbellName.trim() || null,
           payment_method: paymentMethod,
-          payment_card_timing:
-            paymentMethod === "card" ? cardTiming : null,
-          payment_cash_bills:
-            paymentMethod === "cash" ? cashBills : null,
+          payment_card_timing: paymentMethod === "card" ? cardTiming : null,
+          payment_cash_bills: paymentMethod === "cash" ? cashBills : null,
           notes: null,
           items: cart.map((c) => ({
             menu_item_id: c.menu_item_id,
@@ -482,35 +507,35 @@ export default function CheckoutPageClient({
     }
   }
 
-  if (!address) return null;
+  // Avant hydratation, ou redirection en cours : rien à afficher.
+  if (!hydrated) return null;
+  if (mode === "delivery" && !address) return null;
+  if (cart.length === 0) return null;
 
   const cashOptions = getCashOptions(total);
+  const etaLabel = isPickup
+    ? `Prêt en ~${RIALTO_INFO.prepTimeMinutes} min`
+    : `~${address?.estimated_delivery_minutes ?? 30} min`;
+  const handoverLabel = isPickup ? "Au comptoir" : "Au livreur";
 
   return (
     <main className="min-h-screen bg-cream pb-28 md:pb-12">
-      <header className="border-b border-border bg-cream/95 backdrop-blur-lg">
+      <header className="sticky top-0 z-30 border-b border-border bg-cream/95 backdrop-blur-lg">
         <div className="container-hero flex h-14 items-center justify-between gap-3 sm:h-16">
           <Link
             href="/menu"
-            className="flex items-center gap-2 text-sm font-medium text-ink hover:text-rialto"
+            className="inline-flex items-center gap-2 text-sm font-medium text-ink transition hover:text-rialto"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
-            Retour au menu
+            <span className="hidden sm:inline">Retour au menu</span>
+            <span className="sm:hidden">Menu</span>
           </Link>
           <span className="font-display text-sm font-semibold md:text-base">
             Finaliser la commande
           </span>
-          <span className="w-[90px]" />
+          <span className="w-[70px]" aria-hidden />
         </div>
       </header>
 
@@ -519,10 +544,18 @@ export default function CheckoutPageClient({
         className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[1fr,380px] lg:gap-6 lg:py-6"
       >
         {/* ─── Colonne gauche ─────────────────────────────────── */}
-        <div className="space-y-8">
-          {/* Récap panier (ancrage visuel, pas une section numérotée) */}
+        <div className="space-y-7">
+          {/* Mode de commande */}
+          <FulfillmentToggle
+            value={mode}
+            onChange={handleModeChange}
+            size="sm"
+            className="max-w-sm"
+          />
+
+          {/* Récap panier */}
           <div>
-            <h2 className="font-display text-base font-bold text-ink mb-3">
+            <h2 className="mb-3 font-display text-base font-bold text-ink">
               Votre panier ({count} article{count > 1 ? "s" : ""})
             </h2>
             <div className="space-y-2">
@@ -538,204 +571,198 @@ export default function CheckoutPageClient({
             <UpsellPanel cart={cart} onAdd={addUpsellItem} />
           </div>
 
-          {/* ───────────── SECTION 1 — TYPE DE LOGEMENT ───────────── */}
-          <Section title="Type de logement" step="1">
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setHousingType("house")}
-                className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                  housingType === "house"
-                    ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-3xl mb-2">🏠</div>
-                <div className="font-bold text-[#9A2E14]">Maison</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Maison individuelle, villa
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setHousingType("apartment")}
-                className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                  housingType === "apartment"
-                    ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-3xl mb-2">🏢</div>
-                <div className="font-bold text-[#9A2E14]">Appartement</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Immeuble, résidence
-                </div>
-              </button>
-            </div>
-          </Section>
-
-          {/* ───────────── SECTION 2 — ADRESSE ─────────────────── */}
-          {housingType !== null && (
-            <Section title="Adresse de livraison" step="2">
-              <div className="space-y-3 transition-all duration-200">
-                <input
-                  type="text"
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
-                  required
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                />
-                <div className="grid grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="NPA"
-                    className="col-span-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Ville"
-                    className="col-span-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
-                </div>
-
-                {housingType === "apartment" && (
-                  <div className="space-y-3 bg-[#F9F1E4]/40 p-4 rounded-2xl border border-[#E6A12C]/20">
-                    <p className="text-xs font-bold text-[#9A2E14] uppercase tracking-wide">
-                      🔑 Pour que le livreur trouve facilement
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={entryCode1}
-                        onChange={(e) => setEntryCode1(e.target.value)}
-                        placeholder="Code entrée 1"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                      <input
-                        type="text"
-                        value={entryCode2}
-                        onChange={(e) => setEntryCode2(e.target.value)}
-                        placeholder="Code entrée 2 (si nécessaire)"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={floor}
-                        onChange={(e) => setFloor(e.target.value)}
-                        placeholder="Étage (ex: 3, RDC)"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                      <input
-                        type="text"
-                        value={apartmentNumber}
-                        onChange={(e) => setApartmentNumber(e.target.value)}
-                        placeholder="N° appartement / Porte"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                    </div>
-
-                    <input
-                      type="text"
-                      value={doorbellName}
-                      onChange={(e) => setDoorbellName(e.target.value)}
-                      placeholder="Nom sur la sonnette / interphone"
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                    />
-
-                    <textarea
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Autres infos (ascenseur, sonnette HS, etc.)"
-                      rows={2}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
-                    />
+          {/* ── Mode-specific : retrait (pickup) ou logement+adresse (delivery) ── */}
+          {isPickup ? (
+            <Section title="Retrait au restaurant" step="1">
+              <div className="rounded-2xl border border-border bg-rialto-50/60 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-rialto shadow-card">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path d="M12 2C7.58 2 4 5.58 4 10c0 7 8 12 8 12s8-5 8-12c0-4.42-3.58-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z" />
+                    </svg>
                   </div>
-                )}
-
-                {housingType === "house" && (
-                  <textarea
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    placeholder="Instructions livreur (optionnel) — portail, chien, sonnette, etc."
-                    rows={2}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
-                  />
-                )}
-
-                {/* Heure livraison — utile à Mehmet */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setAsap(true)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      asap
-                        ? "border-[#C73E1D] bg-[#F9F1E4]"
-                        : "border-gray-200 bg-white"
-                    }`}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display font-bold text-ink">{RIALTO_INFO.name}</p>
+                    <p className="text-sm text-mute">{RIALTO_INFO.address}</p>
+                    <p className="mt-1 text-xs text-mute">
+                      Ouvert · {RIALTO_INFO.openingHoursShort}
+                    </p>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      `${RIALTO_INFO.name} ${RIALTO_INFO.address}`,
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 self-center rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-rialto hover:text-rialto"
                   >
-                    <div className="text-sm font-bold">Dès que possible</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      ~{address.estimated_delivery_minutes} min
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAsap(false)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      !asap
-                        ? "border-[#C73E1D] bg-[#F9F1E4]"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    <div className="text-sm font-bold">Heure précise</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Choisir un créneau
-                    </div>
-                  </button>
+                    Itinéraire
+                  </a>
                 </div>
-                {!asap && (
-                  <input
-                    type="time"
-                    value={pickupTime}
-                    onChange={(e) => setPickupTime(e.target.value)}
-                    step={900}
-                    required
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
-                )}
+              </div>
+              <div className="mt-4">
+                <p className="mb-2 text-sm font-semibold text-ink">
+                  Quand venez-vous chercher ?
+                </p>
+                <TimeChoice
+                  asap={asap}
+                  setAsap={setAsap}
+                  pickupTime={pickupTime}
+                  setPickupTime={setPickupTime}
+                  etaLabel={etaLabel}
+                />
               </div>
             </Section>
+          ) : (
+            <>
+              <Section title="Type de logement" step="1">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("house")}
+                    className={selectionCard(housingType === "house")}
+                  >
+                    <div className="mb-2 text-3xl">🏠</div>
+                    <div className="font-display font-bold text-ink">Maison</div>
+                    <div className="mt-0.5 text-xs text-mute">
+                      Maison individuelle, villa
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("apartment")}
+                    className={selectionCard(housingType === "apartment")}
+                  >
+                    <div className="mb-2 text-3xl">🏢</div>
+                    <div className="font-display font-bold text-ink">Appartement</div>
+                    <div className="mt-0.5 text-xs text-mute">Immeuble, résidence</div>
+                  </button>
+                </div>
+              </Section>
+
+              {housingType !== null && (
+                <Section title="Adresse de livraison" step="2">
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={street}
+                      onChange={(e) => setStreet(e.target.value)}
+                      placeholder="Rue et numéro (ex : Av. de Béthusy 29)"
+                      required
+                      className="input"
+                    />
+                    <div className="grid grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="NPA"
+                        className="input col-span-1"
+                      />
+                      <input
+                        type="text"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="Ville"
+                        className="input col-span-2"
+                      />
+                    </div>
+
+                    {housingType === "apartment" && (
+                      <div className="space-y-3 rounded-2xl border border-saffron/30 bg-rialto-50/50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wide text-rialto-dark">
+                          🔑 Pour que le livreur trouve facilement
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={entryCode1}
+                            onChange={(e) => setEntryCode1(e.target.value)}
+                            placeholder="Code entrée 1"
+                            className="input-compact"
+                          />
+                          <input
+                            type="text"
+                            value={entryCode2}
+                            onChange={(e) => setEntryCode2(e.target.value)}
+                            placeholder="Code entrée 2 (si besoin)"
+                            className="input-compact"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={floor}
+                            onChange={(e) => setFloor(e.target.value)}
+                            placeholder="Étage (ex : 3, RDC)"
+                            className="input-compact"
+                          />
+                          <input
+                            type="text"
+                            value={apartmentNumber}
+                            onChange={(e) => setApartmentNumber(e.target.value)}
+                            placeholder="N° appartement / porte"
+                            className="input-compact"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={doorbellName}
+                          onChange={(e) => setDoorbellName(e.target.value)}
+                          placeholder="Nom sur la sonnette / interphone"
+                          className="input-compact"
+                        />
+                        <textarea
+                          value={instructions}
+                          onChange={(e) => setInstructions(e.target.value)}
+                          placeholder="Autres infos (ascenseur, sonnette HS, etc.)"
+                          rows={2}
+                          className="input-compact resize-none"
+                        />
+                      </div>
+                    )}
+
+                    {housingType === "house" && (
+                      <textarea
+                        value={instructions}
+                        onChange={(e) => setInstructions(e.target.value)}
+                        placeholder="Instructions livreur (optionnel) — portail, chien, sonnette…"
+                        rows={2}
+                        className="input resize-none"
+                      />
+                    )}
+
+                    <div className="pt-1">
+                      <TimeChoice
+                        asap={asap}
+                        setAsap={setAsap}
+                        pickupTime={pickupTime}
+                        setPickupTime={setPickupTime}
+                        etaLabel={etaLabel}
+                      />
+                    </div>
+                  </div>
+                </Section>
+              )}
+            </>
           )}
 
-          {/* ───────────── SECTION 3 — PAIEMENT ────────────────── */}
-          {housingType !== null && (
-            <Section title="Mode de paiement" step="3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* ── Paiement (les deux modes) ── */}
+          {showRest && (
+            <Section title="Mode de paiement" step={isPickup ? "2" : "3"}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => {
                     setPaymentMethod("card");
                     setCashBills(0);
                   }}
-                  className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                    paymentMethod === "card"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
+                  className={selectionCard(paymentMethod === "card")}
                 >
-                  <div className="text-2xl mb-2">💳</div>
-                  <div className="font-bold text-[#9A2E14]">Carte</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Au livreur ou à distance
+                  <div className="mb-2 text-2xl">💳</div>
+                  <div className="font-display font-bold text-ink">Carte</div>
+                  <div className="mt-0.5 text-xs text-mute">
+                    {handoverLabel} ou à distance
                   </div>
                 </button>
                 <button
@@ -744,16 +771,12 @@ export default function CheckoutPageClient({
                     setPaymentMethod("cash");
                     setCardTiming(null);
                   }}
-                  className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                    paymentMethod === "cash"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
+                  className={selectionCard(paymentMethod === "cash")}
                 >
-                  <div className="text-2xl mb-2">💵</div>
-                  <div className="font-bold text-[#9A2E14]">Espèces</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Le livreur prépare la monnaie
+                  <div className="mb-2 text-2xl">💵</div>
+                  <div className="font-display font-bold text-ink">Espèces</div>
+                  <div className="mt-0.5 text-xs text-mute">
+                    {isPickup ? "Préparez l'appoint" : "Le livreur prépare la monnaie"}
                   </div>
                 </button>
                 <button
@@ -763,79 +786,69 @@ export default function CheckoutPageClient({
                     setCardTiming(null);
                     setCashBills(0);
                   }}
-                  className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                    paymentMethod === "twint"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                      : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
+                  className={selectionCard(paymentMethod === "twint")}
                 >
-                  <div className="text-2xl mb-2">📱</div>
-                  <div className="font-bold text-[#9A2E14]">Twint</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Au livreur, en 1 scan
+                  <div className="mb-2 text-2xl">📱</div>
+                  <div className="font-display font-bold text-ink">Twint</div>
+                  <div className="mt-0.5 text-xs text-mute">
+                    {handoverLabel}, en 1 scan
                   </div>
                 </button>
               </div>
 
-              {/* Sous-options carte */}
               {paymentMethod === "card" && (
-                <div className="mt-4 space-y-2 transition-all duration-200">
-                  <p className="text-sm font-medium text-gray-700">
+                <div className="mt-4 space-y-2">
+                  <p className="text-sm font-medium text-ink/80">
                     Quand voulez-vous payer ?
                   </p>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setCardTiming("on_delivery")}
-                      className={`p-4 rounded-xl border-2 transition-all text-sm text-left ${
-                        cardTiming === "on_delivery"
-                          ? "border-[#C73E1D] bg-[#F9F1E4]"
-                          : "border-gray-200 bg-white"
-                      }`}
+                      className={selectionCard(cardTiming === "on_delivery")}
                     >
-                      <div className="font-bold">Au livreur</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Paiement à la livraison
+                      <div className="font-display font-bold text-ink">
+                        {handoverLabel}
+                      </div>
+                      <div className="mt-0.5 text-xs text-mute">
+                        {isPickup ? "Paiement au retrait" : "Paiement à la livraison"}
                       </div>
                     </button>
                     <button
                       type="button"
                       onClick={() => setCardTiming("remote")}
-                      className={`p-4 rounded-xl border-2 transition-all text-sm text-left ${
-                        cardTiming === "remote"
-                          ? "border-[#C73E1D] bg-[#F9F1E4]"
-                          : "border-gray-200 bg-white"
-                      }`}
+                      className={selectionCard(cardTiming === "remote")}
                     >
-                      <div className="font-bold">À distance</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Lien envoyé par tél
-                      </div>
+                      <div className="font-display font-bold text-ink">À distance</div>
+                      <div className="mt-0.5 text-xs text-mute">Lien envoyé par tél</div>
                     </button>
                   </div>
                   {cardTiming === "remote" && (
-                    <div className="mt-3 p-3 rounded-xl bg-[#E6A12C]/10 border border-[#E6A12C]/30 text-sm text-[#9A2E14]">
-                      💬 Mehmet vous appellera au{" "}
-                      <strong>{PHONE_OF_MEHMET}</strong> pour vous envoyer
-                      le lien de paiement par WhatsApp ou SMS dans les 5
-                      minutes.
+                    <div className="mt-3 rounded-xl border border-saffron/30 bg-saffron/10 p-3 text-sm text-rialto-dark">
+                      💬 Le restaurant vous appellera au{" "}
+                      <strong>{PHONE_OF_MEHMET}</strong> pour vous envoyer le lien de
+                      paiement par WhatsApp ou SMS dans les 5 minutes.
                     </div>
                   )}
                   {cardTiming === "on_delivery" && (
-                    <div className="mt-3 p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700">
-                      ✅ Le livreur arrivera avec le terminal de paiement.
+                    <div className="mt-3 rounded-xl border border-border bg-cream p-3 text-sm text-ink/80">
+                      ✅{" "}
+                      {isPickup
+                        ? "Réglez directement par carte au comptoir, au retrait."
+                        : "Le livreur arrivera avec le terminal de paiement."}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Sous-options espèces */}
               {paymentMethod === "cash" && (
-                <div className="mt-4 space-y-3 transition-all duration-200">
-                  <p className="text-sm font-medium text-gray-700">
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm font-medium text-ink/80">
                     Avec quel(s) billet(s) allez-vous payer ?
-                    <span className="block text-xs text-gray-500 mt-1">
-                      Pour que le livreur prépare la bonne monnaie
+                    <span className="mt-1 block text-xs text-mute">
+                      {isPickup
+                        ? "Pour préparer la monnaie au comptoir"
+                        : "Pour que le livreur prépare la bonne monnaie"}
                     </span>
                   </p>
                   {cashOptions.length > 0 ? (
@@ -845,18 +858,13 @@ export default function CheckoutPageClient({
                           key={opt.value}
                           type="button"
                           onClick={() => setCashBills(opt.value)}
-                          className={`p-3 rounded-xl border-2 text-left transition-all ${
-                            cashBills === opt.value
-                              ? "border-[#C73E1D] bg-[#F9F1E4]"
-                              : "border-gray-200 bg-white"
-                          }`}
+                          className={selectionCard(cashBills === opt.value)
+                            .replace("p-4", "p-3")}
                         >
-                          <div className="font-bold text-sm text-[#9A2E14]">
+                          <div className="font-display text-sm font-bold text-ink">
                             {opt.label}
                           </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {opt.notes}
-                          </div>
+                          <div className="mt-0.5 text-xs text-mute">{opt.notes}</div>
                         </button>
                       ))}
                     </div>
@@ -865,31 +873,28 @@ export default function CheckoutPageClient({
                       type="number"
                       step="1"
                       min={total}
-                      placeholder={`Montant approximatif (≥ ${total.toFixed(
-                        2,
-                      )} CHF)`}
-                      onChange={(e) =>
-                        setCashBills(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                      placeholder={`Montant approximatif (≥ ${total.toFixed(2)} CHF)`}
+                      onChange={(e) => setCashBills(parseFloat(e.target.value) || 0)}
+                      className="input"
                     />
                   )}
                 </div>
               )}
 
-              {/* Twint message */}
               {paymentMethod === "twint" && (
-                <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 transition-all duration-200">
-                  📱 Le livreur vous montrera le QR code Twint à l&apos;arrivée.
-                  Vous payerez directement sur place.
+                <div className="mt-4 rounded-xl border border-border bg-cream p-4 text-sm text-ink/80">
+                  📱{" "}
+                  {isPickup
+                    ? "Le QR code Twint vous sera présenté au comptoir, au retrait."
+                    : "Le livreur vous montrera le QR code Twint à l'arrivée. Vous payerez sur place."}
                 </div>
               )}
             </Section>
           )}
 
-          {/* ───────────── SECTION 4 — COORDONNÉES ─────────────── */}
-          {housingType !== null && (
-            <Section title="Vos coordonnées" step="4">
+          {/* ── Coordonnées ── */}
+          {showRest && (
+            <Section title="Vos coordonnées" step={isPickup ? "3" : "4"}>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -899,17 +904,17 @@ export default function CheckoutPageClient({
                     placeholder="Prénom"
                     required
                     autoComplete="given-name"
-                    className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                    className="input"
                   />
                   <input
                     type="tel"
                     inputMode="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+41 XX XXX XX XX"
+                    placeholder="+41 79 123 45 67"
                     required
                     autoComplete="tel"
-                    className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                    className="input"
                   />
                 </div>
                 <input
@@ -918,14 +923,14 @@ export default function CheckoutPageClient({
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email (optionnel — pour la confirmation)"
                   autoComplete="email"
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                  className="input"
                 />
               </div>
             </Section>
           )}
 
-          {/* Promo (optionnel, conservé) */}
-          {housingType !== null && (
+          {/* ── Promo ── */}
+          {showRest && (
             <Section title="Code promo" step="" optional>
               {promo ? (
                 <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
@@ -933,9 +938,7 @@ export default function CheckoutPageClient({
                     <div className="text-sm font-semibold text-emerald-800">
                       ✓ {promo.code}
                     </div>
-                    <div className="text-xs text-emerald-700">
-                      {promo.message}
-                    </div>
+                    <div className="text-xs text-emerald-700">{promo.message}</div>
                   </div>
                   <button
                     type="button"
@@ -954,11 +957,9 @@ export default function CheckoutPageClient({
                     <input
                       type="text"
                       value={promoInput}
-                      onChange={(e) =>
-                        setPromoInput(e.target.value.toUpperCase())
-                      }
+                      onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                       placeholder="RIA-XXXXX"
-                      className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                      className="input flex-1"
                       autoCapitalize="characters"
                       autoCorrect="off"
                       spellCheck={false}
@@ -967,7 +968,7 @@ export default function CheckoutPageClient({
                       type="button"
                       onClick={applyPromo}
                       disabled={!promoInput.trim() || promoChecking}
-                      className="px-4 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold text-ink hover:border-[#C73E1D] disabled:opacity-50"
+                      className="btn-ghost px-5"
                     >
                       {promoChecking ? "…" : "Appliquer"}
                     </button>
@@ -998,7 +999,12 @@ export default function CheckoutPageClient({
                 label={`Sous-total (${count} article${count > 1 ? "s" : ""})`}
                 value={formatCHF(subtotal)}
               />
-              <Row label="Frais de livraison" value={formatCHF(deliveryFee)} />
+              {!isPickup && (
+                <Row
+                  label="Frais de livraison"
+                  value={deliveryFee > 0 ? formatCHF(deliveryFee) : "Offerts"}
+                />
+              )}
               {promo && promoDiscount > 0 && (
                 <Row
                   label={`Code ${promo.code}`}
@@ -1007,11 +1013,7 @@ export default function CheckoutPageClient({
                 />
               )}
               <div className="border-t border-border pt-3">
-                <Row
-                  label="Total"
-                  value={formatCHF(total)}
-                  emphasis
-                />
+                <Row label="Total" value={formatCHF(total)} emphasis />
               </div>
             </dl>
 
@@ -1035,29 +1037,27 @@ export default function CheckoutPageClient({
             <button
               type="submit"
               disabled={!canSubmit}
-              className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-lg shadow-lg transition-colors mt-6"
+              className="btn-primary-lg mt-6 w-full justify-center"
             >
-              {loading
-                ? "Envoi…"
-                : `Confirmer ma commande — ${total.toFixed(2)} CHF`}
+              {loading ? "Envoi…" : `Confirmer · ${formatCHF(total)}`}
             </button>
 
             <p className="mt-3 text-center text-xs text-mute">
-              Livré en ~{address.estimated_delivery_minutes} min
+              {isPickup
+                ? `Retrait · ${RIALTO_INFO.address.split(",")[0]} · ${etaLabel}`
+                : `Livré en ${etaLabel}`}
             </p>
           </div>
         </aside>
 
-        {/* Sticky bottom CTA pour mobile/iPad portrait */}
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 p-3 md:hidden">
+        {/* Sticky bottom CTA mobile/iPad portrait */}
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-white/95 p-3 backdrop-blur-lg md:hidden">
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-base shadow-lg transition-colors"
+            className="btn-primary-lg w-full justify-center"
           >
-            {loading
-              ? "Envoi…"
-              : `Confirmer — ${total.toFixed(2)} CHF`}
+            {loading ? "Envoi…" : `Confirmer · ${formatCHF(total)}`}
           </button>
         </div>
       </form>
@@ -1066,6 +1066,53 @@ export default function CheckoutPageClient({
 }
 
 /* ═════════════════════════════════════════════════════════════════════ */
+
+function TimeChoice({
+  asap,
+  setAsap,
+  pickupTime,
+  setPickupTime,
+  etaLabel,
+}: {
+  asap: boolean;
+  setAsap: (v: boolean) => void;
+  pickupTime: string;
+  setPickupTime: (v: string) => void;
+  etaLabel: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setAsap(true)}
+          className={selectionCard(asap).replace("p-4", "p-3")}
+        >
+          <div className="font-display text-sm font-bold text-ink">Dès que possible</div>
+          <div className="mt-0.5 text-xs text-mute">{etaLabel}</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setAsap(false)}
+          className={selectionCard(!asap).replace("p-4", "p-3")}
+        >
+          <div className="font-display text-sm font-bold text-ink">Heure précise</div>
+          <div className="mt-0.5 text-xs text-mute">Choisir un créneau</div>
+        </button>
+      </div>
+      {!asap && (
+        <input
+          type="time"
+          value={pickupTime}
+          onChange={(e) => setPickupTime(e.target.value)}
+          step={900}
+          required
+          className="input"
+        />
+      )}
+    </div>
+  );
+}
 
 function Section({
   title,
@@ -1089,9 +1136,7 @@ function Section({
         <h2 className="font-display text-xl font-bold md:text-2xl">
           {title}
           {optional && (
-            <span className="ml-2 text-xs font-normal text-mute">
-              (optionnel)
-            </span>
+            <span className="ml-2 text-xs font-normal text-mute">(optionnel)</span>
           )}
         </h2>
       </div>
@@ -1118,9 +1163,7 @@ function Row({
       } ${accent ? "text-emerald-700" : ""}`}
     >
       <dt className={emphasis ? "font-display" : "text-mute"}>{label}</dt>
-      <dd className={`tabular ${emphasis ? "font-display font-bold" : ""}`}>
-        {value}
-      </dd>
+      <dd className={`tabular ${emphasis ? "font-display font-bold" : ""}`}>{value}</dd>
     </div>
   );
 }
@@ -1136,12 +1179,12 @@ function CartLineRow({
 }) {
   const image = matchDishImage(item.name);
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-white p-3">
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-white p-3 shadow-card">
       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl">
         <Image src={image} alt="" fill sizes="56px" className="object-cover" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-sm font-semibold">
+        <div className="truncate font-display text-sm font-semibold text-ink">
           {item.name}
         </div>
         {item.options.length > 0 && (
@@ -1154,7 +1197,7 @@ function CartLineRow({
             <button
               type="button"
               onClick={onDecr}
-              className="flex h-6 w-6 items-center justify-center text-ink hover:text-rialto"
+              className="flex h-6 w-6 items-center justify-center text-ink transition hover:text-rialto"
               aria-label="Diminuer"
             >
               −
@@ -1165,13 +1208,13 @@ function CartLineRow({
             <button
               type="button"
               onClick={onIncr}
-              className="flex h-6 w-6 items-center justify-center text-ink hover:text-rialto"
+              className="flex h-6 w-6 items-center justify-center text-ink transition hover:text-rialto"
               aria-label="Augmenter"
             >
               +
             </button>
           </div>
-          <span className="tabular ml-auto font-display text-sm font-semibold">
+          <span className="tabular ml-auto font-display text-sm font-semibold text-rialto-dark">
             {formatCHF(item.subtotal)}
           </span>
         </div>

@@ -47,6 +47,7 @@ const config: Config = {
       animation: {
         "fade-up": "fadeUp 500ms cubic-bezier(0.16,1,0.3,1) both",
         "fade-in": "fadeIn 400ms ease-out both",
+        "slide-up": "slideUp 360ms cubic-bezier(0.16,1,0.3,1) both",
         "pulse-ring": "pulseRing 1.6s cubic-bezier(0.4,0,0.6,1) infinite",
       },
       keyframes: {
@@ -57,6 +58,10 @@ const config: Config = {
         fadeIn: {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
+        },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(100%)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
         },
         pulseRing: {
           "0%, 100%": { boxShadow: "0 0 0 0 rgba(199,62,29,0.4)" },

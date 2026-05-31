@@ -117,3 +117,28 @@ export function clearAddress(): void {
   window.localStorage.removeItem(ADDRESS_KEY);
   window.dispatchEvent(new CustomEvent("rialto:address-updated"));
 }
+
+/* ─── Mode de retrait (livraison / à emporter) ───────────────────────── */
+const FULFILLMENT_KEY = "RIALTO:FULFILLMENT:V1";
+export type FulfillmentMode = "delivery" | "pickup";
+
+/** Lit le mode choisi par le client. null si jamais choisi. */
+export function readFulfillment(): FulfillmentMode | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(FULFILLMENT_KEY);
+    return raw === "delivery" || raw === "pickup" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeFulfillment(mode: FulfillmentMode): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FULFILLMENT_KEY, mode);
+    window.dispatchEvent(new CustomEvent("rialto:fulfillment-updated"));
+  } catch {
+    /* ignore */
+  }
+}

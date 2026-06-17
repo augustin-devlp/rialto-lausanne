@@ -6,9 +6,10 @@ import type {
 } from "@/lib/types";
 import MenuClient from "@/components/menu-v2/MenuClient";
 
-// Cache court pour que les badges Coup de cœur / Épuisé / Saison se
-// propagent rapidement quand le merchant toggle un plat dans /dashboard/stocks.
-export const revalidate = 30;
+// Rendu dynamique : connexion Supabase au runtime (jamais au build, évite
+// "supabaseUrl is required"). Bonus : badges Coup de cœur / Épuisé / Saison
+// toujours à jour dès que le merchant toggle un plat, sans cache.
+export const dynamic = "force-dynamic";
 
 async function loadMenu() {
   const sb = supabaseServer();

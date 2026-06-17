@@ -9,7 +9,9 @@ import ReviewsCarousel from "@/components/home/ReviewsCarousel";
 import SiteFooter from "@/components/home/SiteFooter";
 import AddressRequiredToast from "@/components/home/AddressRequiredToast";
 
-export const revalidate = 300;
+// Rendu dynamique : la connexion Supabase se fait au runtime, jamais au build
+// (évite "supabaseUrl is required" pendant la génération statique).
+export const dynamic = "force-dynamic";
 
 async function loadRestaurant() {
   const sb = supabaseServer();

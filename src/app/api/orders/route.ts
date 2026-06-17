@@ -13,6 +13,9 @@ import {
 } from "@/lib/smsTemplate";
 import { phoneLookupVariants } from "@/lib/phoneVariants";
 
+// Route d'écriture : toujours dynamique (client Supabase créé au runtime, jamais au build).
+export const dynamic = "force-dynamic";
+
 type IncomingItem = {
   menu_item_id: string;
   item_name_snapshot: string;

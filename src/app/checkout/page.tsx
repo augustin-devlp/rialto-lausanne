@@ -1,7 +1,8 @@
 import { supabaseServer, RESTAURANT_ID } from "@/lib/supabase";
 import CheckoutPageClient from "@/components/checkout/CheckoutPageClient";
 
-export const revalidate = 30;
+// Rendu dynamique : connexion Supabase au runtime, jamais au build.
+export const dynamic = "force-dynamic";
 
 async function loadRestaurant() {
   const sb = supabaseServer();

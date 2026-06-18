@@ -636,7 +636,7 @@ function LoyaltyCardSection({
         (loyalty.current_stamps / Math.max(1, loyalty.stamps_required)) * 100,
       ),
     );
-    const cardUrl = `${STAMPIFY_BASE}/c/${loyalty.short_code}`;
+    const cardUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/c/${loyalty.short_code}`;
     return (
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white shadow-pop md:p-8">
         <span className="eyebrow !text-saffron">Ta carte fidélité</span>

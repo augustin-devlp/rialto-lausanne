@@ -102,19 +102,6 @@ export default function SiteFooter() {
 
         <div className="mt-12 flex flex-col gap-2 border-t border-white/10 pt-6 text-xs text-white/60 md:flex-row md:items-center md:justify-between">
           <p>© {new Date().getFullYear()} Rialto · Tous droits réservés.</p>
-          <p>
-            Propulsé par{" "}
-            <a
-              href="https://stampify.ch"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-saffron hover:text-white"
-            >
-              Stampify
-            </a>
-            {" "}
-            <span aria-hidden>·</span> solution clé-en-main pour restaurants
-          </p>
         </div>
       </div>
     </footer>

@@ -257,20 +257,6 @@ export default function HamburgerMenu() {
             </div>
           </div>
         </nav>
-
-        {/* Signature Stampify */}
-        <footer className="border-t border-border bg-white/50 px-5 py-3 text-center text-[10px] text-mute">
-          Propulsé par{" "}
-          <a
-            href="https://stampify.ch"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-rialto hover:text-rialto-dark"
-          >
-            Stampify
-          </a>{" "}
-          🚀
-        </footer>
       </aside>
     </>
   );

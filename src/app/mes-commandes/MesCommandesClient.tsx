@@ -40,7 +40,7 @@ export default function MesCommandesClient() {
     setReorderingId(orderNumber);
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder`,
+        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as {

@@ -51,7 +51,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
       }
       // Récupère VAPID public key depuis stampify
       try {
-        const r = await fetch(`${STAMPIFY_BASE}/api/push/vapid-key`);
+        const r = await fetch(`/api/push/vapid-key`);
         if (r.ok) {
           const b = (await r.json()) as { key?: string };
           if (b.key) setVapidKey(b.key);

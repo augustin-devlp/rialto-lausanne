@@ -16,9 +16,6 @@ type Props = {
   onSuccess: () => void;
 };
 
-const STAMPIFY_BASE =
-  process.env.NEXT_PUBLIC_STAMPIFY_URL ?? "https://www.stampify.ch";
-
 export default function CheckoutForm({
   restaurant,
   cart,
@@ -88,7 +85,7 @@ export default function CheckoutForm({
     setPromoChecking(true);
     setPromoError(null);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/promo-codes/validate`, {
+      const res = await fetch(`/api/promo-codes/validate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -295,7 +292,7 @@ export default function CheckoutForm({
       // Si un code promo a été validé, on le consomme maintenant
       if (promo) {
         try {
-          await fetch(`${STAMPIFY_BASE}/api/promo-codes/apply`, {
+          await fetch(`/api/promo-codes/apply`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({

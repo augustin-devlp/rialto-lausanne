@@ -29,7 +29,6 @@ import {
   writeCart,
   type QualifiedAddress,
 } from "@/lib/clientStore";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 
@@ -308,7 +307,7 @@ export default function CheckoutPageClient({
     setPromoChecking(true);
     setPromoError(null);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/promo-codes/validate`, {
+      const res = await fetch(`/api/promo-codes/validate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -457,7 +456,7 @@ export default function CheckoutPageClient({
 
       if (promo) {
         try {
-          await fetch(`${STAMPIFY_BASE}/api/promo-codes/apply`, {
+          await fetch(`/api/promo-codes/apply`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({

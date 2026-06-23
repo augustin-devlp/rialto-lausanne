@@ -17,7 +17,6 @@ import type { CartItem } from "@/lib/types";
 import { cartCount, cartSubtotal, updateCartQuantity, writeCart, cartLineKey } from "@/lib/clientStore";
 import { formatCHF } from "@/lib/format";
 import UpsellPanel from "@/components/checkout/UpsellPanel";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Props = {
   cart: CartItem[];
@@ -73,7 +72,7 @@ export default function CartPanel({
   // Phase 12 V3 — ajout depuis UpsellPanel : fetch le menu_item, ajoute au cart
   async function handleUpsellAdd(menuItemId: string) {
     try {
-      const resp = await fetch(`${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`);
+      const resp = await fetch(`/api/rialto/menu-item/${menuItemId}`);
       if (!resp.ok) return;
       const body = await resp.json();
       const item = body.item;

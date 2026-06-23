@@ -10,7 +10,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { writeAddress, readAddress } from "@/lib/clientStore";
 import { DELIVERY_CITIES } from "@/lib/rialto-data";
 
@@ -49,7 +48,10 @@ export default function AddressGate({
     if (!valid || loading) return;
     setLoading(true);
     try {
-      const url = new URL(`${STAMPIFY_BASE}/api/delivery-zones/check`);
+      const url = new URL(
+        "/api/delivery-zones/check",
+        window.location.origin,
+      );
       url.searchParams.set("restaurant_id", restaurantId);
       url.searchParams.set("postal_code", postalCode.trim());
       const res = await fetch(url.toString());

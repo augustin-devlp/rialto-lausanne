@@ -163,7 +163,7 @@ export default function CheckoutForm({
     (async () => {
       try {
         const res = await fetch(
-          `${STAMPIFY_BASE}/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
+          `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
             restaurant.id,
           )}&postal_code=${encodeURIComponent(pc)}`,
         );
@@ -203,7 +203,8 @@ export default function CheckoutForm({
     (async () => {
       const pc = fulfillmentType === "delivery" ? zone?.postal_code : undefined;
       const url = new URL(
-        `${STAMPIFY_BASE}/api/restaurants/${restaurant.id}/prep-time`,
+        `/api/restaurants/${restaurant.id}/prep-time`,
+        window.location.origin,
       );
       url.searchParams.set("type", fulfillmentType);
       if (pc) url.searchParams.set("postal_code", pc);

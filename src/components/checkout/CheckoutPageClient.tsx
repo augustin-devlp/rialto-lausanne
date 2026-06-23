@@ -263,9 +263,7 @@ export default function CheckoutPageClient({
 
   async function addUpsellItem(menuItemId: string) {
     try {
-      const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/menu-item/${menuItemId}`,
-      );
+      const res = await fetch(`/api/rialto/menu-item/${menuItemId}`);
       let item: { id: string; name: string; price: number } | null = null;
       if (res.ok) {
         item = (await res.json()).item ?? null;

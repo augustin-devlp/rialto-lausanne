@@ -38,7 +38,7 @@ export default function ParrainageClient() {
     (async () => {
       try {
         const r = await fetch(
-          `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(session.phone)}`,
+          `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(session.phone)}`,
         );
         if (r.ok) {
           const body = (await r.json()) as {

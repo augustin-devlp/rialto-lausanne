@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { formatCHF } from "@/lib/format";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { readCustomerSession } from "@/lib/customerSession";
 import { readCart, writeCart } from "@/lib/clientStore";
 import type { CartItem } from "@/lib/types";
@@ -94,7 +93,7 @@ export default function MesCommandesClient() {
 
     (async () => {
       try {
-        const url = new URL(`${STAMPIFY_BASE}/api/rialto/loyalty/lookup`);
+        const url = new URL("/api/rialto/loyalty/lookup", window.location.origin);
         url.searchParams.set("phone", session.phone);
         const res = await fetch(url.toString());
         if (!res.ok) {

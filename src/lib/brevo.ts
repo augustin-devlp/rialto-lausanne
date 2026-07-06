@@ -88,3 +88,77 @@ export async function sendSMS(to: string, text: string): Promise<boolean> {
   }
   return false;
 }
+
+/**
+ * Send a transactional SMS via Brevo REST API.
+ *
+ * Variante 3-args portée VERBATIM depuis loyalty-cards/src/lib/brevo.ts.
+ * Contrairement à sendSMS() ci-dessus (cascade interne, retourne bool),
+ * cette version prend un `sender` explicite et THROW en cas d'échec avec
+ * une erreur enrichie (`response.status`, `response.data`) — la cascade
+ * de senders et la détection "crédits épuisés" sont gérées par l'appelant
+ * (route rialto/loyalty/signup).
+ *
+ * @param to  Recipient phone — will be normalized to Brevo format (no +, e.g. "33612345678")
+ * @param content  SMS text (max 160 chars for a single SMS)
+ * @param sender  Alphanumeric 11-char max sender ID. Defaults to "Stampify".
+ */
+export async function sendSms(
+  to: string,
+  content: string,
+  sender: string = "Stampify",
+): Promise<void> {
+  const apiKey = process.env.BREVO_API_KEY;
+  console.log("[brevo] BREVO_API_KEY present:", !!apiKey);
+
+  if (!apiKey) throw new Error("BREVO_API_KEY is not set");
+
+  const recipient = normalizePhone(to);
+  console.log(
+    "[brevo] sending SMS to recipient:",
+    recipient,
+    "| sender:",
+    sender,
+    "| content length:",
+    content.length,
+  );
+
+  const payload = {
+    sender,
+    recipient,
+    content,
+    type: "transactional",
+  };
+
+  const res = await fetch("https://api.brevo.com/v3/transactionalSMS/sms", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": apiKey,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await res.text();
+  console.log("[brevo] SMS API response status:", res.status, "| body:", responseText);
+
+  if (!res.ok) {
+    // Enrichit l'erreur avec le status + parsed body pour que le catch
+    // appelant puisse inspecter response.data.code, response.status, etc.
+    // (détection credits exhausted notamment).
+    const err = new Error(
+      `Brevo SMS error (${res.status}): ${responseText}`,
+    ) as Error & {
+      response?: { status: number; data?: Record<string, unknown> };
+      responseBody?: string;
+    };
+    err.responseBody = responseText;
+    try {
+      const parsed = JSON.parse(responseText) as Record<string, unknown>;
+      err.response = { status: res.status, data: parsed };
+    } catch {
+      err.response = { status: res.status, data: { raw: responseText } };
+    }
+    throw err;
+  }
+}

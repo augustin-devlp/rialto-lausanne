@@ -53,7 +53,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
     (async () => {
       try {
         const r = await fetch(
-          `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(session.phone)}`,
+          `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(session.phone)}`,
         );
         if (r.ok) {
           const b = (await r.json()) as { customer?: { id: string } | null };

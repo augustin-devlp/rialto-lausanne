@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { normalizePhone } from "@/lib/phone";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import SpinWheel from "./SpinWheel";
 import LotteryEntry from "./LotteryEntry";
 import ReviewGateModal from "./ReviewGateModal";
@@ -88,7 +87,7 @@ export default function FideliteSection() {
     if (!opts?.silent) setSearching(true);
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(clean)}`,
+        `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(clean)}`,
       );
       if (res.ok) {
         const body = (await res.json()) as LookupPayload;
@@ -229,7 +228,7 @@ function SignupForm({
     }
     setBusy(true);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
+      const res = await fetch(`/api/rialto/loyalty/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

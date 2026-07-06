@@ -21,7 +21,6 @@ import {
   writeCustomerSession,
   type CustomerSession,
 } from "./customerSession";
-import { STAMPIFY_BASE } from "./stampifyConfig";
 
 export type RialtoMember = CustomerSession & {
   current_stamps: number;
@@ -50,7 +49,7 @@ export function useRialtoMember() {
     setState({ status: "loading" });
 
     try {
-      const url = new URL(`${STAMPIFY_BASE}/api/loyalty-cards/lookup`);
+      const url = new URL("/api/loyalty-cards/lookup", window.location.origin);
       url.searchParams.set("short_code", session.short_code);
       const res = await fetch(url.toString(), { cache: "no-store" });
 

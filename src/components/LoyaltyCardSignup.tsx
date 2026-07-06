@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { normalizePhone } from "@/lib/phone";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type StampifyCard = {
   id: string;
@@ -55,7 +54,7 @@ export default function LoyaltyCardSignup({
     (async () => {
       try {
         const res = await fetch(
-          `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(
+          `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(
             initialPhone,
           )}`,
         );
@@ -93,7 +92,7 @@ export default function LoyaltyCardSignup({
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
+      const res = await fetch(`/api/rialto/loyalty/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

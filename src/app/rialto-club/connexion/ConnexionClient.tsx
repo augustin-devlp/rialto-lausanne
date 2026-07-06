@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SiteFooter from "@/components/home/SiteFooter";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { normalizePhone } from "@/lib/phone";
 import {
   readCustomerSession,
@@ -55,7 +54,7 @@ export default function ConnexionClient() {
       }
 
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/loyalty-cards/login-by-phone`,
+        `/api/loyalty-cards/login-by-phone`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },

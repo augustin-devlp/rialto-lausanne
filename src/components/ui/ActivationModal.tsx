@@ -15,7 +15,6 @@
  */
 
 import { useState } from "react";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Props = {
   open: boolean;
@@ -73,7 +72,7 @@ export default function ActivationModal({
     setSubmitting(true);
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/customer-cards/${cardId}/activate`,
+        `/api/customer-cards/${cardId}/activate`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },

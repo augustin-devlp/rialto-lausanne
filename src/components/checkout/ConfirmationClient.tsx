@@ -13,7 +13,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
 
@@ -282,7 +281,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     setLoyalty({ status: "checking" });
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/lookup?phone=${encodeURIComponent(order.customer_phone)}`,
+        `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(order.customer_phone)}`,
       );
       if (res.ok) {
         const body = (await res.json()) as {
@@ -326,7 +325,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   async function createCard() {
     setLoyalty({ status: "signing_up" });
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/signup`, {
+      const res = await fetch(`/api/rialto/loyalty/signup`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

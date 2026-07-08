@@ -23,11 +23,16 @@ export const TEMPLATE_META: Record<
   },
 };
 
-/** Variables supportées par le template loyalty_card_created. */
+/**
+ * Variables supportées par les templates.
+ *   - loyalty_card_created : customer_name, card_url, restaurant_name
+ *   - reward_unlocked      : customer_name, reward_label
+ */
 export type TemplateVariableKey =
   | "customer_name"
   | "card_url"
-  | "restaurant_name";
+  | "restaurant_name"
+  | "reward_label";
 
 export type TemplateContext = Partial<Record<TemplateVariableKey, string>>;
 

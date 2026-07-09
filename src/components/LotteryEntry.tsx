@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Lottery = {
   id: string;
@@ -47,7 +46,7 @@ export default function LotteryEntry({
     setError(null);
     try {
       const res = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/lottery/enter`,
+        `/api/rialto/loyalty/lottery/enter`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

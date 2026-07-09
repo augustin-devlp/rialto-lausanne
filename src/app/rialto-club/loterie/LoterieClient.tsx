@@ -8,7 +8,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { readCustomerSession } from "@/lib/customerSession";
 
 type State = "A" | "B" | "C" | "D" | "E";
@@ -62,7 +61,7 @@ export default function LotterieClient() {
 
     (async () => {
       try {
-        const url = new URL(`${STAMPIFY_BASE}/api/lottery/current`);
+        const url = new URL("/api/lottery/current", window.location.origin);
         url.searchParams.set("customer_id", session.customer_id);
         const res = await fetch(url.toString(), { cache: "no-store" });
         if (!res.ok) {

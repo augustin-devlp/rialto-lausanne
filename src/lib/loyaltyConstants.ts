@@ -2,9 +2,8 @@
  * Constantes du programme de fidélité Rialto Club.
  *
  * Portées depuis loyalty-cards/src/lib/rialtoConstants.ts (Stampify).
- * On ne garde ici que ce qui est utilisé par le cœur fidélité local
- * (carte + inscription + lookup). Les IDs roue/loterie/business restent
- * hors scope (lots ultérieurs).
+ * Couvre le cœur fidélité (carte + inscription + lookup), la roue (Lot 5)
+ * et la loterie (Lot 6).
  */
 
 /** Business Stampify hérité — conservé pour compat. */
@@ -15,6 +14,9 @@ export const CARD_ID = "f4cb1a3f-fc5c-40eb-87db-8d2c2b0a8b5f";
 
 /** Roue de la chance Rialto dans spin_wheels (Lot 5). */
 export const SPIN_WHEEL_ID = "37933bc4-9adf-4aa2-91fc-b422ce026c41";
+
+/** Loterie Rialto dans lotteries (Lot 6). */
+export const LOTTERY_ID = "aadf3919-e81c-4fef-8ea4-60d871e1121f";
 
 /**
  * Place ID Google du restaurant Rialto — unifié (D3). Sert au deep-link

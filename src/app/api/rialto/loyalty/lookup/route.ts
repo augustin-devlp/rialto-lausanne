@@ -4,6 +4,7 @@ import {
   CARD_ID,
   BUSINESS_ID,
   SPIN_WHEEL_ID,
+  LOTTERY_ID,
   RIALTO_PLACE_ID,
 } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
@@ -16,11 +17,12 @@ export const dynamic = "force-dynamic";
  * Retourne la carte fidélité + roue + review_gate + orders pour ce téléphone.
  * Réponse 200 avec customer: null si aucune carte n'existe encore.
  *
- * ⚠️ Portage (Lot 3 D2 → Lot 5) : spin_wheel et review_gate sont désormais
+ * ⚠️ Portage (Lot 3 D2 → Lot 5 → Lot 6) : spin_wheel et review_gate sont
  * RÉELS (Lot 5 — roue + review gate branchés). can_spin passe par
  * computeSpinAvailability (source unique D1). place_id = RIALTO_PLACE_ID
- * (D3, zéro table businesses). `lottery` RESTE null (lot ultérieur) :
- * aucune lecture des tables lotteries / lottery_participants.
+ * (D3, zéro table businesses). `lottery` est RÉEL (Lot 6) : lecture de
+ * lotteries + lottery_participants (already_entered). Divergence de shape
+ * assumée vs /api/lottery/current : ce bloc N'inclut PAS prize_description.
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -108,7 +110,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 3) 10 dernières commandes Rialto
+  // 3) Loterie
+  const { data: lottery } = await admin
+    .from("lotteries")
+    .select(
+      "id, title, reward_description, draw_date, start_date, end_date, is_active, is_permanent, max_winners, require_google_review",
+    )
+    .eq("id", LOTTERY_ID)
+    .maybeSingle();
+
+  let alreadyEntered = false;
+  if (lottery && card) {
+    const { data: existing } = await admin
+      .from("lottery_participants")
+      .select("id")
+      .eq("lottery_id", LOTTERY_ID)
+      .eq("phone", phone)
+      .maybeSingle();
+    alreadyEntered = !!existing;
+  }
+
+  // 4) 10 dernières commandes Rialto
   const { data: orders } = card
     ? await admin
         .from("orders")
@@ -156,7 +178,20 @@ export async function GET(req: NextRequest) {
           require_google_review: !!wheel.require_google_review,
         }
       : null,
-    lottery: null,
+    lottery: lottery
+      ? {
+          id: lottery.id,
+          title: lottery.title,
+          reward_description: lottery.reward_description,
+          draw_date: lottery.draw_date,
+          start_date: lottery.start_date,
+          end_date: lottery.end_date,
+          is_active: lottery.is_active,
+          is_permanent: lottery.is_permanent,
+          already_entered: alreadyEntered,
+          require_google_review: !!(lottery as { require_google_review?: boolean }).require_google_review,
+        }
+      : null,
     orders: orders ?? [],
     review_gate: {
       place_id: RIALTO_PLACE_ID,

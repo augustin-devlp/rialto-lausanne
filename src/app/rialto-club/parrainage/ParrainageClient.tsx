@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { readCustomerSession } from "@/lib/customerSession";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Stats = {
   ok: boolean;
@@ -59,13 +58,13 @@ export default function ParrainageClient() {
     (async () => {
       try {
         const [genRes, statsRes] = await Promise.all([
-          fetch(`${STAMPIFY_BASE}/api/rialto/referrals/generate`, {
+          fetch(`/api/rialto/referrals/generate`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ customer_id: customerId }),
           }),
           fetch(
-            `${STAMPIFY_BASE}/api/rialto/referrals/stats?customer_id=${customerId}`,
+            `/api/rialto/referrals/stats?customer_id=${customerId}`,
           ),
         ]);
         const g = await genRes.json();
@@ -116,7 +115,7 @@ export default function ParrainageClient() {
       return;
     }
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/referrals/claim`, {
+      const res = await fetch(`/api/rialto/referrals/claim`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

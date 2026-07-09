@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reward-referrals",
+      "schedule": "15 9 * * *"
+    }
+  ]
+}

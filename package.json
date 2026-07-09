@@ -17,6 +17,7 @@
     "canvas-confetti": "^1.9.4",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "html5-qrcode": "^2.3.8",
     "libphonenumber-js": "^1.12.41",
     "next": "14.2.18",
     "qrcode": "^1.5.4",

@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import confetti from "canvas-confetti";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 // react-custom-roulette touche window -> SSR disabled
 const Wheel = dynamic(
@@ -72,7 +71,7 @@ export default function SpinWheel({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/spin`, {
+      const res = await fetch("/api/rialto/loyalty/spin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, first_name: firstName }),

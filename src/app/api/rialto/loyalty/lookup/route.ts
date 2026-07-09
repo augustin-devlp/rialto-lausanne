@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
-import { CARD_ID } from "@/lib/loyaltyConstants";
+import {
+  CARD_ID,
+  BUSINESS_ID,
+  SPIN_WHEEL_ID,
+  RIALTO_PLACE_ID,
+} from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
+import { computeSpinAvailability } from "@/lib/spinAvailability";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/rialto/loyalty/lookup?phone=+41...
- * Retourne la carte fidélité + orders pour ce téléphone.
+ * Retourne la carte fidélité + roue + review_gate + orders pour ce téléphone.
  * Réponse 200 avec customer: null si aucune carte n'existe encore.
  *
- * ⚠️ Portage CŒUR-ONLY (décision D2) : les champs spin_wheel / lottery /
- * review_gate sont PRÉSENTS dans le JSON (parité de forme avec Stampify)
- * mais figés à null. Aucune lecture des tables spin_*, lotteries,
- * lottery_participants, google_review_claims, businesses.
+ * ⚠️ Portage (Lot 3 D2 → Lot 5) : spin_wheel et review_gate sont désormais
+ * RÉELS (Lot 5 — roue + review gate branchés). can_spin passe par
+ * computeSpinAvailability (source unique D1). place_id = RIALTO_PLACE_ID
+ * (D3, zéro table businesses). `lottery` RESTE null (lot ultérieur) :
+ * aucune lecture des tables lotteries / lottery_participants.
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -45,7 +52,63 @@ export async function GET(req: NextRequest) {
     .eq("id", CARD_ID)
     .single();
 
-  // 2) 10 dernières commandes Rialto
+  // 2) Spin wheel
+  const { data: wheel } = await admin
+    .from("spin_wheels")
+    .select("id, segments, frequency, is_active, require_google_review")
+    .eq("id", SPIN_WHEEL_ID)
+    .maybeSingle();
+
+  const { data: wheelRewards } = await admin
+    .from("spin_rewards")
+    .select("id, label, probability, color")
+    .eq("wheel_id", SPIN_WHEEL_ID);
+
+  // can_spin via computeSpinAvailability (D1 — source unique, PAS le calcul
+  // legacy inline). last_reward = reward_won de la dernière spin.
+  let canSpin = false;
+  let lastSpinReward: string | null = null;
+  if (wheel?.is_active && phone) {
+    const { data: entry } = await admin
+      .from("spin_entries")
+      .select("last_spin_at, reward_won")
+      .eq("wheel_id", SPIN_WHEEL_ID)
+      .eq("phone", phone)
+      .order("last_spin_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    lastSpinReward = (entry?.reward_won as string | null) ?? null;
+
+    const availability = await computeSpinAvailability({
+      wheelId: SPIN_WHEEL_ID,
+      phone,
+      customerId: card ? (card.customer_id as string) : null,
+    });
+    canSpin = availability.can_spin;
+  }
+
+  // 2b) Review gate : place_id (D3 — constante, zéro table businesses) +
+  // claim actif pour ce customer.
+  let activeClaim: { id: string; expires_at: string } | null = null;
+  if (card) {
+    const { data: claim } = await admin
+      .from("google_review_claims")
+      .select("id, expires_at")
+      .eq("customer_id", card.customer_id)
+      .eq("business_id", BUSINESS_ID)
+      .gt("expires_at", new Date().toISOString())
+      .order("claimed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (claim) {
+      activeClaim = {
+        id: claim.id as string,
+        expires_at: claim.expires_at as string,
+      };
+    }
+  }
+
+  // 3) 10 dernières commandes Rialto
   const { data: orders } = card
     ? await admin
         .from("orders")
@@ -81,12 +144,23 @@ export async function GET(req: NextRequest) {
           short_code: (card as { short_code?: string | null }).short_code ?? null,
         }
       : null,
-    spin_wheel: null,
+    spin_wheel: wheel
+      ? {
+          id: wheel.id,
+          is_active: wheel.is_active,
+          frequency: wheel.frequency,
+          segments: wheel.segments ?? [],
+          rewards: wheelRewards ?? [],
+          can_spin: canSpin,
+          last_reward: lastSpinReward,
+          require_google_review: !!wheel.require_google_review,
+        }
+      : null,
     lottery: null,
     orders: orders ?? [],
     review_gate: {
-      place_id: null,
-      active_claim: null,
+      place_id: RIALTO_PLACE_ID,
+      active_claim: activeClaim,
     },
   });
 }

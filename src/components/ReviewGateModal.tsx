@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type VerifyResult =
   | { ok: true; reason: "existing-claim" | "new-claim" }
@@ -144,7 +143,7 @@ export default function ReviewGateModal({
       // Tentative mode normal d'abord (sauf si on a déjà basculé)
       if (!degradedMode) {
         const res = await fetch(
-          `${STAMPIFY_BASE}/api/rialto/loyalty/verify-review`,
+          "/api/rialto/loyalty/verify-review",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -188,7 +187,7 @@ export default function ReviewGateModal({
       // Mode dégradé — appel endpoint dédié
       const opened_at = startedReviewAt ?? Date.now() - WAIT_BEFORE_CHECK_MS;
       const res2 = await fetch(
-        `${STAMPIFY_BASE}/api/rialto/loyalty/verify-review-degraded`,
+        "/api/rialto/loyalty/verify-review-degraded",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

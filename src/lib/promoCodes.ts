@@ -28,6 +28,26 @@ export type PromoSource =
 
 export type PromoDiscountType = "percent" | "fixed" | "free_item";
 
+export type GeneratePromoInput = {
+  business_id: string;
+  /** Optionnel : ID du restaurant (même que business pour Rialto) */
+  restaurant_id?: string | null;
+  customer_id?: string | null;
+  phone?: string | null;
+  source: PromoSource;
+  discount_type: PromoDiscountType;
+  /** Pourcentage (ex: 10 = -10%) ou montant CHF (ex: 5 = -5 CHF). Ignoré si free_item. */
+  discount_value?: number | null;
+  /** Si free_item : libellé de l'article offert ("Tiramisu", "Boisson au choix"). */
+  free_item_label?: string | null;
+  /** Panier minimum pour que le code soit utilisable. Défaut : 0. */
+  min_order_amount?: number | null;
+  /** Nombre d'utilisations max. Défaut : 1 (code usage unique). */
+  max_uses?: number;
+  /** Durée de validité en jours. Défaut : 30. */
+  valid_days?: number;
+};
+
 export type PromoCodeRow = {
   id: string;
   business_id: string;
@@ -48,6 +68,75 @@ export type PromoCodeRow = {
   used_on_order_id: string | null;
   created_at: string;
 };
+
+/**
+ * Génère un code aléatoire base32 sans caractères ambigus (0/O, 1/I).
+ */
+function randomAlphanumeric(length: number): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // pas de 0/O/1/I
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return out;
+}
+
+/**
+ * Crée un nouveau code promo en DB. Retry jusqu'à 5× sur collision.
+ *
+ * Adapté du portage Stampify : préfixe `RIA` EN DUR (zéro table businesses),
+ * business_id forcé sur la constante locale — le business_id de l'input est
+ * ignoré. restaurant_id = input.restaurant_id ?? BUSINESS_ID.
+ */
+export async function generatePromoCode(
+  input: GeneratePromoInput,
+): Promise<{ ok: true; code: PromoCodeRow } | { ok: false; error: string }> {
+  const admin = supabaseService();
+  const prefix = "RIA";
+
+  const validFrom = new Date();
+  const validUntil = new Date();
+  validUntil.setDate(validUntil.getDate() + (input.valid_days ?? 30));
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = `${prefix}-${randomAlphanumeric(5)}`;
+    const { data, error } = await admin
+      .from("promo_codes")
+      .insert({
+        business_id: BUSINESS_ID,
+        restaurant_id: input.restaurant_id ?? BUSINESS_ID,
+        code,
+        customer_id: input.customer_id ?? null,
+        phone: input.phone ?? null,
+        source: input.source,
+        discount_type: input.discount_type,
+        discount_value: input.discount_value ?? null,
+        free_item_label: input.free_item_label ?? null,
+        min_order_amount: input.min_order_amount ?? 0,
+        max_uses: input.max_uses ?? 1,
+        uses_count: 0,
+        valid_from: validFrom.toISOString(),
+        valid_until: validUntil.toISOString(),
+      })
+      .select("*")
+      .single();
+
+    if (!error && data) {
+      return { ok: true, code: data as PromoCodeRow };
+    }
+
+    // 23505 = unique_violation ; on retente avec un nouveau code
+    if (error && error.code !== "23505") {
+      console.error("[promoCodes] insert failed", error);
+      return { ok: false, error: error.message };
+    }
+    console.warn(
+      `[promoCodes] collision sur ${code} (tentative ${attempt + 1}), retry`,
+    );
+  }
+
+  return { ok: false, error: "Impossible de générer un code unique après 5 tentatives" };
+}
 
 /**
  * Vérifie qu'un code est valide et qu'il peut être appliqué à un panier

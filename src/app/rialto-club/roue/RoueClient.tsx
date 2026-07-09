@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import ReviewGateModal from "@/components/ReviewGateModal";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
+import { RIALTO_PLACE_ID } from "@/lib/loyaltyConstants";
 import { readCustomerSession } from "@/lib/customerSession";
 
 type State = "A" | "B" | "C" | "D" | "E";
@@ -38,8 +38,6 @@ type AvailabilityResponse = {
   allowed_weekdays: number[];
   require_google_review: boolean;
 };
-
-const RIALTO_PLACE_ID = "ChIJrbzJL6cvjEcRHK7RrA9M3ic";
 
 function formatDateFR(iso: string): string {
   try {
@@ -68,7 +66,7 @@ export default function RoueClient() {
   const fetchAvailability = async (custId: string) => {
     setLoading(true);
     try {
-      const url = new URL(`${STAMPIFY_BASE}/api/spin/availability`);
+      const url = new URL("/api/spin/availability", window.location.origin);
       url.searchParams.set("customer_id", custId);
       const res = await fetch(url.toString(), { cache: "no-store" });
       if (!res.ok) {
@@ -109,7 +107,7 @@ export default function RoueClient() {
     setSpinning(true);
     setSpinError(null);
     try {
-      const res = await fetch(`${STAMPIFY_BASE}/api/rialto/loyalty/spin`, {
+      const res = await fetch("/api/rialto/loyalty/spin", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

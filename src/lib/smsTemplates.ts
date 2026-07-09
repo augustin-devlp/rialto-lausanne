@@ -11,7 +11,7 @@
  */
 
 export const TEMPLATE_META: Record<
-  "loyalty_card_created",
+  "loyalty_card_created" | "wheel_prize_code",
   { title: string; description: string; defaultContent: string }
 > = {
   loyalty_card_created: {
@@ -21,18 +21,27 @@ export const TEMPLATE_META: Record<
     defaultContent:
       "Bienvenue chez Rialto {{customer_name}} ! Ta carte fidelite est prete. Montre-la a chaque commande : {{card_url}} - 1 pizza offerte apres 10 tampons !",
   },
+  wheel_prize_code: {
+    title: "Code promo gagné (roue)",
+    description:
+      "Envoyé quand un client gagne un lot à la roue de la chance. {{code}} = code promo, {{reward_label}} = libellé du lot.",
+    defaultContent:
+      "Bravo {{customer_name}} ! Tu as gagne {{reward_label}} sur ta prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
+  },
 };
 
 /**
  * Variables supportées par les templates.
  *   - loyalty_card_created : customer_name, card_url, restaurant_name
  *   - reward_unlocked      : customer_name, reward_label
+ *   - wheel_prize_code     : customer_name, reward_label, code, restaurant_name
  */
 export type TemplateVariableKey =
   | "customer_name"
   | "card_url"
   | "restaurant_name"
-  | "reward_label";
+  | "reward_label"
+  | "code";
 
 export type TemplateContext = Partial<Record<TemplateVariableKey, string>>;
 

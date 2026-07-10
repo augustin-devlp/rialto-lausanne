@@ -22,8 +22,6 @@ type StampifyCustomer = {
 };
 
 type Props = {
-  restaurantId: string;
-  stampifyBaseUrl?: string;
   defaultFirstName: string;
   defaultLastName: string;
   phone: string;

@@ -355,8 +355,9 @@ function CardView({
   };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const complete = card.current_stamps >= card.stamps_required;
+  // D6 (lot 9) : valeur brute, sans préfixe STAMPIFY:, pour s'aligner sur /c/[shortCode] et le scanner /scan (qui cherchent la valeur brute).
   const qrValue = useMemo(
-    () => `STAMPIFY:${card.qr_code_value}`,
+    () => card.qr_code_value,
     [card.qr_code_value],
   );
 

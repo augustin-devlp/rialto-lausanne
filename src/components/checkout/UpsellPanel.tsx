@@ -10,7 +10,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { CartItem } from "@/lib/types";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 import { formatCHF } from "@/lib/format";
 import { readCustomerSession } from "@/lib/customerSession";
 
@@ -80,7 +79,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       const ac = new AbortController();
       abortRef.current = ac;
       try {
-        const resp = await fetch(`${STAMPIFY_BASE}/api/rialto/upsell`, {
+        const resp = await fetch(`/api/rialto/upsell`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -107,7 +106,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
 
         // Track shown
         for (const s of list) {
-          fetch(`${STAMPIFY_BASE}/api/rialto/upsell/track`, {
+          fetch(`/api/rialto/upsell/track`, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -137,7 +136,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
 
   const handleAdd = (s: Suggestion) => {
     onAdd(s.menu_item_id);
-    fetch(`${STAMPIFY_BASE}/api/rialto/upsell/track`, {
+    fetch(`/api/rialto/upsell/track`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -155,7 +154,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
     setSuggestions((prev) =>
       (prev || []).filter((x) => x.menu_item_id !== s.menu_item_id),
     );
-    fetch(`${STAMPIFY_BASE}/api/rialto/upsell/track`, {
+    fetch(`/api/rialto/upsell/track`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

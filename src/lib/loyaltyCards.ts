@@ -61,7 +61,7 @@ export async function lookupCardByShortCode(
       qr_code_value,
       short_code,
       is_fully_activated,
-      customer:customer_id (first_name, phone, date_of_birth, gender, vip_tier, vip_lifetime_spend, vip_order_count),
+      customer:customer_id (id, first_name, phone, date_of_birth, gender, vip_tier, vip_lifetime_spend, vip_order_count),
       card:card_id (card_name, reward_description, stamps_required, business_id)
       `,
     )
@@ -99,9 +99,8 @@ export async function lookupCardByShortCode(
       (data as unknown as { is_fully_activated?: boolean }).is_fully_activated,
     ),
     has_birthday: Boolean(customerRow?.date_of_birth),
-    // ⚠️ BUG PRÉSERVÉ (décision D5) : le nested select customer n'inclut
-    // PAS 'id', donc customer_id vaut toujours null. NE PAS corriger ici
-    // (correction prévue au lot push).
+    // customer_id réel depuis le Lot 8 (push) — le gate PushToggle de
+    // /c/[shortCode] en dépend.
     customer_id: customerRow?.id ?? null,
     vip_tier: customerRow?.vip_tier ?? null,
     vip_lifetime_spend: customerRow?.vip_lifetime_spend

@@ -8,14 +8,13 @@
  * - Affiche "Notifications activées ✓" + un bouton désactiver si souscrit
  *
  * Requiert VAPID_PUBLIC_KEY exposé via NEXT_PUBLIC_VAPID_PUBLIC_KEY
- * côté Stampify — on fetch le manifest public une fois pour l'avoir.
+ * — on fetch la clé publique une fois pour l'avoir.
  *
- * Le subscribe est envoyé à stampify.ch/api/push/subscribe avec `phone`
+ * Le subscribe est envoyé à /api/push/subscribe (même origine) avec `phone`
  * pour permettre la cascade push→SMS côté transactional.
  */
 
 import { useEffect, useState } from "react";
-import { STAMPIFY_BASE } from "@/lib/stampifyConfig";
 
 type Props = {
   phone?: string;
@@ -49,7 +48,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
         setState("denied");
         return;
       }
-      // Récupère VAPID public key depuis stampify
+      // Récupère la clé publique VAPID (route locale)
       try {
         const r = await fetch(`/api/push/vapid-key`);
         if (r.ok) {
@@ -93,8 +92,8 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
         userVisibleOnly: true,
         applicationServerKey,
       });
-      // POST to Stampify
-      const res = await fetch(`${STAMPIFY_BASE}/api/push/subscribe`, {
+      // POST vers la route locale
+      const res = await fetch(`/api/push/subscribe`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -123,7 +122,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
         await sub.unsubscribe();
         if (endpoint) {
           await fetch(
-            `${STAMPIFY_BASE}/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`,
+            `/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`,
             { method: "DELETE" },
           );
         }

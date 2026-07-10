@@ -4,14 +4,15 @@
  * Ne porte que ce dont le cœur fidélité a besoin :
  *   - renderTemplate() (remplacement {{var}}, inconnues → '', compression
  *     des espaces doubles, trim) — VERBATIM.
- *   - l'entrée loyalty_card_created de TEMPLATE_META.
+ *   - les entrées loyalty_card_created (Lot 3), wheel_prize_code (Lot 5) et
+ *     referral_success (Lot 7) de TEMPLATE_META.
  *
  * N'embarque PAS buildContext, ni les 18 autres templates, ni l'import
  * orderFormat.
  */
 
 export const TEMPLATE_META: Record<
-  "loyalty_card_created" | "wheel_prize_code",
+  "loyalty_card_created" | "wheel_prize_code" | "referral_success",
   { title: string; description: string; defaultContent: string }
 > = {
   loyalty_card_created: {
@@ -27,6 +28,13 @@ export const TEMPLATE_META: Record<
       "Envoyé quand un client gagne un lot à la roue de la chance. {{code}} = code promo, {{reward_label}} = libellé du lot.",
     defaultContent:
       "Bravo {{customer_name}} ! Tu as gagne {{reward_label}} sur ta prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
+  },
+  referral_success: {
+    title: "Parrainage réussi",
+    description:
+      "Envoyé au parrain quand un filleul passe sa 1re commande. Variables : {{customer_name}}, {{reward_label}}, {{code}}.",
+    defaultContent:
+      "🎉 Merci {{customer_name}} ! Ton filleul a commande chez Rialto. Tu gagnes {{reward_label}}. Code : {{code}} (valable 30 jours).",
   },
 };
 

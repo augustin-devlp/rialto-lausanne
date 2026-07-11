@@ -37,7 +37,7 @@ export async function callGeminiForMessages(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[upsell/gemini] timeout/error → fallback', { latency: Date.now() - start, error: msg });
-    return fallbackMessages(topCandidates, maxSuggestions, analysis);
+    return fallbackMessages(topCandidates, maxSuggestions);
   }
   const latency = Date.now() - start;
 
@@ -46,7 +46,7 @@ export async function callGeminiForMessages(
       reason: res.reason,
       latency,
     });
-    return fallbackMessages(topCandidates, maxSuggestions, analysis);
+    return fallbackMessages(topCandidates, maxSuggestions);
   }
 
   try {
@@ -67,32 +67,34 @@ export async function callGeminiForMessages(
     return out;
   } catch (err) {
     console.warn('[upsell/gemini] parse fail, fallback', err);
-    return fallbackMessages(topCandidates, maxSuggestions, analysis);
+    return fallbackMessages(topCandidates, maxSuggestions);
   }
 }
 
+/**
+ * Fallback en dur (Gemini indisponible / clé absente). Même voix « serveur
+ * sympa de la pizzeria de quartier » que le prompt (D4) : phrases courtes,
+ * chaleureuses, max 1 emoji, zéro jargon marketing. Textes exacts actés (D4).
+ * NB : plus de branche drink_alcohol — code mort (l'alcool ne passe jamais les
+ * filtres durs), retirée. Plus besoin de `analysis` non plus.
+ */
 function fallbackMessages(
   topCandidates: UpsellCandidate[],
   max: number,
-  analysis: CartAnalysis,
 ): GeminiUpsellMessage[] {
   return topCandidates.slice(0, max).map((c) => {
     const it = c.item;
     let msg: string;
-    if (analysis.hasSpicyItem && (it.upsell_tags || []).some((t) => t.includes('refresh') || t === 'lemonade' || t === 'iced_tea')) {
-      msg = `Parfait pour calmer le piquant.`;
-    } else if (it.dish_role === 'dessert') {
-      msg = `Un dessert pour finir en beauté ?`;
-    } else if (it.dish_role === 'drink_alcohol') {
-      msg = `Se marie très bien avec ta commande.`;
+    if (it.dish_role === 'dessert') {
+      msg = 'Et un petit dessert pour finir ? 🍰';
     } else if (it.dish_role === 'drink_soft') {
-      msg = `Une boisson pour accompagner ?`;
+      msg = 'Une boisson fraîche avec ça ?';
     } else if (it.dish_role === 'starter') {
-      msg = `Une entrée légère pour commencer.`;
-    } else if ((it.semantic_tags || []).some((t) => t.includes('signature'))) {
-      msg = `Notre signature maison, à tester.`;
+      msg = 'Une entrée pour patienter ?';
+    } else if (it.dish_role === 'side' || it.is_shareable) {
+      msg = 'Un petit plus à partager ?';
     } else {
-      msg = `Parfait avec ta commande.`;
+      msg = 'Ça va bien avec ta commande.';
     }
     return { menu_item_id: it.id, message: msg };
   });

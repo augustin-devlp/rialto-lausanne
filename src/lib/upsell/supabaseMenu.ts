@@ -15,7 +15,7 @@ export async function fetchFullMenu(): Promise<MenuItemFull[]> {
   const { data, error } = await admin
     .from('menu_items')
     .select(
-      `id, name, price, image_url, is_available, is_out_of_stock, category_id,
+      `id, name, price, margin_weight, image_url, is_available, is_out_of_stock, category_id,
        heat_level, richness_level, saltiness_level, sweetness_level, acidity_level,
        caloric_density, fat_level, dish_role, cuisine_style, main_ingredient,
        is_vegetarian, contains_pork, contains_alcohol, serves_pax, is_shareable,
@@ -32,6 +32,7 @@ export async function fetchFullMenu(): Promise<MenuItemFull[]> {
     id: r.id as string,
     name: (r.name as string) ?? '',
     price: Number(r.price ?? 0),
+    margin_weight: Number(r.margin_weight ?? 1),
     image_url: (r.image_url as string) ?? undefined,
     is_available: r.is_available !== false,
     is_out_of_stock: Boolean(r.is_out_of_stock),

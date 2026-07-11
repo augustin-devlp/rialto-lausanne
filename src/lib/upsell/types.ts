@@ -9,6 +9,8 @@ export interface MenuItemFull {
   id: string;
   name: string;
   price: number;
+  /** Pondération de marge par catégorie (v2), CHECK 0.5–2.0 en base, défaut 1.0. */
+  margin_weight: number;
   image_url?: string;
   is_available: boolean;
   is_out_of_stock: boolean;

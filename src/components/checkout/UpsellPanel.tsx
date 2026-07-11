@@ -6,6 +6,13 @@
  * Suggestions personnalisées via /api/rialto/upsell (scoring + Gemini).
  * Debounce 800ms après stabilité panier. Skeleton pendant la requête.
  * Tracking shown/accepted/dismissed via /api/rialto/upsell/track.
+ *
+ * v2 (D3) — garde de session : dès qu'un client accepte OU ignore une
+ * suggestion, le panneau reste silencieux pour toute la session (aucun fetch,
+ * aucun rendu). Le cooldown serveur 3×/30j reste inchangé.
+ * v2 (fidélité) — bandeau discret « Plus que X tampons » au-dessus des
+ * suggestions, alimenté par la carte déjà résolue au lookup (zéro appel réseau
+ * en plus). Lecture seule stricte.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +21,26 @@ import { formatCHF } from "@/lib/format";
 import { readCustomerSession } from "@/lib/customerSession";
 
 const DEBOUNCE_MS = 800;
+
+// D3 — clé de garde de session (accepté OU ignoré → panneau clos pour la session).
+const SESSION_KEY = "rialto:upsell-session-done";
+
+function readSessionDone(): boolean {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) === "1";
+  } catch {
+    // Safari en navigation privée peut faire throw sessionStorage.
+    return false;
+  }
+}
+
+function markSessionDone(): void {
+  try {
+    sessionStorage.setItem(SESSION_KEY, "1");
+  } catch {
+    /* Safari privé : ignore silencieusement. */
+  }
+}
 
 type Suggestion = {
   menu_item_id: string;
@@ -26,6 +53,13 @@ type Suggestion = {
   reasons: string[];
 };
 
+// Carte fidélité minimale, capturée au passage du lookup existant (aucun
+// appel réseau supplémentaire). Uniquement les champs utiles au bandeau.
+type LoyaltyCard = {
+  current_stamps: number;
+  stamps_required: number;
+};
+
 type Props = {
   cart: CartItem[];
   onAdd: (menu_item_id: string) => void;
@@ -34,8 +68,9 @@ type Props = {
 export default function UpsellPanel({ cart, onAdd }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const [card, setCard] = useState<LoyaltyCard | null>(null);
+  const [sessionDone, setSessionDone] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -45,8 +80,14 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
     .sort()
     .join("|");
 
-  // Résoudre customer_id depuis la session locale → lookup stampify
+  // Au mount : si le panneau a déjà été fermé cette session (D3) → silence
+  // total, on ne résout même pas le client. Sinon on résout customer_id ET la
+  // carte fidélité depuis la session locale via le lookup existant.
   useEffect(() => {
+    if (readSessionDone()) {
+      setSessionDone(true);
+      return;
+    }
     const session = readCustomerSession();
     if (!session?.phone) return;
     (async () => {
@@ -55,8 +96,24 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
           `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(session.phone)}`,
         );
         if (r.ok) {
-          const b = (await r.json()) as { customer?: { id: string } | null };
+          const b = (await r.json()) as {
+            customer?: { id: string } | null;
+            card?: {
+              current_stamps?: number;
+              stamps_required?: number;
+            } | null;
+          };
           if (b.customer) setCustomerId(b.customer.id);
+          if (
+            b.card &&
+            typeof b.card.current_stamps === "number" &&
+            typeof b.card.stamps_required === "number"
+          ) {
+            setCard({
+              current_stamps: b.card.current_stamps,
+              stamps_required: b.card.stamps_required,
+            });
+          }
         }
       } catch {
         /* ignore */
@@ -65,6 +122,15 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
   }, []);
 
   useEffect(() => {
+    // D3 : panneau clos pour la session → aucun fetch, on nettoie tout.
+    if (sessionDone) {
+      if (abortRef.current) abortRef.current.abort();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      setSuggestions([]);
+      setLoading(false);
+      return;
+    }
+
     if (cart.length === 0) {
       setSuggestions([]);
       setLoading(false);
@@ -99,9 +165,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
           ok?: boolean;
           suggestions?: Suggestion[];
         };
-        const list = (data.suggestions ?? []).filter(
-          (s) => !dismissed.has(s.menu_item_id),
-        );
+        const list = data.suggestions ?? [];
         setSuggestions(list);
 
         // Track shown
@@ -132,10 +196,11 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartKey, customerId]);
+  }, [cartKey, customerId, sessionDone]);
 
   const handleAdd = (s: Suggestion) => {
     onAdd(s.menu_item_id);
+    // Tracking accepted TOUJOURS avant fermeture (ne casse pas les stats).
     fetch(`/api/rialto/upsell/track`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -147,13 +212,13 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
         cart_item_ids: cart.map((c) => c.menu_item_id),
       }),
     }).catch(() => {});
+    // D3 : accepter ferme le panneau pour toute la session (panier déjà augmenté).
+    markSessionDone();
+    setSessionDone(true);
   };
 
   const handleDismiss = (s: Suggestion) => {
-    setDismissed((prev) => new Set(prev).add(s.menu_item_id));
-    setSuggestions((prev) =>
-      (prev || []).filter((x) => x.menu_item_id !== s.menu_item_id),
-    );
+    // Tracking dismissed TOUJOURS avant fermeture.
     fetch(`/api/rialto/upsell/track`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -165,8 +230,13 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
         cart_item_ids: cart.map((c) => c.menu_item_id),
       }),
     }).catch(() => {});
+    // D3 : ignorer ferme aussi le panneau pour toute la session.
+    markSessionDone();
+    setSessionDone(true);
   };
 
+  // D3 : panneau clos pour la session → rien du tout.
+  if (sessionDone) return null;
   if (cart.length === 0) return null;
 
   if (loading && (!suggestions || suggestions.length === 0)) {
@@ -179,8 +249,21 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
 
   if (!suggestions || suggestions.length === 0) return null;
 
+  // Bandeau fidélité : uniquement si carte résolue ET le panneau affiche des
+  // suggestions. Panneau silencieux (retours null ci-dessus) → pas de bandeau.
+  const stampsLeft = card ? card.stamps_required - card.current_stamps : 0;
+  const showLoyaltyBanner = card !== null && stampsLeft >= 1;
+
   return (
     <section className="mt-6 space-y-2">
+      {showLoyaltyBanner && (
+        <div className="flex items-center gap-2 rounded-xl bg-[#F9F1E4] px-3.5 py-2.5 text-xs font-medium text-ink ring-1 ring-saffron/40">
+          <span>
+            Plus que {stampsLeft} tampon{stampsLeft > 1 ? "s" : ""} avant ta
+            récompense 🎁
+          </span>
+        </div>
+      )}
       <div className="mb-1 flex items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-mute">
           ✨ On te conseille aussi

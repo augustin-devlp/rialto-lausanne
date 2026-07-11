@@ -243,6 +243,16 @@ export function scoreItem(
   // Floor
   if (score < 0) score = 0;
 
+  // Pondération de marge (v2) : re-ranke les candidats pertinents, n'amplifie
+  // pas les mauvais fits. Valeurs par défaut par catégorie, à affiner avec les
+  // vraies marges du restaurateur.
+  // Appliqué EN DERNIER, uniquement sur score positif (0 reste 0).
+  if (score > 0) {
+    const mw = item.margin_weight ?? 1;
+    score = score * mw;
+    if (mw !== 1) reasons.push(`margin_x${mw}`);
+  }
+
   return { score, reasons };
 }
 

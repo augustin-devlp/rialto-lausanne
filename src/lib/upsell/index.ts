@@ -10,6 +10,8 @@ import { fetchFullMenu } from './supabaseMenu';
 import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring';
 import { callGeminiForMessages } from './geminiCall';
 
+export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
+
 /**
  * Orchestrateur principal : panier + contexte → suggestions.
  * - Analyse du panier
@@ -45,6 +47,13 @@ export async function generateUpsell(
   // Phase 12 V3 — F2 : panier ULTRA gros (>=8 items) → 0
   if (analysis.totalItems >= 8) {
     return { suggestions: [], debug: { analysis: { totalItems: analysis.totalItems }, context: {}, shortlist: [] } };
+  }
+
+  // v2 (D2) — garde-fou anti-lourdeur : sous-total > seuil CHF → silence total.
+  // Au-delà, suggérer paraît cupide. S'ajoute au court-circuit >=8 items ci-dessus.
+  const subtotal = analysis.totalPrice; // déjà pondéré quantité (cartAnalysis)
+  if (subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
+    return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
 
   const menu = await fetchFullMenu();
@@ -85,14 +94,12 @@ export async function generateUpsell(
     }
   }
 
-  // Budget (0/1/2) - puis plafond dynamique V3 BUG #4
+  // Budget (0/1/2) décidé par decideSuggestionBudget.
   let budget = decideSuggestionBudget(analysis, diverseTop);
-  // Cap à 1 si panier déjà chargé (>=6 items, ou 2+ mains, ou 2+ boissons)
-  const totalMains = analysis.roleCount.main + analysis.roleCount.combo;
-  const totalDrinks = analysis.roleCount.drink_soft + analysis.roleCount.drink_alcohol;
-  if (analysis.totalItems >= 6 || totalMains >= 2 || totalDrinks >= 2) {
-    budget = Math.min(budget, 1);
-  }
+  // v2 : max 1 suggestion par commande.
+  // (Remplace le cap conditionnel V3 >=6 items / 2+ mains / 2+ boissons, devenu
+  //  redondant sous ce plafond global — locals totalMains/totalDrinks retirés.)
+  budget = Math.min(budget, 1);
   if (budget === 0) {
     return {
       suggestions: [],
@@ -136,7 +143,7 @@ export async function generateUpsell(
         name: c.item.name,
         price: c.item.price,
         image_url: c.item.image_url,
-        message: 'Parfait avec ta commande.',
+        message: 'Ça va bien avec ta commande.',
         category: c.item.dish_role,
         score: c.score,
         reasons: c.reasons,

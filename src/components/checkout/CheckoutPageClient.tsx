@@ -513,7 +513,7 @@ export default function CheckoutPageClient({
 
       <form
         onSubmit={handleSubmit}
-        className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[1fr,380px] lg:gap-6 lg:py-6"
+        className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[minmax(0,1fr),380px] lg:gap-6 lg:py-6"
       >
         {/* ─── Colonne gauche ─────────────────────────────────── */}
         <div className="space-y-8">

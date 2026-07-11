@@ -37,7 +37,7 @@ export async function callGeminiForMessages(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[upsell/gemini] timeout/error → fallback', { latency: Date.now() - start, error: msg });
-    return fallbackMessages(topCandidates, maxSuggestions);
+    return fallbackMessages(topCandidates, maxSuggestions, analysis);
   }
   const latency = Date.now() - start;
 
@@ -46,7 +46,7 @@ export async function callGeminiForMessages(
       reason: res.reason,
       latency,
     });
-    return fallbackMessages(topCandidates, maxSuggestions);
+    return fallbackMessages(topCandidates, maxSuggestions, analysis);
   }
 
   try {
@@ -67,20 +67,34 @@ export async function callGeminiForMessages(
     return out;
   } catch (err) {
     console.warn('[upsell/gemini] parse fail, fallback', err);
-    return fallbackMessages(topCandidates, maxSuggestions);
+    return fallbackMessages(topCandidates, maxSuggestions, analysis);
   }
 }
 
 /**
- * Fallback en dur (Gemini indisponible / clé absente). Même voix « serveur
- * sympa de la pizzeria de quartier » que le prompt (D4) : phrases courtes,
- * chaleureuses, max 1 emoji, zéro jargon marketing. Textes exacts actés (D4).
+ * Message de complément générique, PIZZA-AWARE (round 1) : si le panier
+ * contient une pizza (Combos Pizza compris) on le mentionne. Vouvoiement
+ * (nouvelle règle de ton : tous les messages clients vouvoient). Source unique
+ * de ce texte — réutilisé par index.ts pour la complétion sans Gemini.
+ */
+export function genericPairingMessage(analysis: CartAnalysis): string {
+  const hasPizza = analysis.itemNames.some((n) => /pizza/i.test(n));
+  return hasPizza
+    ? 'Ça se marie bien avec votre pizza 🤌'
+    : 'Ça se marie bien avec votre commande 🤌';
+}
+
+/**
+ * Fallback en dur (Gemini indisponible / clé absente). Voix « serveur sympa de
+ * quartier » du prompt, désormais au vouvoiement (nouvelle règle de ton) :
+ * phrases courtes, chaleureuses, max 1 emoji, zéro jargon marketing.
  * NB : plus de branche drink_alcohol — code mort (l'alcool ne passe jamais les
- * filtres durs), retirée. Plus besoin de `analysis` non plus.
+ * filtres durs), retirée.
  */
 function fallbackMessages(
   topCandidates: UpsellCandidate[],
   max: number,
+  analysis: CartAnalysis,
 ): GeminiUpsellMessage[] {
   return topCandidates.slice(0, max).map((c) => {
     const it = c.item;
@@ -94,7 +108,7 @@ function fallbackMessages(
     } else if (it.dish_role === 'side' || it.is_shareable) {
       msg = 'Un petit plus à partager ?';
     } else {
-      msg = 'Ça va bien avec ta commande.';
+      msg = genericPairingMessage(analysis);
     }
     return { menu_item_id: it.id, message: msg };
   });

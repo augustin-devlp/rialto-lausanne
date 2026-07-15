@@ -3,34 +3,35 @@
 -- STATUT : NON EXÉCUTÉE
 -- Cible  : projet Supabase ymnhfdkyqbhucxdrnyzq (base active)
 -- ============================================================
--- DÉPENDANCES (les 3 sont bloquantes) :
+-- Aligné sur le schéma RÉEL de caisse_access défini par la migration
+-- 001_fondations_caisse.sql du repo servato-caisse :
+--   caisse_access(user_id uuid, restaurant_id uuid, created_at timestamptz,
+--                 PRIMARY KEY (user_id, restaurant_id))
+--   → PAS de colonne role. Gestion des lignes réservée au service_role.
+--
+-- DÉPENDANCES (les 2 sont bloquantes) :
 --   1. B1_create_restaurant.sql exécutée (la ligne jet-pizza existe)
---   2. La table public.caisse_access créée par les migrations du repo
---      servato-caisse (supabase/migrations/). Le schéma ci-dessous
---      suppose les colonnes (user_id, restaurant_id, role) avec
---      UNIQUE(user_id, restaurant_id) — À ALIGNER sur le schéma final
---      du repo servato-caisse avant exécution si les noms diffèrent.
---   3. uid du user caisse-rialto@servato.ch (créé par Augustin au
---      dashboard Supabase → Auth → Users), à substituer ci-dessous.
+--   2. Migration 001 du repo servato-caisse exécutée (table caisse_access)
+--
+-- User caisse : caisse-rialto@servato.ch
+-- UUID confirmé par Augustin : 4aa73cab-a7b1-44ba-9f89-baa1db60780d
 -- ============================================================
 
-INSERT INTO public.caisse_access (user_id, restaurant_id, role)
+INSERT INTO public.caisse_access (user_id, restaurant_id)
 SELECT
-  '<TODO_UID_CAISSE_RIALTO>'::uuid,
-  r.id,
-  'caisse'
+  '4aa73cab-a7b1-44ba-9f89-baa1db60780d'::uuid,
+  r.id
 FROM public.restaurants r
 WHERE r.slug = 'jet-pizza'
-ON CONFLICT (user_id, restaurant_id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- Vérification post-exécution :
---   SELECT ca.role, r.slug FROM public.caisse_access ca
+--   SELECT r.slug FROM public.caisse_access ca
 --   JOIN public.restaurants r ON r.id = ca.restaurant_id
---   WHERE ca.user_id = '<TODO_UID_CAISSE_RIALTO>';
---   → doit montrer 2 lignes : rialto + jet-pizza
---   (la ligne rialto étant seedée par les migrations servato-caisse)
+--   WHERE ca.user_id = '4aa73cab-a7b1-44ba-9f89-baa1db60780d';
+--   → doit montrer 2 lignes : rialto (seedée par la 001) + jet-pizza
 
 -- ROLLBACK :
 --   DELETE FROM public.caisse_access
---   WHERE user_id = '<TODO_UID_CAISSE_RIALTO>'
+--   WHERE user_id = '4aa73cab-a7b1-44ba-9f89-baa1db60780d'
 --     AND restaurant_id = (SELECT id FROM public.restaurants WHERE slug = 'jet-pizza');

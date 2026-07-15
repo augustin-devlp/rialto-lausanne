@@ -106,8 +106,14 @@ export default function CartPanel({
     }
   }
 
+  // Contrainte invisible : CartContent est l'enfant unique d'un aside flex-row.
+  // w-full + min-w-0 sont OBLIGATOIRES ici — sans min-w-0, la règle CSS
+  // min-width:auto laisse le contenu s'élargir au min-content d'une ligne, puis
+  // se faire couper à droite par le lg:overflow-hidden de l'aside (prix,
+  // « + Ajouter » et sous-total tronqués). w-full remplit aussi l'aside quand
+  // le panier est quasi vide (corrige le bug jumeau de sous-remplissage).
   const CartContent = (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-base font-bold truncate">Mon panier</h2>
@@ -129,7 +135,7 @@ export default function CartPanel({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
         {count === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="text-5xl">🛒</div>
@@ -277,7 +283,7 @@ export default function CartPanel({
     <>
       {/* Desktop sidebar (lg+) — width adaptée iPad : 320 sur lg, 380 sur xl */}
       <aside
-        className={`hidden lg:sticky lg:top-[calc(var(--header-h,4rem)+0.75rem)] lg:flex lg:h-[calc(100vh-var(--header-h,4rem)-1.5rem)] lg:w-[320px] xl:w-[360px] lg:flex-shrink-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:shadow-card ${className}`}
+        className={`hidden lg:sticky lg:top-[calc(var(--header-h,4rem)+0.75rem)] lg:flex lg:flex-col lg:h-[calc(100vh-var(--header-h,4rem)-1.5rem)] lg:w-[320px] xl:w-[360px] lg:flex-shrink-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:shadow-card ${className}`}
       >
         {CartContent}
       </aside>

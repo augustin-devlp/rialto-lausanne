@@ -8,7 +8,7 @@ import type {
 import { analyzeCart } from './cartAnalysis';
 import { fetchFullMenu } from './supabaseMenu';
 import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring';
-import { callGeminiForMessages } from './geminiCall';
+import { callGeminiForMessages, genericPairingMessage } from './geminiCall';
 
 export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
 
@@ -143,7 +143,7 @@ export async function generateUpsell(
         name: c.item.name,
         price: c.item.price,
         image_url: c.item.image_url,
-        message: 'Ça va bien avec ta commande.',
+        message: genericPairingMessage(analysis),
         category: c.item.dish_role,
         score: c.score,
         reasons: c.reasons,

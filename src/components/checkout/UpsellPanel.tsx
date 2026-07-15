@@ -259,20 +259,20 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       {showLoyaltyBanner && (
         <div className="flex items-center gap-2 rounded-xl bg-[#F9F1E4] px-3.5 py-2.5 text-xs font-medium text-ink ring-1 ring-saffron/40">
           <span>
-            Plus que {stampsLeft} tampon{stampsLeft > 1 ? "s" : ""} avant ta
+            Plus que {stampsLeft} tampon{stampsLeft > 1 ? "s" : ""} avant votre
             récompense 🎁
           </span>
         </div>
       )}
       <div className="mb-1 flex items-center gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-mute">
-          ✨ On te conseille aussi
+          ✨ On vous conseille aussi
         </span>
       </div>
       {suggestions.map((s) => (
         <div
           key={s.menu_item_id}
-          className="animate-fade-up relative flex items-center gap-3 rounded-2xl border-l-4 border-saffron bg-[#F9F1E4] p-4 pr-8 shadow-card"
+          className="animate-fade-up relative flex items-center gap-3 overflow-hidden rounded-2xl border-l-4 border-saffron bg-[#F9F1E4] p-4 pr-8 shadow-card"
         >
           <button
             type="button"

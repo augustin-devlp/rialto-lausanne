@@ -57,6 +57,18 @@ const TABS = [
       </svg>
     ),
   },
+  {
+    href: "/dashboard/donnees",
+    label: "Données",
+    exact: false,
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 3v12" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 21h14" />
+      </svg>
+    ),
+  },
 ];
 
 export default function BottomNav() {
@@ -75,7 +87,7 @@ export default function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex min-w-[72px] flex-col items-center gap-0.5 px-3 py-2.5 text-[11px] font-medium transition ${
+              className={`flex min-w-[60px] flex-col items-center gap-0.5 px-2 py-2.5 text-[10px] font-medium transition ${
                 active ? "text-rialto" : "text-mute hover:text-ink"
               }`}
             >

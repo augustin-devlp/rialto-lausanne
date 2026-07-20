@@ -1,7 +1,10 @@
 -- ============================================================================
 -- D5a — UNIQUE sur push_subscriptions.endpoint
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE vers la review caisse.
+-- STATUT : EXÉCUTÉE le 20.07.2026 — INCIDENT : exécutée en double par les
+--          deux conversations (course DDL sans dégât), état final = index
+--          unique brut, régularisé en contrainte par D5a2 (versionnée).
+--          Voir D5a2_promote_endpoint_constraint.sql.
 -- ============================================================================
 
 ALTER TABLE public.push_subscriptions

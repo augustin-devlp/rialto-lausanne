@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { BUSINESS_ID, CARD_ID, LOTTERY_ID } from "@/lib/loyaltyConstants";
+import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,10 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = supabaseService();
-  const phone = body.phone.trim();
+  // Harmonisation D2 : normalise en E.164 quand possible (évite les
+  // doublons de format entre lottery_participants et customers lors des
+  // réconciliations) ; repli sur le trim historique si format inconnu.
+  const phone = normalizePhone(body.phone) ?? body.phone.trim();
 
   const { data: lottery } = await admin
     .from("lotteries")

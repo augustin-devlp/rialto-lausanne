@@ -124,6 +124,34 @@ export default function AccueilClient() {
           </div>
           <Arrow />
         </Link>
+        <Link
+          href="/dashboard/jeux"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Jeux (roue + loterie)
+            </div>
+            <div className="text-xs text-mute">
+              Codes gagnés, utilisés, expirés
+            </div>
+          </div>
+          <Arrow />
+        </Link>
+        <Link
+          href="/dashboard/parrainage"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Parrainage
+            </div>
+            <div className="text-xs text-mute">
+              Codes −100 % des deux côtés, SMS, filleuls
+            </div>
+          </div>
+          <Arrow />
+        </Link>
       </div>
     </div>
   );

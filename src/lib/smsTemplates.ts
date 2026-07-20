@@ -12,7 +12,7 @@
  */
 
 export const TEMPLATE_META: Record<
-  "loyalty_card_created" | "wheel_prize_code" | "referral_success",
+  "loyalty_card_created" | "wheel_prize_code" | "referral_success" | "referral_claim_reward",
   { title: string; description: string; defaultContent: string }
 > = {
   loyalty_card_created: {
@@ -29,12 +29,19 @@ export const TEMPLATE_META: Record<
     defaultContent:
       "Bravo {{customer_name}} ! Tu as gagne {{reward_label}} sur ta prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
   },
+  referral_claim_reward: {
+    title: "Bienvenue filleul (parrainage)",
+    description:
+      "Envoyé au filleul quand sa 1re commande valide le parrainage. Variables : {{customer_name}}, {{code}}.",
+    defaultContent:
+      "Bienvenue chez Rialto {{customer_name}} ! Votre code de bienvenue : {{code}} — une Pizza Marguerite offerte sur votre prochaine commande, valable 60 jours. rialto-lausanne.ch",
+  },
   referral_success: {
     title: "Parrainage réussi",
     description:
       "Envoyé au parrain quand un filleul passe sa 1re commande. Variables : {{customer_name}}, {{reward_label}}, {{code}}.",
     defaultContent:
-      "🎉 Merci {{customer_name}} ! Ton filleul a commande chez Rialto. Tu gagnes {{reward_label}}. Code : {{code}} (valable 30 jours).",
+      "🎉 Merci {{customer_name}} ! Ton filleul a commande chez Rialto. Tu gagnes {{reward_label}}. Code : {{code}} (valable 60 jours).",
   },
 };
 

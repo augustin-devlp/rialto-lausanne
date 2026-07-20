@@ -27,7 +27,14 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = supabaseService();
-  const phoneNorm = normalizePhone(body.phone) ?? body.phone;
+  // Repli sur le phone brut ÉPURÉ (chiffres et + uniquement) : un phone
+  // avec espaces/virgules casserait le filtre .or() PostgREST du cron
+  // reward-referrals → filleul jamais matché, referral jamais récompensé.
+  const phoneNorm =
+    normalizePhone(body.phone) ?? body.phone.replace(/[^\d+]/g, "");
+  if (!phoneNorm) {
+    return NextResponse.json({ error: "phone_invalide" }, { status: 400 });
+  }
 
   // Trouver le referral par code (status pending ou claimed)
   const { data: referralPending } = await admin

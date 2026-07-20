@@ -1,18 +1,20 @@
 -- ============================================================================
 -- D2 — Table lottery_draws (historique + anti-double-tirage mensuel)
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE vers la review caisse.
---          AUCUNE exécution sans retour d'Augustin.
---
--- Le code dashboard (routes /api/dashboard/lottery/*) est déployé et TOLÈRE
--- l'absence de cette table : il répond « migration en attente » (erreur
--- visible, jamais silencieuse) tant qu'elle n'existe pas.
+-- STATUT : EXÉCUTÉE — GO de navette caisse reçu (conformité 002/003 ✅,
+--          impact caisse zéro vérifié), amendée avec les 2 suggestions
+--          du reviewer caisse (pilotage : « intègre les deux ») :
+--          1. CHECK month = 1er du mois (garde-fou format)
+--          2. REVOKE ALL anon/authenticated (défense en profondeur
+--             au-delà du deny-all RLS — même filet que les GRANT
+--             colonne-par-colonne de la 001)
+--          (Index winner_entry_id : skip, avis partagé.)
 -- ============================================================================
 
 CREATE TABLE public.lottery_draws (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lottery_id uuid NOT NULL REFERENCES public.lotteries(id) ON DELETE CASCADE,
-  month date NOT NULL,
+  month date NOT NULL CHECK (month = date_trunc('month', month)::date),
   winner_entry_id uuid NOT NULL REFERENCES public.lottery_entries(id),
   drawn_at timestamptz NOT NULL DEFAULT now(),
   drawn_by text,
@@ -20,6 +22,8 @@ CREATE TABLE public.lottery_draws (
 );
 
 ALTER TABLE public.lottery_draws ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON public.lottery_draws FROM anon, authenticated;
 
 -- ============================================================================
 -- EXPLICATION LIGNE PAR LIGNE (pour la review caisse) :

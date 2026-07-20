@@ -23,7 +23,17 @@ export function supabaseServer(): SupabaseClient {
 }
 
 export function supabaseService(): SupabaseClient {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || anon;
+  // FAIL-FAST (backlog 1bis-d, 2026) : plus de fallback silencieux vers
+  // l'anon key. Depuis le durcissement RLS, une SERVICE_ROLE_KEY manquante
+  // doit crier (500 explicite) — le fallback anon donnait des lectures
+  // filtrées à 0 ligne SANS erreur (checkout cassé, numéros de commande
+  // en collision, pages 404) impossibles à diagnostiquer.
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY manquante : configuration incomplète (voir env Vercel).",
+    );
+  }
   return createClient(url, key, {
     auth: { persistSession: false },
     global: { fetch: noStoreFetch },

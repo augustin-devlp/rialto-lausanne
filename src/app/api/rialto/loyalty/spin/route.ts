@@ -188,13 +188,19 @@ export async function POST(req: NextRequest) {
   }
   const chosen = segments[chosenIndex];
 
-  // Save
-  await admin.from("spin_entries").insert({
-    wheel_id: SPIN_WHEEL_ID,
-    phone,
-    last_spin_at: new Date().toISOString(),
-    reward_won: chosen.label,
-  });
+  // Save — on garde l'id du spin pour lier le code promo généré plus
+  // bas (fix D3 : spin_entries.promo_code_id n'était jamais écrit →
+  // réconciliation code↔spin impossible côté dashboard).
+  const { data: spinEntry } = await admin
+    .from("spin_entries")
+    .insert({
+      wheel_id: SPIN_WHEEL_ID,
+      phone,
+      last_spin_at: new Date().toISOString(),
+      reward_won: chosen.label,
+    })
+    .select("id")
+    .single();
   await admin.from("spin_results").insert({
     wheel_id: SPIN_WHEEL_ID,
     first_name: body.first_name ?? "Client",
@@ -260,6 +266,17 @@ export async function POST(req: NextRequest) {
   }
 
   const promoCode = gen.code.code;
+
+  // Fix D3 : lie le spin à son code promo (best-effort, non-bloquant).
+  if (spinEntry?.id) {
+    const { error: linkErr } = await admin
+      .from("spin_entries")
+      .update({ promo_code_id: gen.code.id })
+      .eq("id", spinEntry.id);
+    if (linkErr) {
+      console.warn("[spin] promo_code_id link failed (non-blocking)", linkErr);
+    }
+  }
 
   // Envoi SMS (template wheel_prize_code, non-bloquant)
   void (async () => {

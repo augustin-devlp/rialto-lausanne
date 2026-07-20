@@ -110,7 +110,11 @@ export async function generatePromoCode(
         phone: input.phone ?? null,
         source: input.source,
         discount_type: input.discount_type,
-        discount_value: input.discount_value ?? null,
+        // Fix D3 : discount_value est NOT NULL en DB — un segment
+        // free_item sans valeur explicite crashait l'insert (23502)
+        // et le client voyait « Code promo non généré ». 0 = « pas de
+        // remise chiffrée » (le gain est porté par free_item_label).
+        discount_value: input.discount_value ?? 0,
         free_item_label: input.free_item_label ?? null,
         min_order_amount: input.min_order_amount ?? 0,
         max_uses: input.max_uses ?? 1,

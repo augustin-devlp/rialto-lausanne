@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
-import { sendSMS } from "@/lib/brevo";
+import { sendSMS, sendEmail } from "@/lib/brevo";
+import { buildOrderEmail } from "@/lib/orderEmail";
 import {
   hhmmToMinutes,
   toZurichDate,
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
   const { data: restaurant, error: rErr } = await sb
     .from("restaurants")
     .select(
-      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes, offers_pickup, offers_delivery",
+      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes, offers_pickup, offers_delivery, receipt_email",
     )
     .eq("id", body.restaurant_id)
     .single();
@@ -439,9 +440,55 @@ export async function POST(req: NextRequest) {
     fulfillment_type: fulfillmentType,
   });
 
-  // Note : email PDF au restaurant n'est PLUS déclenché ici à la
-  // création. Il est envoyé quand Mehmet accepte la commande depuis le
-  // dashboard (status → 'accepted'). Voir loyalty-cards PATCH /api/orders/[id].
+  // Email « commande reçue » au restaurant (D6 dashboard) — non-bloquant :
+  // un échec Brevo ne doit JAMAIS empêcher la commande. Destinataire :
+  // restaurants.receipt_email. Complément de la caisse (qui sonne + imprime).
+  // (L'ancien email PDF loyalty-cards à l'acceptation est mort avec
+  // l'ancienne base — celui-ci le remplace, à la création.)
+  void (async () => {
+    try {
+      const to = (restaurant as { receipt_email?: string | null })
+        .receipt_email;
+      if (!to) {
+        console.log("[email] receipt skipped (restaurants.receipt_email vide)");
+        return;
+      }
+      const { subject, html, text } = buildOrderEmail({
+        order: {
+          order_number: order.order_number,
+          customer_name: body.customer_name,
+          customer_phone: body.customer_phone,
+          total_amount: total,
+          requested_pickup_time: pickupISO,
+          fulfillment_type: fulfillmentType,
+          delivery_address: body.delivery_address ?? null,
+          delivery_postal_code: body.delivery_postal_code ?? null,
+          delivery_city: deliveryCity,
+          delivery_instructions: body.delivery_instructions ?? null,
+          housing_type: body.housing_type ?? null,
+          entry_code_1: body.entry_code_1 ?? null,
+          entry_code_2: body.entry_code_2 ?? null,
+          floor: body.floor ?? null,
+          apartment_number: body.apartment_number ?? null,
+          doorbell_name: body.doorbell_name ?? null,
+          payment_method: body.payment_method ?? null,
+          payment_card_timing: body.payment_card_timing ?? null,
+          payment_cash_bills: body.payment_cash_bills ?? null,
+          notes: body.notes,
+        },
+        items: body.items.map((it) => ({
+          item_name_snapshot: it.item_name_snapshot,
+          quantity: it.quantity,
+          selected_options: it.selected_options,
+          subtotal: it.subtotal,
+          notes: it.notes,
+        })),
+      });
+      await sendEmail({ to, subject, html, text });
+    } catch (err) {
+      console.error("[email] receipt failed", err);
+    }
+  })();
 
   return NextResponse.json({ order });
 }

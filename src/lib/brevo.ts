@@ -162,3 +162,60 @@ export async function sendSms(
     throw err;
   }
 }
+
+/* ─── Email transactionnel (D6 dashboard) ────────────────────────────── */
+
+const BREVO_EMAIL_URL = "https://api.brevo.com/v3/smtp/email";
+
+/**
+ * Envoie un email transactionnel via Brevo (même BREVO_API_KEY que les SMS).
+ * Fire-and-forget côté appelant : retourne false en cas d'échec, ne throw
+ * jamais. Sender : BREVO_SENDER_EMAIL (défaut noreply@stampify.ch — domaine
+ * DKIM-validé chez Brevo à l'époque Stampify ; à migrer vers un domaine
+ * Rialto/Servato validé le jour venu).
+ */
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<boolean> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey || apiKey === "placeholder_dev_only") {
+    console.log("[brevo] email skipped (no API key)", { to: params.to });
+    return false;
+  }
+  try {
+    const res = await fetch(BREVO_EMAIL_URL, {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: {
+          email: process.env.BREVO_SENDER_EMAIL ?? "noreply@stampify.ch",
+          name: process.env.BREVO_SENDER_NAME ?? "Rialto",
+        },
+        to: [{ email: params.to }],
+        subject: params.subject,
+        htmlContent: params.html,
+        ...(params.text ? { textContent: params.text } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const raw = await res.text();
+      console.error("[brevo] email failed", res.status, raw.slice(0, 300));
+      return false;
+    }
+    const data = (await res.json().catch(() => ({}))) as {
+      messageId?: string;
+    };
+    console.log("[brevo] email sent", { to: params.to, id: data.messageId });
+    return true;
+  } catch (err) {
+    console.error("[brevo] email exception", err);
+    return false;
+  }
+}

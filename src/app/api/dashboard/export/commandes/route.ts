@@ -68,6 +68,13 @@ export async function GET(req: NextRequest) {
   const rows = (data ?? []) as OrderRow[];
   const stamp = zurichDateStamp();
 
+  const PAYMENT_LABELS: Record<string, string> = {
+    cash: "Espèces",
+    card: "Carte",
+    twint: "Twint",
+  };
+  const paymentLabel = (r: OrderRow) =>
+    r.payment_method ? (PAYMENT_LABELS[r.payment_method] ?? r.payment_method) : "";
   const modeLabel = (r: OrderRow) =>
     r.fulfillment_type === "delivery" ? "Livraison" : "Retrait";
   const adresse = (r: OrderRow) =>
@@ -87,7 +94,7 @@ export async function GET(req: NextRequest) {
       frais_livraison_chf: Number(r.delivery_fee ?? 0),
       remise_promo_chf: Number(r.promo_discount_amount ?? 0),
       mode: modeLabel(r),
-      paiement: r.payment_method ?? "",
+      paiement: paymentLabel(r),
       adresse: adresse(r),
     }));
     return new NextResponse(JSON.stringify(payload, null, 2), {
@@ -116,7 +123,7 @@ export async function GET(req: NextRequest) {
       value: (r) => Number(r.promo_discount_amount ?? 0).toFixed(2),
     },
     { header: "Mode", value: modeLabel },
-    { header: "Paiement", value: (r) => r.payment_method ?? "" },
+    { header: "Paiement", value: paymentLabel },
     { header: "Adresse", value: adresse },
   ]);
 

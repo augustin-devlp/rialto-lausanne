@@ -2,7 +2,8 @@
 
 /**
  * Navigation basse du dashboard patron — mobile-first, pouces-friendly.
- * 3 onglets v1 : Accueil / Commandes / Scanner. (Jeux, Données : lots suivants.)
+ * 5 onglets : Accueil / Commandes / Scanner / Loterie / Données.
+ * (Notifications push : carte raccourci sur l'accueil, pas d'onglet.)
  */
 
 import Link from "next/link";

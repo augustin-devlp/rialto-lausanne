@@ -11,7 +11,13 @@ export type CsvColumn<T> = {
 
 function escapeCell(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return "";
-  const s = String(v);
+  let s = String(v);
+  // Anti-injection de formule (CWE-1236) ET préservation des téléphones
+  // E.164 : Excel interprète toute cellule commençant par = + - @ (ou
+  // tab/CR) comme une formule — un « +41791234567 » devient 4.18E+10 et
+  // un nom malveillant « =HYPERLINK(...) » s'exécute à l'ouverture.
+  // L'apostrophe de tête force le mode texte (masquée par Excel/LibreOffice).
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
     return `"${s.replace(/"/g, '""')}"`;
   }

@@ -41,14 +41,13 @@ export async function GET(req: NextRequest) {
   const sb = supabaseService();
 
   // Referrals (nouveau modèle uniquement : referrer_customer_id présent).
-  // NB : referee_promo_code volontairement ABSENT du select tant que la
-  // migration D4a n'est pas exécutée (colonne inexistante → 400) ; le
-  // repli convention MARG{shortId}F ci-dessous donne la même valeur.
-  // À ajouter au select dans le commit post-D4a.
+  // referee_promo_code : colonne D4a (exécutée le 21.07.2026) — le repli
+  // convention MARG{shortId}F ne sert plus qu'aux referrals récompensés
+  // avant D4a.
   const { data: refs, error: rErr } = await sb
     .from("referrals")
     .select(
-      "id, referrer_customer_id, referral_code, referee_phone, referee_customer_id, status, created_at, rewarded_at, reward_promo_code",
+      "id, referrer_customer_id, referral_code, referee_phone, referee_customer_id, status, created_at, rewarded_at, reward_promo_code, referee_promo_code",
     )
     .eq("restaurant_id", RESTAURANT_ID)
     .not("referrer_customer_id", "is", null)

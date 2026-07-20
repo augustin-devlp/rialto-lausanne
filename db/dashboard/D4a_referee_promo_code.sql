@@ -1,7 +1,10 @@
 -- ============================================================================
 -- D4a — Colonne referrals.referee_promo_code (lien structurel code filleul)
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE vers la review caisse.
+-- STATUT : EXÉCUTÉE le 21.07.2026 (GO navette caisse, aucune réserve) en
+--          migration VERSIONNÉE 20260720221345_d4a_referrals_referee_promo_code.
+--          Post-vérifié live : colonne text nullable sans default,
+--          referrals toujours deny-all (0 policy).
 -- ============================================================================
 
 ALTER TABLE public.referrals

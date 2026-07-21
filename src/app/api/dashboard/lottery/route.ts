@@ -37,7 +37,10 @@ export async function GET(req: NextRequest) {
 
   const sb = supabaseService();
 
-  const [{ data: lottery, error: lotteryErr }, { count: participantsCount }] =
+  // Compteur = inscrits DU MOIS courant (design 3 : participation
+  // mensuelle) ; repli total historique si la colonne month n'existe pas
+  // encore (migration L1 en navette — 42703).
+  const [{ data: lottery, error: lotteryErr }, participantsRes] =
     await Promise.all([
       sb
         .from("lotteries")
@@ -49,8 +52,16 @@ export async function GET(req: NextRequest) {
       sb
         .from("lottery_participants")
         .select("id", { count: "exact", head: true })
-        .eq("lottery_id", LOTTERY_ID),
+        .eq("lottery_id", LOTTERY_ID)
+        .eq("month", zurichMonthStart()),
     ]);
+  let participantsCount = participantsRes.count;
+  if (participantsRes.error?.code === "42703") {
+    ({ count: participantsCount } = await sb
+      .from("lottery_participants")
+      .select("id", { count: "exact", head: true })
+      .eq("lottery_id", LOTTERY_ID));
+  }
 
   if (lotteryErr || !lottery) {
     console.error("[dashboard/lottery] lottery query failed", lotteryErr);

@@ -290,8 +290,9 @@ export default function LotterieClient() {
             </div>
           </div>
           <p className="mt-5 text-sm text-mute">
-            <strong className="text-ink">Comment participer ?</strong> Passe une
-            commande et tu recevras automatiquement 1 ticket.
+            <strong className="text-ink">Comment participer ?</strong> Passez
+            une commande : 1 commande dans le mois = 1 participation au
+            tirage du mois, automatiquement.
           </p>
           <Link href="/menu" className="btn-primary-lg mt-5 w-full">
             Commander maintenant →

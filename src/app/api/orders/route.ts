@@ -13,6 +13,8 @@ import {
   renderConfirmationTemplate,
 } from "@/lib/smsTemplate";
 import { phoneLookupVariants } from "@/lib/phoneVariants";
+import { LOTTERY_ID } from "@/lib/loyaltyConstants";
+import { zurichMonthStart } from "@/lib/lotteryDraw";
 
 // Route d'écriture : toujours dynamique (client Supabase créé au runtime, jamais au build).
 export const dynamic = "force-dynamic";
@@ -393,6 +395,48 @@ export async function POST(req: NextRequest) {
 
   if (customerId) {
     await sb.from("orders").update({ customer_id: customerId }).eq("id", order.id);
+  }
+
+  // Participation loterie mensuelle (design 3, décision 21.07.2026) :
+  // « 1 commande dans le mois = 1 participation au tirage du mois »
+  // (Europe/Zurich). Idempotent : UNIQUE (lottery_id, phone, month) →
+  // 23505 silencieux dès la 2e commande du mois. Ne bloque JAMAIS la
+  // commande. Tant que la migration L1 (navette) n'est pas exécutée, la
+  // colonne month n'existe pas → PGRST204, loggé et ignoré.
+  try {
+    const { data: lottery } = await sb
+      .from("lotteries")
+      .select("id, is_active")
+      .eq("id", LOTTERY_ID)
+      .maybeSingle();
+    if (lottery?.is_active) {
+      const lpBase = {
+        lottery_id: LOTTERY_ID,
+        phone: body.customer_phone,
+        first_name: firstName || "Client",
+      };
+      const { error: lpErr } = await sb
+        .from("lottery_participants")
+        .insert({ ...lpBase, month: zurichMonthStart() });
+      if (lpErr && lpErr.code !== "23505") {
+        if (lpErr.code === "PGRST204" || lpErr.code === "42703") {
+          // Colonne month absente (migration L1 en navette) → insert
+          // historique : la promesse « 1 commande = participation » tient
+          // aussi pendant la fenêtre pré-migration (le backfill DEFAULT
+          // posera le mois à l'exécution).
+          const { error: legacyErr } = await sb
+            .from("lottery_participants")
+            .insert(lpBase);
+          if (legacyErr && legacyErr.code !== "23505") {
+            console.error("[lottery] participation échouée", legacyErr.code);
+          }
+        } else {
+          console.error("[lottery] participation échouée", lpErr.code);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[lottery] participation à la commande échouée", err);
   }
 
   // SMS confirmation templaté (non-blocking)

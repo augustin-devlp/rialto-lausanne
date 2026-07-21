@@ -94,11 +94,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Participants → tickets.
-  const { data: participants, error: pErr } = await sb
+  // 3. Participants DU MOIS → tickets (design 3 : participation
+  //    mensuelle). Repli sans filtre si la colonne month n'existe pas
+  //    encore (migration L1 en navette — 42703).
+  let { data: participants, error: pErr } = await sb
     .from("lottery_participants")
     .select("first_name, phone")
-    .eq("lottery_id", LOTTERY_ID);
+    .eq("lottery_id", LOTTERY_ID)
+    .eq("month", month);
+  if (pErr && pErr.code === "42703") {
+    ({ data: participants, error: pErr } = await sb
+      .from("lottery_participants")
+      .select("first_name, phone")
+      .eq("lottery_id", LOTTERY_ID));
+  }
 
   if (pErr) {
     console.error("[lottery/draw] participants failed", pErr);

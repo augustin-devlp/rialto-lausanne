@@ -177,7 +177,7 @@ export default function LoterieAdminClient() {
           </div>
           <div className="text-xs text-mute">
             participant{state.participants_count > 1 ? "s" : ""} inscrit
-            {state.participants_count > 1 ? "s" : ""}
+            {state.participants_count > 1 ? "s" : ""} ce mois-ci
           </div>
         </div>
       </div>
@@ -197,8 +197,8 @@ export default function LoterieAdminClient() {
           <p className="text-sm text-mute">
             Le tirage désigne un gagnant au hasard parmi les{" "}
             {state.participants_count} inscrit
-            {state.participants_count > 1 ? "s" : ""}. Un seul tirage possible
-            par mois.
+            {state.participants_count > 1 ? "s" : ""} du mois. Un seul tirage
+            possible par mois.
           </p>
           {!confirming ? (
             <button

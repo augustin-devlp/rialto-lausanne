@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { BUSINESS_ID } from "@/lib/loyaltyConstants";
+import { zurichMonthStart } from "@/lib/lotteryDraw";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export const dynamic = "force-dynamic";
  *       claim_token + bouton "J'ai réclamé mon lot".
  *
  *   D — Customer n'a JAMAIS participé + loterie active en ce moment.
- *       UI : CTA "Passe commande pour recevoir ton ticket".
+ *       UI : CTA « 1 commande dans le mois = 1 participation au tirage
+ *       du mois » (design 3, 21.07.2026 — câblé dans POST /api/orders).
  *
  *   E — Aucune loterie active. UI : "Pas de loterie en ce moment, on
  *       te préviendra par SMS".
@@ -75,15 +77,21 @@ export async function GET(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  // Helpers pour trouver un ticket du customer dans une loterie
-  async function findTicket(lotteryId: string) {
-    const { data: entries } = await admin
+  // Helpers pour trouver un ticket du customer dans une loterie.
+  // sinceIso (design 3, 21.07.2026) : les tickets sont créés au tirage et
+  // persistent d'un mois sur l'autre pour la même loterie — l'état A doit
+  // ignorer les tickets des cycles précédents (sinon, après reopen, un
+  // participant du mois passé verrait un ticket périmé au lieu de D).
+  async function findTicket(lotteryId: string, sinceIso?: string) {
+    let q = admin
       .from("lottery_entries")
       .select(
         "id, ticket_number, is_winner, claim_token, claimed_at, customer_id, phone",
       )
       .eq("lottery_id", lotteryId)
-      .eq("customer_id", customerId)
+      .eq("customer_id", customerId);
+    if (sinceIso) q = q.gte("created_at", sinceIso);
+    const { data: entries } = await q
       .order("created_at", { ascending: false })
       .limit(1);
     return entries && entries.length > 0 ? entries[0] : null;
@@ -107,9 +115,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 4. Check ÉTAT A : a un ticket dans la loterie active
+  // 4. Check ÉTAT A : a un ticket du CYCLE COURANT dans la loterie active.
+  // Borne = 1er du mois (comparaison en minuit UTC : ~2 h d'à-peu-près au
+  // changement de mois, sans enjeu — les tirages se font en fin de mois).
   if (activeLottery) {
-    const activeTicket = await findTicket(activeLottery.id as string);
+    const activeTicket = await findTicket(
+      activeLottery.id as string,
+      zurichMonthStart(),
+    );
     if (activeTicket) {
       return NextResponse.json({
         state: "A",

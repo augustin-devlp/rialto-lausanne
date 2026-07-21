@@ -120,7 +120,7 @@ export default function JeuxClient() {
             {state.loterie.participants}
           </div>
           <div className="text-xs text-mute">
-            inscrit{state.loterie.participants > 1 ? "s" : ""} ·{" "}
+            inscrit{state.loterie.participants > 1 ? "s" : ""} ce mois ·{" "}
             {state.loterie.gagnants} gagnant
             {state.loterie.gagnants > 1 ? "s" : ""}
           </div>

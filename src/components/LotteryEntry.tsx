@@ -129,7 +129,7 @@ export default function LotteryEntry({
               {busy ? "…" : "Participer (gratuit)"}
             </button>
             <p className="mt-2 text-center text-[11px] text-mute">
-              Une seule participation par numéro de téléphone.
+              Une participation par mois et par numéro de téléphone.
             </p>
           </>
         )}

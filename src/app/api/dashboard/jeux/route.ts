@@ -5,7 +5,7 @@ import {
   requireDashboardAuth,
   isDashboardConfigured,
 } from "@/lib/dashboardAuth";
-import { maskPhone } from "@/lib/lotteryDraw";
+import { maskPhone, zurichMonthStart } from "@/lib/lotteryDraw";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +52,13 @@ export async function GET(req: NextRequest) {
       .from("spin_results")
       .select("id", { count: "exact", head: true })
       .eq("wheel_id", SPIN_WHEEL_ID),
+    // Inscrits du mois courant (design 3) ; avant la migration L1 la
+    // colonne month n'existe pas → count null → 0 affiché (toléré).
     sb
       .from("lottery_participants")
       .select("id", { count: "exact", head: true })
-      .eq("lottery_id", LOTTERY_ID),
+      .eq("lottery_id", LOTTERY_ID)
+      .eq("month", zurichMonthStart()),
     sb
       .from("lottery_entries")
       .select("id", { count: "exact", head: true })

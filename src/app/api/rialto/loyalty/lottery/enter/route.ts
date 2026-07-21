@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { BUSINESS_ID, CARD_ID, LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
+import { zurichMonthStart } from "@/lib/lotteryDraw";
 
 export const dynamic = "force-dynamic";
 
@@ -10,13 +11,16 @@ export const dynamic = "force-dynamic";
  * Body: { phone, first_name }
  *
  * Ajoute une participation à la loterie mensuelle de Rialto.
- * Idempotent : si déjà inscrit, retourne 200 avec already_entered=true.
+ * Design 3 (décision 21.07.2026) : la participation vaut pour le MOIS
+ * courant (Europe/Zurich) — insert-first idempotent sur l'UNIQUE
+ * (lottery_id, phone, month) : 23505 → already_entered=true. Tant que la
+ * migration L1 (navette) n'est pas exécutée, PGRST204 → repli sur
+ * l'insert historique sans mois (unicité à vie).
  *
  * ⚠️ Fossé Système A/B hérité (D1) : cette route écrit dans
  * lottery_participants (système B) — ce N'EST PAS la table des tickets du
- * tirage (lottery_entries, système A alimenté par le dashboard Stampify).
- * Réconciliation participants ↔ tickets = au lot dashboard. AUCUN SMS (D5).
- * Porté VERBATIM depuis loyalty-cards (moins le CORS).
+ * tirage (lottery_entries, système A). Conversion participants → tickets
+ * au tirage D2. AUCUN SMS (D5).
  */
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as {
@@ -90,26 +94,35 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: existing } = await admin
-    .from("lottery_participants")
-    .select("id")
-    .eq("lottery_id", LOTTERY_ID)
-    .eq("phone", phone)
-    .maybeSingle();
-  if (existing) {
-    return NextResponse.json({ ok: true, already_entered: true });
-  }
-
-  const { error } = await admin.from("lottery_participants").insert({
+  // Insert-first (pas de select préalable : l'UNIQUE tranche, sans course).
+  const base = {
     lottery_id: LOTTERY_ID,
     first_name: body.first_name.trim(),
     phone,
-  });
-  if (error) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 },
-    );
+  };
+  const { error } = await admin
+    .from("lottery_participants")
+    .insert({ ...base, month: zurichMonthStart() });
+  if (!error) {
+    return NextResponse.json({ ok: true, already_entered: false });
   }
-  return NextResponse.json({ ok: true, already_entered: false });
+  if (error.code === "23505") {
+    return NextResponse.json({ ok: true, already_entered: true });
+  }
+  if (error.code === "PGRST204" || error.code === "42703") {
+    // Colonne month absente (migration L1 en attente ; le code exact
+    // dépend de la version PostgREST) → comportement historique : une
+    // participation par téléphone.
+    const { error: legacyErr } = await admin
+      .from("lottery_participants")
+      .insert(base);
+    if (!legacyErr) {
+      return NextResponse.json({ ok: true, already_entered: false });
+    }
+    if (legacyErr.code === "23505") {
+      return NextResponse.json({ ok: true, already_entered: true });
+    }
+    return NextResponse.json({ error: legacyErr.message }, { status: 500 });
+  }
+  return NextResponse.json({ error: error.message }, { status: 500 });
 }

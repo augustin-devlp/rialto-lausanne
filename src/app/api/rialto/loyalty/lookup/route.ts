@@ -9,6 +9,7 @@ import {
 } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
 import { computeSpinAvailability } from "@/lib/spinAvailability";
+import { zurichMonthStart } from "@/lib/lotteryDraw";
 
 export const dynamic = "force-dynamic";
 
@@ -121,12 +122,25 @@ export async function GET(req: NextRequest) {
 
   let alreadyEntered = false;
   if (lottery && card) {
-    const { data: existing } = await admin
+    // Design 3 (21.07.2026) : la participation vaut pour le MOIS courant —
+    // sans ce filtre, un participant d'un mois précédent serait bloqué de
+    // l'opt-in du mois. Repli sans mois tant que la migration L1 (navette)
+    // n'est pas exécutée (42703 = colonne inconnue).
+    let { data: existing, error: aeErr } = await admin
       .from("lottery_participants")
       .select("id")
       .eq("lottery_id", LOTTERY_ID)
       .eq("phone", phone)
+      .eq("month", zurichMonthStart())
       .maybeSingle();
+    if (aeErr && aeErr.code === "42703") {
+      ({ data: existing } = await admin
+        .from("lottery_participants")
+        .select("id")
+        .eq("lottery_id", LOTTERY_ID)
+        .eq("phone", phone)
+        .maybeSingle());
+    }
     alreadyEntered = !!existing;
   }
 

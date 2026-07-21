@@ -15,7 +15,6 @@ import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
-import OrderQr from "./OrderQr";
 
 type OrderStatus =
   | "new"
@@ -516,15 +515,6 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                 );
               })}
             </ol>
-          </div>
-        </section>
-      )}
-
-      {/* QR de commande — scanné par le restaurant (retrait / livraison) */}
-      {!isCancelled && (
-        <section className="container-hero mt-6">
-          <div className="mx-auto max-w-xl">
-            <OrderQr orderNumber={order.order_number} />
           </div>
         </section>
       )}

@@ -2,8 +2,11 @@
 
 /**
  * Navigation basse du dashboard patron — mobile-first, pouces-friendly.
- * 5 onglets : Accueil / Commandes / Scanner / Loterie / Données.
- * (Notifications push : carte raccourci sur l'accueil, pas d'onglet.)
+ * 4 onglets : Accueil / Commandes / Loterie / Données.
+ * (Notifications push : carte raccourci sur l'accueil, pas d'onglet.
+ *  Scan : le seul scan restant est la carte fidélité, sur /scan —
+ *  décision produit 21.07.2026 : le dashboard n'est pas un outil de
+ *  suivi de commandes.)
  */
 
 import Link from "next/link";
@@ -30,20 +33,6 @@ const TABS = [
         <path d="M6 2 4 6v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6l-2-4H6Z" />
         <path d="M4 6h16" />
         <path d="M16 10a4 4 0 0 1-8 0" />
-      </svg>
-    ),
-  },
-  {
-    href: "/dashboard/scan",
-    label: "Scanner",
-    exact: false,
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-        <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-        <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-        <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-        <line x1="7" y1="12" x2="17" y2="12" />
       </svg>
     ),
   },

@@ -91,21 +91,7 @@ export default function AccueilClient() {
               Voir les commandes
             </div>
             <div className="text-xs text-mute">
-              Suivre, préparer, livrer, refuser
-            </div>
-          </div>
-          <Arrow />
-        </Link>
-        <Link
-          href="/dashboard/scan"
-          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
-        >
-          <div>
-            <div className="font-display font-semibold text-ink">
-              Scanner une commande
-            </div>
-            <div className="text-xs text-mute">
-              Le QR du client, sur sa page de confirmation
+              Détail, adresse, paiement — consultation
             </div>
           </div>
           <Arrow />

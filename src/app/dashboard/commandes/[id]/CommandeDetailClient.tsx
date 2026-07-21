@@ -1,20 +1,20 @@
 "use client";
 
 /**
- * Fiche commande — dashboard patron.
- * Tout ce qu'il faut pour préparer et livrer : items + options + notes,
- * adresse complète (codes, étage, sonnette), bloc paiement (méthode,
- * billets annoncés, rendu à préparer), actions de statut + refus motivé.
+ * Fiche commande — dashboard patron, CONSULTATION PURE (zéro action).
+ * Items + options + notes, adresse complète (codes, étage, sonnette),
+ * bloc paiement (méthode, billets annoncés, rendu à préparer),
+ * historique. Décision produit 21.07.2026 : le dashboard n'est pas un
+ * outil de suivi de commandes — Accepter/Refuser vit sur la CAISSE, la
+ * progression preparing→ready→completed appartiendra au futur moteur.
  */
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import {
   STATUS_LABELS,
   statusChipClasses,
-  NEXT_ACTION,
 } from "@/components/dashboard/orderStatus";
 
 type OrderDetail = {
@@ -64,13 +64,8 @@ type OrderDetail = {
 };
 
 export default function CommandeDetailClient({ orderId }: { orderId: string }) {
-  const router = useRouter();
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [acting, setActing] = useState(false);
-  const [refusing, setRefusing] = useState(false);
-  const [reason, setReason] = useState("");
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -94,34 +89,6 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
     return () => clearInterval(t);
   }, [load]);
 
-  async function changeStatus(status: string, withReason?: string) {
-    if (acting) return;
-    setActing(true);
-    setActionError(null);
-    try {
-      const res = await fetch(`/api/dashboard/orders/${orderId}/status`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status, reason: withReason }),
-      });
-      const body = (await res.json()) as { ok: boolean; error?: string };
-      if (!body.ok) {
-        setActionError(
-          body.error === "transition_invalide"
-            ? "Le statut a changé entre-temps (caisse ?). Fiche rechargée."
-            : "Action impossible. Réessayez.",
-        );
-      }
-      setRefusing(false);
-      setReason("");
-      await load();
-    } catch {
-      setActionError("Problème de connexion. Réessayez.");
-    } finally {
-      setActing(false);
-    }
-  }
-
   if (notFound) {
     return (
       <div className="rounded-2xl border border-border bg-white p-6 text-center">
@@ -144,10 +111,6 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
     );
   }
 
-  const nextAction = NEXT_ACTION[order.status];
-  const canCancel = ["new", "accepted", "preparing", "ready"].includes(
-    order.status,
-  );
   const time = order.requested_pickup_time
     ? new Date(order.requested_pickup_time).toLocaleTimeString("fr-CH", {
         timeZone: "Europe/Zurich",
@@ -326,71 +289,6 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
           <p className="text-sm text-mute">Paiement sur place (non précisé).</p>
         )}
       </div>
-
-      {/* Actions */}
-      {(nextAction || canCancel) && (
-        <div className="space-y-2.5">
-          {actionError && (
-            <div className="rounded-xl border border-rialto/30 bg-rialto/10 p-3 text-sm font-medium text-rialto">
-              {actionError}
-            </div>
-          )}
-          {nextAction && (
-            <button
-              type="button"
-              disabled={acting}
-              onClick={() => changeStatus(nextAction.status)}
-              className="w-full rounded-full bg-rialto py-3.5 font-semibold text-white transition hover:bg-rialto-dark disabled:opacity-50"
-            >
-              {acting ? "…" : nextAction.label}
-            </button>
-          )}
-          {canCancel && !refusing && (
-            <button
-              type="button"
-              onClick={() => setRefusing(true)}
-              className="w-full rounded-full border border-border bg-white py-3 text-sm font-semibold text-ink/70 transition hover:bg-ink/5"
-            >
-              Refuser la commande
-            </button>
-          )}
-          {refusing && (
-            <div className="rounded-2xl border border-border bg-white p-4 shadow-card">
-              <label className="mb-1.5 block text-sm font-semibold text-ink">
-                Motif du refus (interne, non envoyé au client)
-              </label>
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Ex : rupture d'ingrédient, hors zone…"
-                className="w-full rounded-xl border-2 border-border px-3 py-2.5 text-sm focus:border-rialto focus:outline-none"
-                autoFocus
-              />
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRefusing(false);
-                    setReason("");
-                  }}
-                  className="flex-1 rounded-full border border-border py-2.5 text-sm font-semibold text-ink/70"
-                >
-                  Retour
-                </button>
-                <button
-                  type="button"
-                  disabled={!reason.trim() || acting}
-                  onClick={() => changeStatus("cancelled", reason.trim())}
-                  className="flex-1 rounded-full bg-ink py-2.5 text-sm font-semibold text-white disabled:opacity-40"
-                >
-                  Confirmer le refus
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Historique */}
       {order.history.length > 0 && (

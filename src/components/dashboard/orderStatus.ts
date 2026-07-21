@@ -3,6 +3,9 @@
  * Note : le statut DB `ready` s'affiche "Prête" côté patron mais
  * "En livraison" côté client (/confirmation) — choix éditorial existant :
  * dès que la commande est prête, le livreur part.
+ * Affichage UNIQUEMENT : le dashboard n'écrit aucun statut (décision
+ * produit 21.07.2026 — Accepter/Refuser vit sur la caisse, la
+ * progression appartiendra au futur moteur automatique).
  */
 
 export const STATUS_LABELS: Record<string, string> = {
@@ -32,16 +35,3 @@ export function statusChipClasses(status: string): string {
       return "bg-ink/5 text-ink/70";
   }
 }
-
-/** Prochaine action logique par statut (bouton principal de la fiche). */
-export const NEXT_ACTION: Record<
-  string,
-  { status: string; label: string } | null
-> = {
-  new: { status: "accepted", label: "Accepter la commande" },
-  accepted: { status: "preparing", label: "Passer en préparation" },
-  preparing: { status: "ready", label: "Marquer prête" },
-  ready: { status: "completed", label: "Marquer livrée" },
-  completed: null,
-  cancelled: null,
-};

@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
-import { sendSMS, sendEmail } from "@/lib/brevo";
+import { sendEmail } from "@/lib/brevo";
 import { buildOrderEmail } from "@/lib/orderEmail";
 import {
   hhmmToMinutes,
   toZurichDate,
   toZurichHHMM,
 } from "@/lib/timezone";
-import {
-  buildConfirmationContext,
-  getConfirmationTemplate,
-  renderConfirmationTemplate,
-} from "@/lib/smsTemplate";
 import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
@@ -439,36 +434,10 @@ export async function POST(req: NextRequest) {
     console.error("[lottery] participation à la commande échouée", err);
   }
 
-  // SMS confirmation templaté (non-blocking)
-  void (async () => {
-    try {
-      const tmpl = await getConfirmationTemplate(body.restaurant_id);
-      if (!tmpl.enabled) return;
-      const ctx = buildConfirmationContext({
-        order: {
-          id: order.id,
-          order_number: order.order_number,
-          customer_name: body.customer_name,
-          total_amount: total,
-          requested_pickup_time: pickupISO ?? new Date().toISOString(),
-        },
-        restaurant: {
-          name: restaurant.name,
-          phone: restaurant.phone,
-          address: restaurant.address,
-        },
-        // Phase 7 FIX 2 : defaut vercel.app jusqu'a la bascule DNS
-        siteUrl:
-          process.env.NEXT_PUBLIC_SITE_URL ??
-          process.env.NEXT_PUBLIC_RIALTO_BASE_URL ??
-          "https://rialto-lausanne.vercel.app",
-      });
-      const content = renderConfirmationTemplate(tmpl.content, ctx);
-      await sendSMS(body.customer_phone, content);
-    } catch (err) {
-      console.error("[sms] confirmation failed", err);
-    }
-  })();
+  // PAS de SMS de confirmation — décision produit 21.07.2026 : les
+  // reçus/confirmations partent par EMAIL uniquement (bloc D6 plus bas),
+  // le canal SMS est réservé au marketing (campagnes, réactivation).
+  // L'ancien bloc SMS templaté (order_confirmation) a été retiré ici.
 
   // Push dashboard (non-blocking, best-effort). Le secret + l'URL sont
   // configurés côté Vercel. Si indisponibles en dev, on skip.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
-import { BUSINESS_ID } from "@/lib/loyaltyConstants";
+import { BUSINESS_ID, LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,11 @@ export const dynamic = "force-dynamic";
  *   C — Customer a GAGNÉ une loterie récente. UI : confettis + QR
  *       claim_token + bouton "J'ai réclamé mon lot".
  *
+ *   PARTICIPE — Le customer a une participation du MOIS courant
+ *       (lottery_participants, système B) mais pas encore de ticket (les
+ *       tickets ne naissent qu'au tirage). UI : « Vous participez —
+ *       tirage le X ». Phone résolu côté serveur (22.07.2026, BUG B).
+ *
  *   D — Customer n'a JAMAIS participé + loterie active en ce moment.
  *       UI : CTA « 1 commande dans le mois = 1 participation au tirage
  *       du mois » (design 3, 21.07.2026 — câblé dans POST /api/orders).
@@ -27,7 +32,8 @@ export const dynamic = "force-dynamic";
  *   E — Aucune loterie active. UI : "Pas de loterie en ce moment, on
  *       te préviendra par SMS".
  *
- *   Priorité : C > A > B > D > E (le gain passe avant tout).
+ *   Priorité : C > A > PARTICIPE > B > D > E (le gain passe avant tout ;
+ *   un participant du mois passe avant une défaite d'un tirage antérieur).
  *
  * ⚠️ Fossé Système A/B hérité (D1) : cet endpoint LIT les tickets du tirage
  * (lottery_entries — système A alimenté par le dashboard Stampify). Les
@@ -132,6 +138,53 @@ export async function GET(req: NextRequest) {
           entry_id: activeTicket.id,
         },
       });
+    }
+  }
+
+  // 4bis. Check ÉTAT PARTICIPE : participation du MOIS courant dans
+  // lottery_participants (système B) mais pas encore de ticket (les
+  // tickets ne naissent qu'au tirage). Le phone est résolu CÔTÉ SERVEUR
+  // depuis customers.id — jamais reçu du client (server-authoritative).
+  // Priorité C > A > PARTICIPE > B : un participant du mois passe avant
+  // une défaite d'un tirage antérieur.
+  //
+  // ⚠️ Le système B est clouté à la CONSTANTE LOTTERY_ID (writer
+  // orders/route.ts + reader lookup/route.ts) — on filtre donc sur
+  // LOTTERY_ID (pas activeLottery.id) et on ne propose PARTICIPE que si
+  // la loterie active EST celle des participations, sinon on afficherait
+  // « vous participez » pour une loterie à laquelle l'inscription ne
+  // correspond pas.
+  if (activeLottery && activeLottery.id === LOTTERY_ID) {
+    const { data: customer } = await admin
+      .from("customers")
+      .select("phone")
+      .eq("id", customerId)
+      .maybeSingle();
+    const phone = customer?.phone ?? null;
+    if (phone) {
+      let participation: { id: string } | null = null;
+      const res = await admin
+        .from("lottery_participants")
+        .select("id")
+        .eq("lottery_id", LOTTERY_ID)
+        .eq("phone", phone)
+        .eq("month", zurichMonthStart())
+        .maybeSingle();
+      participation = res.data;
+      // Repli défensif si la colonne month n'existe pas (42703) — aligné
+      // sur lookup/route.ts ; mort depuis L1 exécutée, gardé par cohérence.
+      if (res.error?.code === "42703") {
+        const legacy = await admin
+          .from("lottery_participants")
+          .select("id")
+          .eq("lottery_id", LOTTERY_ID)
+          .eq("phone", phone)
+          .maybeSingle();
+        participation = legacy.data;
+      }
+      if (participation) {
+        return NextResponse.json({ state: "PARTICIPE", lottery: activeLottery });
+      }
     }
   }
 

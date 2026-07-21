@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { readCustomerSession } from "@/lib/customerSession";
 
-type State = "A" | "B" | "C" | "D" | "E";
+type State = "A" | "B" | "C" | "D" | "E" | "PARTICIPE";
 
 type LotteryData = {
   state: State;
@@ -158,6 +158,40 @@ export default function LotterieClient() {
           >
             Partager avec un ami
           </button>
+        </div>
+        <BackHome />
+      </StateWrapper>
+    );
+  }
+
+  /* ═══════════ ÉTAT PARTICIPE : inscrit ce mois, pas encore tiré ═══════════ */
+  /* Texte CLIENT neuf → vouvoiement (les états A/B/C/D hérités tutoient
+     encore, corrigés dans la passe cosmétique dédiée). */
+  if (data.state === "PARTICIPE" && lottery) {
+    return (
+      <StateWrapper>
+        <div className="rounded-3xl bg-gradient-to-br from-saffron to-saffron-dark p-8 text-center text-ink shadow-pop md:p-10">
+          <div className="text-5xl">🎟️</div>
+          <h1 className="mt-4 font-display text-h1 font-bold">
+            Vous participez !
+          </h1>
+          <p className="mt-2 text-base">{lottery.title ?? "Loterie Rialto"}</p>
+          <div className="mt-8 rounded-2xl bg-white/80 p-5">
+            <div className="text-xs font-semibold uppercase tracking-wider text-ink/70">
+              À gagner
+            </div>
+            <div className="mt-1 font-display text-lg font-bold">
+              {lottery.prize_description ??
+                lottery.reward_description ??
+                "Un lot à découvrir"}
+            </div>
+          </div>
+          <div className="mt-6 text-sm">
+            Tirage le <strong>{formatDrawDate(lottery.draw_date)}</strong>
+          </div>
+          <p className="mt-4 text-sm text-ink/80">
+            Chaque commande passée ce mois-ci vous garde dans le tirage.
+          </p>
         </div>
         <BackHome />
       </StateWrapper>

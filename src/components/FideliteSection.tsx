@@ -6,6 +6,7 @@ import { normalizePhone } from "@/lib/phone";
 import SpinWheel from "./SpinWheel";
 import LotteryEntry from "./LotteryEntry";
 import ReviewGateModal from "./ReviewGateModal";
+import { useStampRule } from "@/lib/loyalty/useStampRule";
 
 type Customer = {
   id: string;
@@ -76,6 +77,10 @@ type LookupPayload = {
 const STORAGE_PHONE_KEY = "rialto:loyalty:phone";
 
 export default function FideliteSection() {
+  // Barème lu à la source (F4) : ce sous-titre décrivait « 10 commandes =
+  // 1 pizza offerte », ce qui devient faux dès qu'un barème par tranche est
+  // réglé au dashboard — et confondait déjà commandes et tampons.
+  const publicRule = useStampRule();
   const [phone, setPhone] = useState("");
   const [searching, setSearching] = useState(false);
   const [data, setData] = useState<LookupPayload | null>(null);
@@ -120,7 +125,10 @@ export default function FideliteSection() {
         <div className="mb-2 text-4xl">🎁</div>
         <h2 className="text-3xl font-bold tracking-tight">Carte Rialto Club</h2>
         <p className="mt-2 text-sm text-mute">
-          10 commandes = 1 pizza offerte. Plus la roue et la loterie mensuelle.
+          {publicRule
+            ? `${publicRule.goal.label}. ${publicRule.rule.label}.`
+            : "Cumulez des tampons sur vos commandes."}{" "}
+          Plus la roue et la loterie mensuelle.
         </p>
       </header>
 

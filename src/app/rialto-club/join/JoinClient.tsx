@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SiteFooter from "@/components/home/SiteFooter";
 import { normalizePhone } from "@/lib/phone";
+import { useStampRule } from "@/lib/loyalty/useStampRule";
 import {
   readCustomerSession,
   writeCustomerSession,
@@ -12,6 +13,9 @@ import {
 
 export default function JoinClient() {
   const router = useRouter();
+  // Barème lu à la source (F4) — jamais en dur : « 1 tampon offert à chaque
+  // commande » devient faux dès qu'un barème par tranche est réglé.
+  const publicRule = useStampRule();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -107,12 +111,14 @@ export default function JoinClient() {
             <header className="mb-8">
               <span className="eyebrow">Rialto Club</span>
               <h1 className="mt-3 font-display text-h1 font-bold leading-tight">
-                Rejoins le club{" "}
+                Rejoignez le club{" "}
                 <em className="italic text-rialto">en 30 sec.</em>
               </h1>
               <p className="mt-3 text-base text-mute">
-                1 tampon offert à chaque commande. À 10 tampons, une pizza Ø33 cm
-                à ton choix. Aucun abonnement, aucun engagement.
+                {publicRule
+                  ? `${publicRule.rule.label}. ${publicRule.goal.label}.`
+                  : "Cumulez des tampons sur vos commandes."}{" "}
+                Aucun abonnement, aucun engagement.
               </p>
             </header>
 
@@ -123,7 +129,16 @@ export default function JoinClient() {
                   ✓
                 </span>
                 <span>
-                  <strong>1 pizza offerte</strong> tous les 10 tampons
+                  {publicRule ? (
+                    <>
+                      <strong>{publicRule.goal.reward_description}</strong> tous
+                      les {publicRule.goal.stamps_required} tampons
+                    </>
+                  ) : (
+                    <strong>
+                      Une récompense quand votre carte est complète
+                    </strong>
+                  )}
                 </span>
               </li>
               <li className="flex items-start gap-3">
@@ -148,7 +163,8 @@ export default function JoinClient() {
                   ✓
                 </span>
                 <span>
-                  <strong>QR code sur ton mobile</strong>, pas de carte plastique
+                  <strong>QR code sur votre mobile</strong>, pas de carte
+                  plastique
                 </span>
               </li>
             </ul>
@@ -200,7 +216,8 @@ export default function JoinClient() {
                   placeholder="+41 79 123 45 67"
                 />
                 <p className="mt-1 text-xs text-mute">
-                  Tu recevras un SMS avec le lien vers ta carte + son QR code.
+                  Vous recevrez un SMS avec le lien vers votre carte + son QR
+                  code.
                 </p>
               </label>
 
@@ -218,8 +235,8 @@ export default function JoinClient() {
                 {loading ? "Création…" : "🎴 Créer ma carte"}
               </button>
               <p className="text-center text-[11px] text-mute">
-                Gratuit · aucun abonnement · tu peux te désinscrire à tout
-                moment en nous contactant.
+                Gratuit · aucun abonnement · vous pouvez vous désinscrire à
+                tout moment en nous contactant.
               </p>
             </form>
           </div>

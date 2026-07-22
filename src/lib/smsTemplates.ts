@@ -20,14 +20,14 @@ export const TEMPLATE_META: Record<
     description:
       "Envoyé automatiquement après création d'une carte fidélité. {{card_url}} = lien vers la carte avec QR code.",
     defaultContent:
-      "Bienvenue chez Rialto {{customer_name}} ! Ta carte fidelite est prete. Montre-la a chaque commande : {{card_url}} - 1 pizza offerte apres 10 tampons !",
+      "Bienvenue chez Rialto {{customer_name}} ! Votre carte fidelite est prete. Montrez-la a chaque commande : {{card_url}}",
   },
   wheel_prize_code: {
     title: "Code promo gagné (roue)",
     description:
       "Envoyé quand un client gagne un lot à la roue de la chance. {{code}} = code promo, {{reward_label}} = libellé du lot.",
     defaultContent:
-      "Bravo {{customer_name}} ! Tu as gagne {{reward_label}} sur ta prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
+      "Bravo {{customer_name}} ! Vous avez gagne {{reward_label}} sur votre prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
   },
   referral_claim_reward: {
     title: "Bienvenue filleul (parrainage)",

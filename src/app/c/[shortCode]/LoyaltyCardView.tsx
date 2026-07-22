@@ -18,6 +18,7 @@ import Toast from "@/components/ui/Toast";
 import ActivationModal from "@/components/ui/ActivationModal";
 import PushToggle from "@/components/PushToggle";
 import { RIALTO_INFO } from "@/lib/rialto-data";
+import { useStampRule } from "@/lib/loyalty/useStampRule";
 
 type Card = {
   id: string;
@@ -110,6 +111,9 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card.qr_code_value]);
 
+  // Barème lu à la source (F4) : « 1 tampon ajouté à chaque commande » était
+  // en dur et devient faux dès qu'un barème par tranche est réglé.
+  const publicRule = useStampRule();
   const total = card.stamps_required;
   const filled = Math.min(card.current_stamps, total);
   const remaining = Math.max(0, total - filled);
@@ -132,7 +136,7 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
         open={activationDoneOpen}
         variant="success"
         icon="🎂"
-        message="C'est tout bon ! Tu recevras un cadeau le jour de ton anniversaire."
+        message="C'est tout bon ! Vous recevrez un cadeau le jour de votre anniversaire."
         autoCloseMs={4000}
         onClose={() => setActivationDoneOpen(false)}
       />
@@ -172,10 +176,10 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               <span className="shrink-0 text-2xl leading-none">🎂</span>
               <div className="flex-1">
                 <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
-                  Complète ta carte
+                  Complétez votre carte
                 </div>
                 <div className="mt-0.5 text-sm font-medium text-ink">
-                  Ajoute ta date d&apos;anniversaire — on t&apos;offre{" "}
+                  Ajoutez votre date d&apos;anniversaire — nous vous offrons{" "}
                   <strong>-20%</strong> ou un dessert 🎁
                 </div>
               </div>
@@ -201,12 +205,12 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
                 <span className="shrink-0 text-base">💡</span>
                 <div className="flex-1">
                   <div className="font-semibold">
-                    Ajoute ce lien à tes favoris
+                    Ajoutez ce lien à vos favoris
                   </div>
                   <p className="mt-0.5 text-ink/80">
-                    Le SMS n&apos;est pas parti — copie l&apos;URL de
-                    cette page pour y revenir facilement, ou ajoute-la à
-                    l&apos;écran d&apos;accueil de ton téléphone (menu
+                    Le SMS n&apos;est pas parti — copiez l&apos;URL de
+                    cette page pour y revenir facilement, ou ajoutez-la à
+                    l&apos;écran d&apos;accueil de votre téléphone (menu
                     Partager → Sur l&apos;écran d&apos;accueil).
                   </p>
                 </div>
@@ -291,7 +295,9 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
                 Montrez ce QR code
               </h2>
               <p className="mt-0.5 text-xs text-mute">
-                Le restaurant scanne = 1 tampon ajouté
+                {publicRule
+                  ? publicRule.rule.label
+                  : "Présentez-le à chaque passage"}
               </p>
             </div>
 
@@ -355,15 +361,17 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
                 <ol className="mt-2 space-y-1.5 text-xs text-mute">
                   <li>
                     <span className="font-semibold text-ink">1.</span>{" "}
-                    Commande en ligne ou au comptoir
+                    Commandez en ligne ou au comptoir
                   </li>
                   <li>
-                    <span className="font-semibold text-ink">2.</span> Montre
-                    ton QR code à Rialto
+                    <span className="font-semibold text-ink">2.</span> Montrez
+                    votre QR code à Rialto
                   </li>
                   <li>
-                    <span className="font-semibold text-ink">3.</span> 1 tampon
-                    ajouté à chaque commande
+                    <span className="font-semibold text-ink">3.</span>{" "}
+                    {publicRule
+                      ? publicRule.rule.label
+                      : "Vos tampons se cumulent"}
                   </li>
                   <li>
                     <span className="font-semibold text-ink">4.</span> À {total}{" "}
@@ -399,7 +407,7 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
                   </div>
                   <div className="text-sm text-ink">
                     <strong>-{VIP_META[card.vip_tier].discount}%</strong>{" "}
-                    permanent sur tes commandes
+                    permanent sur vos commandes
                     {card.vip_tier === "silver" || card.vip_tier === "gold"
                       ? " + dessert anniversaire"
                       : ""}
@@ -423,10 +431,10 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
               <div className="shrink-0 text-xl">📱</div>
               <div>
                 <div className="font-display font-semibold">
-                  Garde ta carte à portée de main
+                  Gardez votre carte à portée de main
                 </div>
                 <p className="mt-1 text-xs text-white/75">
-                  Ajoute cette page à ton écran d&apos;accueil. Sur iPhone :
+                  Ajoutez cette page à votre écran d&apos;accueil. Sur iPhone :
                   bouton{" "}
                   <svg
                     className="inline h-3 w-3 align-middle"

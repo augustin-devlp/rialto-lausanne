@@ -15,6 +15,7 @@ import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
+import { useStampRule } from "@/lib/loyalty/useStampRule";
 
 type OrderStatus =
   | "new"
@@ -626,6 +627,12 @@ function LoyaltyCardSection({
   phone: string;
   onCreate: () => void;
 }) {
+  // Barème lu à la source (F4) : ce bloc décrit la fidélité à des clients qui
+  // n'ont pas encore de carte, donc AVANT tout lookup — il ne peut pas se
+  // contenter des chiffres renvoyés par la carte. Requête déclenchée
+  // UNIQUEMENT sur la branche qui l'affiche (les autres sortent plus bas).
+  const publicRule = useStampRule(loyalty.status === "needs_signup");
+
   // Masque le numéro pour l'affichage (+41 79 *** 45 67 → +41 79 XX XX 67)
   const phoneMasked = phone
     ? phone.replace(/(\+?\d{2,3})(\d+)(\d{2})$/, "$1 ... $3")
@@ -655,7 +662,7 @@ function LoyaltyCardSection({
     const cardUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/c/${loyalty.short_code}`;
     return (
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white shadow-pop md:p-8">
-        <span className="eyebrow !text-saffron">Ta carte fidélité</span>
+        <span className="eyebrow !text-saffron">Votre carte fidélité</span>
         <h3 className="mt-3 font-display text-2xl font-bold leading-tight md:text-3xl">
           {loyalty.current_stamps} tampon
           {loyalty.current_stamps > 1 ? "s" : ""} sur{" "}
@@ -700,10 +707,10 @@ function LoyaltyCardSection({
         {/* Phase 10 C2D : fallback si SMS non envoyé (crédits Brevo KO) */}
         {loyalty.sms_sent === false && (
           <div className="mt-4 rounded-2xl bg-white/10 p-3 text-center text-[11px] text-white/90">
-            <div className="font-semibold">💡 Garde ce lien en favori</div>
+            <div className="font-semibold">💡 Gardez ce lien en favori</div>
             <p className="mt-0.5 text-white/75">
-              Tu n&apos;as pas reçu de SMS ? Copie ce lien pour retrouver
-              ta carte fidélité plus tard :
+              Vous n&apos;avez pas reçu de SMS ? Copiez ce lien pour retrouver
+              votre carte fidélité plus tard :
             </p>
             <div className="mt-2 flex items-center gap-2">
               <input
@@ -750,10 +757,10 @@ function LoyaltyCardSection({
           </svg>
         </div>
         <h3 className="font-display text-xl font-bold">
-          Création de ta carte…
+          Création de votre carte…
         </h3>
         <p className="mt-1 text-sm text-mute">
-          On t&apos;envoie ton QR par SMS dans quelques secondes.
+          Nous vous envoyons votre QR par SMS dans quelques secondes.
         </p>
       </div>
     );
@@ -784,14 +791,16 @@ function LoyaltyCardSection({
       <div className="flex items-start gap-3">
         <div className="shrink-0 text-3xl">🎴</div>
         <div>
-          <span className="eyebrow">Profite de tes avantages Rialto</span>
+          <span className="eyebrow">Profitez de vos avantages Rialto</span>
           <h3 className="mt-2 font-display text-xl font-bold leading-tight md:text-2xl">
-            Crée ta carte fidélité{" "}
+            Créez votre carte fidélité{" "}
             <em className="italic text-rialto">en 1 clic</em>
           </h3>
           <p className="mt-1.5 text-sm text-mute">
-            1 tampon offert tout de suite + 1 tampon à chaque commande.
-            À 10 tampons, une pizza Ø33 cm offerte.
+            1 tampon offert tout de suite.{" "}
+            {publicRule
+              ? `Ensuite, ${publicRule.rule.label}. ${publicRule.goal.label}.`
+              : "Cumulez ensuite des tampons sur vos commandes."}
           </p>
         </div>
       </div>
@@ -802,7 +811,11 @@ function LoyaltyCardSection({
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rialto/10 text-rialto">
             ✓
           </span>
-          <span className="text-ink">1 pizza Ø33 cm offerte tous les 10 tampons</span>
+          <span className="text-ink">
+            {publicRule
+              ? publicRule.goal.label
+              : "Une récompense quand votre carte est complète"}
+          </span>
         </li>
         <li className="flex items-center gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rialto/10 text-rialto">

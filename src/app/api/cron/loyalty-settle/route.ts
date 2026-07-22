@@ -16,8 +16,16 @@ export const dynamic = "force-dynamic";
  *
  * Le chemin NOMINAL est le polling de /confirmation (settleForOrder sur
  * GET /api/orders/[id]) : un client qui garde sa page ouverte voit son tampon
- * se solidifier en ~15 s. Ce cron ne rattrape que les clients qui ont fermé
- * l'onglet avant l'acceptation.
+ * se solidifier en ~15 s. La lecture de la fidélité (lookup) solidifie elle
+ * aussi. Ce cron ne rattrape que les clients qui ont fermé l'onglet avant
+ * l'acceptation ET ne rouvrent pas leur carte.
+ *
+ * ⚠️ CADENCE JOURNALIÈRE IMPOSÉE PAR LE PLAN VERCEL (Hobby = 1 exécution/jour
+ * par cron). Une cadence horaire fait REJETER le déploiement — c'est ce qui
+ * a silencieusement empêché F3/F3b/F4 de partir en production le 22.07.
+ * Ne pas repasser en sub-journalier sans changement de plan ; si un filet
+ * plus serré devient nécessaire, passer par un ordonnanceur externe
+ * (QStash, GitHub Actions) tapant ce même endpoint avec x-cron-secret.
  *
  * ⚠️ Il RÉUTILISE crediteCommandes() et ORDER_COLS de settle.ts — il ne
  * redéveloppe NI la boucle de crédit NI la liste de colonnes. Recopier la

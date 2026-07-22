@@ -24,5 +24,10 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 ## Contraintes
 - Mobile-first absolu · WCAG AA · Lighthouse > 90.
 
+## Invariants base (à respecter dans TOUT nouveau code)
+- **Ordre de verrouillage : `orders` AVANT `customer_cards`, jamais l'inverse** (acté 22.07.2026). Vrai de facto aujourd'hui, mais rien dans le schéma ne l'impose : une fonction qui partirait de `customer_cards` pour lire `orders` (recalcul de tier VIP…) créerait un interblocage réel avec `credit_order_stamps`.
+- Fidélité v2 : le tampon EN ATTENTE est **dérivé**, jamais écrit ; le palier/la récompense ne se calcule QUE sur `customer_cards.current_stamps` (le solidifié). Ne jamais additionner pending et acquis.
+- Tout DDL passe en **navette** (review) puis est exécuté via `apply_migration` par la conversation propriétaire du repo. Jamais de SQL brut hors historique versionné.
+
 ## Utilisation des agents
 - Design/UI → `designer` · comprendre avant de modifier → `explorateur` (lecture seule) · après écriture → `relecteur`.

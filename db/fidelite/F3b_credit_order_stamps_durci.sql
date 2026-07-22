@@ -15,6 +15,31 @@
 --      absorbé silencieusement en {ok:true, already:true}. Échec silencieux :
 --      exactement l'anti-pattern combattu partout dans ce projet.
 --
+-- ⚠️ CONTRAINTE D'APPEL (c'est une CONTRAINTE, pas un constat) :
+--   le FOR SHARE de l'étape (1) court jusqu'au COMMIT de la transaction
+--   APPELANTE. C'est vrai aujourd'hui parce que supabase.rpc() ouvre une
+--   transaction implicite par appel — le verrou dure donc quelques ms.
+--   Ce serait FAUX si ce RPC était un jour englobé dans une transaction plus
+--   large : le verrou tiendrait alors jusqu'au COMMIT de CELLE-CI, et un
+--   ACCEPTER de la caisse attendrait d'autant. NE PAS appeler cette fonction
+--   depuis une transaction longue.
+--
+-- ⚠️ HYPOTHÈSE MONO-PROGRAMME (assumée, à lever au fork Jet Pizza) :
+--   le RPC vérifie que la carte appartient au CLIENT de la commande, mais
+--   JAMAIS qu'elle appartient au bon PROGRAMME de fidélité. La seule vraie
+--   protection est le CARD_ID codé en dur côté TypeScript (settle.ts, cron).
+--   Inexploitable aujourd'hui : un seul programme, aucun client porteur de
+--   deux cartes. Le jour où Jet Pizza aura son propre programme, un client
+--   avec deux cartes pourrait faire créditer la mauvaise → ajouter alors un
+--   paramètre p_card_id contrôlé ICI (inscrit à la checklist du fork).
+--
+-- ⚠️ INVARIANT D'ORDRE DE VERROUILLAGE (acté 22.07.2026, vaut pour TOUT
+--   nouveau code touchant ces tables) : orders AVANT customer_cards, JAMAIS
+--   l'inverse. Vrai de facto aujourd'hui, mais rien dans le schéma ne
+--   l'impose : une future fonction partant de customer_cards pour lire
+--   orders (un recalcul de tier VIP, par exemple) créerait un interblocage
+--   réel avec ce RPC.
+--
 -- CE QUI CHANGE (rien d'autre) :
 --   a) SELECT ... FROM orders ... FOR SHARE  → le statut ne peut plus changer
 --      sous nos pieds jusqu'au COMMIT. Verrou partagé de quelques
@@ -52,10 +77,29 @@ declare
   v_order_customer uuid;
   v_enabled       boolean;
   v_new_total     int;
+  v_effectif      int;
   v_inserted      int;
 begin
   if p_stamps is null or p_stamps <= 0 then
     return jsonb_build_object('ok', true, 'credited', 0, 'reason', 'zero');
+  end if;
+
+  -- (0) KILLSWITCH AVANT TOUT VERROU — lecture NON verrouillée.
+  --     Placé ici (et non après les verrous) : killswitch fermé, on ne doit
+  --     bloquer NI la commande NI la carte pour rien. Un appelant bogué en
+  --     boucle créerait sinon de la contention sur le chemin de la caisse
+  --     sans jamais rien créditer.
+  select coalesce(lc.stamp_online_enabled, false)
+    into v_enabled
+  from customer_cards cc
+  join loyalty_cards lc on lc.id = cc.card_id
+  where cc.id = p_customer_card_id;
+
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'Carte introuvable');
+  end if;
+  if not coalesce(v_enabled, false) then
+    return jsonb_build_object('ok', false, 'error', 'killswitch_off');
   end if;
 
   -- (1) VERROU SUR LA COMMANDE D'ABORD (ordre établi : orders → customer_cards).
@@ -101,22 +145,24 @@ begin
     );
   end if;
 
-  -- (3bis) KILLSWITCH EN DÉFENSE DE PROFONDEUR. Les 3 chemins TypeScript le
-  --        contrôlent déjà, mais le dernier rempart avant l'écriture ne doit
-  --        pas dépendre de l'appelant : c'est l'unique raison d'être du flag.
-  select coalesce(lc.stamps_required, 10), coalesce(lc.stamp_online_enabled, false)
-    into v_required, v_enabled
+  select coalesce(lc.stamps_required, 10) into v_required
   from loyalty_cards lc where lc.id = v_program;
   v_required := coalesce(v_required, 10);
 
-  if not coalesce(v_enabled, false) then
-    return jsonb_build_object('ok', false, 'error', 'killswitch_off');
-  end if;
+  -- (4) EFFET RÉEL calculé AVANT l'écriture du journal : quand le plafond de
+  --     la carte absorbe tout ou partie du crédit, transactions.value doit
+  --     dire la VÉRITÉ. Écrire p_stamps alors que 0 tampon est crédité ferait
+  --     mentir l'historique — la même incohérence que celle corrigée sur la
+  --     valeur de retour.
+  v_new_total := least(v_current + p_stamps, v_required);
+  v_effectif  := v_new_total - v_current;
 
-  -- (4) L'INSERT EST LE PORTIER : idempotence garantie par l'index unique
+  -- (5) L'INSERT EST LE PORTIER : idempotence garantie par l'index unique
   --     partiel transactions(order_id) WHERE type='stamp_added' (F0/M2).
+  --     Il est posé MÊME si v_effectif = 0 : la commande a bien été traitée,
+  --     elle ne doit pas être retentée en boucle.
   insert into transactions (customer_card_id, order_id, type, value, source)
-  values (p_customer_card_id, p_order_id, 'stamp_added', p_stamps, p_source)
+  values (p_customer_card_id, p_order_id, 'stamp_added', v_effectif, p_source)
   on conflict do nothing;
   get diagnostics v_inserted = row_count;
 
@@ -124,11 +170,9 @@ begin
     return jsonb_build_object('ok', true, 'credited', 0, 'already', true);
   end if;
 
-  -- (5) Incrément PLAFONNÉ. Jamais de reset, jamais de rewards_claimed+1 :
+  -- (6) Incrément PLAFONNÉ. Jamais de reset, jamais de rewards_claimed+1 :
   --     le flux en ligne ne CONSOMME JAMAIS une récompense (2e verrou de la
   --     règle anti « donné-repris »). La consommation reste un geste comptoir.
-  v_new_total := least(v_current + p_stamps, v_required);
-
   update customer_cards
   set current_stamps = v_new_total
   where id = p_customer_card_id;
@@ -139,7 +183,7 @@ begin
   -- sur-compte et masque le surplus perdu).
   return jsonb_build_object(
     'ok', true,
-    'credited', v_new_total - v_current,
+    'credited', v_effectif,
     'requested', p_stamps,
     'new_stamps', v_new_total,
     'stamps_required', v_required

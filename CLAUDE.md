@@ -16,6 +16,7 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 - Vouvoiement systématique pour **TOUS les messages clients** — upsell, fidélité, erreurs, sans exception (décision Augustin 2026-07-11 ; l'ancienne tolérance tutoiement sur l'upsell est caduque). NB : le reste du Club (loterie, etc.) tutoie encore par héritage → passe globale prévue dans un lot cosmétique dédié, ne pas corriger au fil de l'eau.
 - JAMAIS d'alcool en upsell · bénéfices > fonctionnalités · aucune invention.
 - Aucun paiement en ligne (règlement sur place : espèces / TWINT).
+- SMS : consulter `docs/SMS_TEMPLATES.md` avant tout branchement (12 templates orphelins sur 18 ; `order_cancelled` = INTERDIT sur le flux de refus, décision contractuelle 19.07.2026).
 
 ## Ma méthode de travail (Augustin)
 - Proposer puis valider avant d'exécuter ; section par section.

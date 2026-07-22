@@ -249,6 +249,11 @@ export async function POST(req: NextRequest) {
     free_item_label: promoInput.free_item_label ?? null,
     min_order_amount: 0,
     max_uses: 1,
+    // ⚠️ COUPLAGE : le template SMS `wheel_prize_code` (table sms_templates,
+    // éditable au dashboard) RÉPÈTE cette durée en toutes lettres
+    // (« Valable 30 jours »). Changer ce chiffre sans corriger le template
+    // enverrait au client une durée fausse — c'est exactement le défaut
+    // trouvé sur `referral_success` le 22.07 (30 annoncés, 60 réels).
     valid_days: 30,
   });
 

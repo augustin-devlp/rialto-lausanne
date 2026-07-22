@@ -40,8 +40,11 @@ export const TEMPLATE_META: Record<
     title: "Parrainage réussi",
     description:
       "Envoyé au parrain quand un filleul passe sa 1re commande. Variables : {{customer_name}}, {{reward_label}}, {{code}}.",
+    // ⚠️ « 60 jours » DOIT rester aligné sur reward-referrals/route.ts
+    // (validUntil.setDate(+60)). La version EN BASE fait foi : elle annonçait
+    // 30 jours pour des codes de 60, corrigée le 22.07.
     defaultContent:
-      "🎉 Merci {{customer_name}} ! Ton filleul a commande chez Rialto. Tu gagnes {{reward_label}}. Code : {{code}} (valable 60 jours).",
+      "🎉 Merci {{customer_name}} ! Votre filleul a commande chez Rialto. Vous gagnez {{reward_label}}. Code : {{code}} (valable 60 jours).",
   },
 };
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
+import { settleForOrder, SOLID_STATUSES } from "@/lib/loyalty/settle";
 
 // Empêche Next.js de cacher cet endpoint — on veut toujours la valeur DB
 // fraîche (surtout pour le polling timeline depuis /confirmation).
@@ -46,6 +47,17 @@ export async function GET(
   console.log(
     `[timeline-api] GET order id=${params.id} order_number=${order.order_number} status_returned=${order.status}${tick ? ` tick=${tick}` : ""}`,
   );
+
+  // SOLIDIFICATION du tampon (F3) — cette route est pollée toutes les 15 s
+  // par /confirmation : c'est le déclencheur le plus fréquent, donc celui qui
+  // détermine le délai entre l'acceptation par la caisse et le tampon acquis.
+  // Le bloc fidélité de /confirmation le RELIT sur changement de statut.
+  // Uniquement sur statut solide : pendant toute la phase d'attente (le gros
+  // du polling), on ne dépense aucune requête. Strictement non bloquante
+  // (settleForOrder avale tout) et inerte si le killswitch est à false.
+  if (SOLID_STATUSES.includes(order.status as (typeof SOLID_STATUSES)[number])) {
+    await settleForOrder(sb, order.id as string);
+  }
 
   // On renvoie à la fois order (avec items imbriqués) et items en top-level
   // pour compatibilité rétroactive avec /order/[id] legacy.

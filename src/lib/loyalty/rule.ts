@@ -40,6 +40,11 @@ export const DEFAULT_STAMP_RULE: StampRule = {
 export type StampableOrder = {
   total_amount: number | string;
   delivery_fee?: number | string | null;
+  /**
+   * Remise promo, stockée À PART par le modèle (elle n'est jamais déduite de
+   * total_amount). TOUJOURS la projeter quand on calcule des tampons.
+   */
+  promo_discount_amount?: number | string | null;
 };
 
 /** Lit une colonne numeric Supabase (souvent renvoyée en string). */
@@ -68,20 +73,40 @@ export function toStampRule(row: Record<string, unknown> | null | undefined): St
 }
 
 /**
+ * Assiette de calcul : ce que le client a EFFECTIVEMENT PAYÉ en marchandise.
+ *
+ *   base = (basis === 'goods' ? total_amount - delivery_fee : total_amount)
+ *          - promo_discount_amount
+ *
+ * ⚠️ La remise promo est TOUJOURS déduite, quelle que soit l'assiette
+ * (décision Augustin 22.07.2026). Raison décisive : les codes de parrainage
+ * sont à −100 %. Sans cette déduction, une commande ENTIÈREMENT GRATUITE
+ * rapporterait des tampons — ce n'est pas de la générosité, c'est une faille
+ * exploitable. On récompense ce qui est payé.
+ */
+export function stampableBase(order: StampableOrder, rule: StampRule): number {
+  const total = num(order.total_amount);
+  const fee = num(order.delivery_fee);
+  const promo = num(order.promo_discount_amount);
+  const brut = rule.basis === "goods" ? total - fee : total;
+  return Math.max(0, brut - promo);
+}
+
+/**
  * Nombre de tampons que VAUT une commande selon le barème.
  * Calcul pur, sans effet de bord, testable sans base.
  *
- *   base = basis === 'goods' ? total_amount - delivery_fee : total_amount
- *   n    = mode === 'per_order' ? 1 : min(floor(base / step), maxPerOrder)
+ *   n = mode === 'per_order' ? 1 : min(floor(base / step), maxPerOrder)
  *
  * Sous la tranche (ex. 49 CHF pour une tranche de 50) → 0 tampon : décision
  * produit assumée du 22.07 (pas d'hybride « minimum 1 », qui rendrait le
  * barème illisible).
+ *
+ * En mode 'per_order', une commande intégralement remisée (base 0) ne
+ * rapporte rien non plus : la faille −100 % est fermée dans les DEUX modes.
  */
 export function stampsForOrder(order: StampableOrder, rule: StampRule): number {
-  const total = num(order.total_amount);
-  const fee = num(order.delivery_fee);
-  const base = rule.basis === "goods" ? total - fee : total;
+  const base = stampableBase(order, rule);
   if (!(base > 0)) return 0;
 
   if (rule.mode === "per_order") {

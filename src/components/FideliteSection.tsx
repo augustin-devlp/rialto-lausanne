@@ -368,6 +368,12 @@ function CardView({
   const complete =
     card.reward_available ?? card.current_stamps >= card.stamps_required;
   // Tampons en attente de validation : jamais additionnés au solde acquis.
+  //
+  // ⚠️ pendingVisibles est CLAMPÉ aux cases restantes, et c'est LUI qu'on
+  // affiche partout (pastilles ET texte). Annoncer le brut serait un
+  // donné-repris : le RPC écrit least(acquis + n, seuil), donc une carte à
+  // 9/10 recevant une commande à 2 tampons n'en encaisse qu'UN — et la ligne
+  // d'idempotence scelle la perte. On ne promet que ce qui sera délivré.
   const pendingStamps = Math.max(0, payload.pending?.stamps ?? 0);
   const pendingVisibles = Math.min(
     pendingStamps,
@@ -448,7 +454,7 @@ function CardView({
               );
             })}
           </div>
-          {pendingStamps > 0 && (
+          {pendingVisibles > 0 && (
             // Puce bg-saffron/10 + text-ink (convention repo) : text-saffron-dark
             // sur fond clair tombe à ~3,1:1, sous le 4,5:1 exigé en AA — or
             // c'est CE texte qui porte l'accessibilité de l'état « en attente ».
@@ -457,7 +463,7 @@ function CardView({
               className="mt-2 inline-block rounded-lg bg-saffron/10 px-2 py-1 text-xs font-medium text-ink"
             >
               {card.current_stamps} tampon{card.current_stamps > 1 ? "s" : ""}{" "}
-              acquis — {pendingStamps} en attente de validation par le
+              acquis — {pendingVisibles} en attente de validation par le
               restaurant.
             </p>
           )}

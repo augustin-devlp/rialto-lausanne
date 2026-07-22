@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/reward-referrals",
       "schedule": "15 9 * * *"
+    },
+    {
+      "path": "/api/cron/loyalty-settle",
+      "schedule": "0 * * * *"
     }
   ]
 }

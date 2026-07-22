@@ -322,6 +322,23 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     void lookupCard();
   }, [lookupCard]);
 
+  // SOLIDIFICATION VISIBLE (F3) — quand la caisse fait changer le statut, le
+  // tampon « en attente » devient acquis côté serveur ; on relit la carte pour
+  // que le client le VOIE sans recharger la page.
+  //
+  // Piloté par order.status (un état), PAS depuis la callback de polling :
+  // sur un statut terminal celle-ci appelle stop() qui ferme le canal, et un
+  // rafraîchissement placé après n'aurait jamais lieu — le tampon en attente
+  // resterait collé à l'écran après un refus.
+  const statutPrecedent = useRef<string | null>(null);
+  useEffect(() => {
+    const precedent = statutPrecedent.current;
+    statutPrecedent.current = order.status;
+    // Premier passage = montage : la lecture initiale ci-dessus suffit.
+    if (precedent === null || precedent === order.status) return;
+    void lookupCard();
+  }, [order.status, lookupCard]);
+
   async function createCard() {
     setLoyalty({ status: "signing_up" });
     try {

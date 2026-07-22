@@ -17,6 +17,7 @@ import {
   EMPTY_PENDING,
   type PendingOrder,
 } from "@/lib/loyalty/pending";
+import { settleForCard } from "@/lib/loyalty/settle";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,24 @@ export async function GET(req: NextRequest) {
     .single();
 
   const stampRule = toStampRule(loyalty as Record<string, unknown> | null);
+
+  // SOLIDIFICATION (F3) — non bloquante, avant de composer la réponse : sinon
+  // le client verrait un solde périmé d'une lecture de retard. Inerte tant que
+  // le killswitch est à false. Si elle crédite, on relit le solde à jour.
+  let soldeAJour: number | null = null;
+  if (card && stampRule.enabled) {
+    await settleForCard(admin, card.customer_id as string, stampRule);
+    // Relecture INCONDITIONNELLE : un settle concurrent (polling de
+    // /confirmation, cron) a pu créditer entre notre lecture initiale et
+    // maintenant. Se fier à notre propre `credited > 0` renverrait un solde
+    // périmé d'une lecture de retard.
+    const { data: frais } = await admin
+      .from("customer_cards")
+      .select("current_stamps")
+      .eq("id", card.id)
+      .maybeSingle();
+    soldeAJour = (frais?.current_stamps as number | undefined) ?? null;
+  }
 
   // 2) Spin wheel
   const { data: wheel } = await admin
@@ -163,7 +182,7 @@ export async function GET(req: NextRequest) {
     ? await admin
         .from("orders")
         .select(
-          "id, order_number, status, total_amount, delivery_fee, customer_id, created_at",
+          "id, order_number, status, total_amount, delivery_fee, promo_discount_amount, customer_id, created_at",
         )
         .eq("restaurant_id", RESTAURANT_ID)
         .eq("customer_id", card.customer_id)
@@ -182,7 +201,7 @@ export async function GET(req: NextRequest) {
   // compare plus jamais rien à stamps_required, et un pending ne peut pas
   // rendre reward_available vrai.
   const stampsRequired = loyalty?.stamps_required ?? 10;
-  const acquis = card ? Number(card.current_stamps ?? 0) : 0;
+  const acquis = card ? Number(soldeAJour ?? card.current_stamps ?? 0) : 0;
   const rewardAvailable = card ? acquis >= stampsRequired : false;
 
   return NextResponse.json({
@@ -200,7 +219,7 @@ export async function GET(req: NextRequest) {
     card: card
       ? {
           id: card.id,
-          current_stamps: card.current_stamps,
+          current_stamps: acquis,
           stamps_required: stampsRequired,
           // Calculés serveur sur le SOLIDIFIÉ uniquement (F2).
           reward_available: rewardAvailable,

@@ -1,7 +1,34 @@
 -- ============================================================================
 -- F0 — FIDÉLITÉ v2 : socle base (barème réglable + crédit en deux temps)
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE vers la review caisse.
+-- STATUT : EXÉCUTÉE le 22.07.2026 (GO navette caisse), en 4 migrations
+--   versionnées : f0_fidelite_v2_schema (M1+M2+M3),
+--   f0_fidelite_v2_credit_order_stamps (M4),
+--   f0_fidelite_v2_credit_stamp_quota (M5),
+--   f0_fidelite_v2_revoke_increment_stampify (M6).
+--   Post-vérifiée live (structure + 3 cas comportementaux, cf. bas de fichier).
+--
+-- ⚠️ NON REJOUABLES : M1 et M2 utilisent ADD COLUMN sans IF NOT EXISTS et
+--   CREATE INDEX sans IF NOT EXISTS → un second passage ÉCHOUE (42701 /
+--   42P07). C'est volontaire (on veut l'échec bruyant plutôt qu'un silence
+--   ambigu), mais il ne faut pas les relancer : vérifier d'abord la présence
+--   des colonnes/index. M3 (IF NOT EXISTS), M4 et M5 (CREATE OR REPLACE) et
+--   M6 (REVOKE) sont, eux, rejouables sans dommage.
+--
+-- ⚠️ RÉSERVES NAVETTE À TRAITER EN F3, AVANT L'ACTIVATION (F5) :
+--   1. TOCTOU crédit-après-annulation — dans M4, le FOR UPDATE ne porte que
+--      sur customer_cards ; la relecture de orders.status est un SELECT non
+--      verrouillé. Si la caisse annule dans la fenêtre, le tampon est crédité
+--      quand même. Fix : verrouiller aussi la ligne orders (FOR SHARE) ou
+--      re-vérifier le statut juste avant l'UPDATE final, en respectant
+--      l'ordre de verrouillage (orders puis customer_cards, ou l'inverse
+--      partout, pour ne pas créer d'interblocage).
+--   2. Aucun contrôle d'appariement carte↔commande — l'index unique de M2
+--      porte sur order_id SEUL. Un mauvais appariement crédite définitivement
+--      la mauvaise carte, et le retry avec la bonne serait absorbé
+--      silencieusement par ON CONFLICT DO NOTHING en {ok:true, already:true}
+--      (échec silencieux). Fix : vérifier customer_cards.customer_id =
+--      orders.customer_id et retourner un ok:false EXPLICITE si mismatch.
 --
 -- ARCHITECTURE RETENUE : « pending dérivé, acquis écrit, caisse intouchée ».
 --   Le tampon EN ATTENTE n'est écrit NULLE PART : il est dérivé du fait que
@@ -75,6 +102,14 @@ CREATE INDEX transactions_order_id_idx
 --                       rôle : se souvenir que « cette commande a déjà crédité ».
 --                       ON DELETE SET NULL : supprimer une commande ne détruit
 --                       jamais l'historique de tampons du client.
+--                       ⚠️ RECTIFICATION D'ANNONCE (relevée en navette) : ce
+--                       ADD COLUMN ... REFERENCES orders(id) CRÉE UNE CONTRAINTE
+--                       FK QUI TOUCHE orders — verrou bref à la création, et
+--                       tout DELETE sur orders déclenche désormais le SET NULL
+--                       sur transactions. M3 n'est donc PAS le seul objet
+--                       partagé touché : M2 l'est aussi, par cette FK.
+--                       Sans impact pratique (la caisse ne supprime pas de
+--                       commandes), mais l'annonce initiale était fausse.
 --  index UNIQUE PARTIEL → LE verrou d'idempotence, garanti par Postgres et non
 --                       par du code : une commande = au plus UNE ligne de
 --                       crédit, même si 4 déclencheurs tombent dessus en même
@@ -303,8 +338,27 @@ $function$;
 -- EXPLICATION : signature, type de retour et JSON de sortie STRICTEMENT
 --  inchangés → /api/scan/credit et ScanClient.tsx ne bougent pas d'une ligne.
 --  Les GRANT existants (service_role) survivent à CREATE OR REPLACE.
--- ROLLBACK : re-CREATE OR REPLACE de la version antérieure (corps ci-dessus
---  sans la ligne « and coalesce(source,'scan') <> 'order' »).
+--
+-- ⚠️ DÉPENDANCE NON CONTRAINTE (relevée en navette) : transactions.source
+--  n'a AUCUN CHECK ni enum. M5 fait désormais dépendre le quota comptoir de
+--  la valeur littérale 'order'. Une faute de frappe côté appelant ('orders',
+--  'ORDER', 'commande') ferait silencieusement recompter ces crédits dans le
+--  quota comptoir. Valeurs réellement présentes en base au 22.07 : 'scan'
+--  uniquement. À sécuriser en F3 : soit un CHECK sur source, soit une
+--  constante partagée côté code — la seconde suffit à ce volume.
+--
+-- ROLLBACK M5 — SQL PRÊT À COLLER (un rollback se joue sous pression) :
+--   il suffit de rejouer le CREATE OR REPLACE ci-dessus en SUPPRIMANT la
+--   seule ligne « and coalesce(source, 'scan') <> 'order' ». Autrement dit,
+--   le bloc de comptage redevient exactement :
+--
+--     select count(*) into v_count from transactions
+--     where customer_card_id = p_customer_card_id
+--       and type = 'stamp_added'
+--       and created_at >= v_day_start;
+--
+--   Tout le reste du corps est identique. Aucune migration inverse à écrire :
+--   CREATE OR REPLACE écrase, les GRANT survivent, aucun état à nettoyer.
 
 
 -- ─────────────────────────────────────────────────────────────────────────
@@ -330,17 +384,39 @@ REVOKE EXECUTE ON FUNCTION public.increment_stampify_stamps(uuid, uuid) FROM aut
 
 
 -- ============================================================================
--- IMPACTS GLOBAUX (pour la review)
+-- IMPACTS GLOBAUX (annonce rectifiée après relevé de navette)
 -- - CAISSE : ZÉRO ligne de code à changer, ZÉRO trigger ajouté sur orders,
---   ZÉRO logique fidélité dans sa transaction. Le seul objet partagé touché
---   est un INDEX de lecture (M3). M5 modifie une fonction du chemin COMPTOIR
---   (pas caisse) sans changer sa signature ni son contrat de retour.
+--   ZÉRO logique fidélité dans sa transaction. Objets partagés touchés :
+--   (a) M3 ajoute un INDEX de lecture sur orders ; (b) M2 ajoute une
+--   CONTRAINTE FK depuis transactions VERS orders (verrou bref, SET NULL au
+--   DELETE). Aucune colonne, aucune sémantique ni RLS d'orders modifiée.
+--   M5 modifie une fonction du chemin COMPTOIR (pas caisse) sans changer sa
+--   signature ni son contrat de retour.
 -- - SITE : aucun comportement modifié tant que stamp_online_enabled = false.
 -- - RLS : aucune policy ajoutée ni modifiée. Aucun GRANT élargi ; M6 en RETIRE.
 -- - PUBLICATION realtime : inchangée.
 -- - VOLUMES : 1 ligne loyalty_cards, ~34 lignes orders, 3 lignes transactions.
 --
--- ACTIVATION (hors DDL, après F1-F4 livrés et testés) :
+-- ACTIVATION (hors DDL, après F1-F4 livrés ET les 2 réserves navette traitées) :
 --   UPDATE public.loyalty_cards SET stamp_online_enabled = true
 --   WHERE id = 'f4cb1a3f-fc5c-40eb-87db-8d2c2b0a8b5f';
+--
+-- POST-VÉRIFICATION LIVE DU 22.07.2026 (exécutée juste après les migrations)
+-- Structure : 5 colonnes de barème posées (carte Rialto = per_amount / 50.00
+--   / goods / max 2 / enabled=FALSE) · 3 index posés · FK transactions→orders
+--   posée · credit_order_stamps ACL = postgres + service_role SEULS ·
+--   increment_stampify_stamps ACL après REVOKE = postgres + service_role
+--   (PUBLIC, anon, authenticated retirés) · ligne M5 présente dans le corps ·
+--   34 orders et 3 transactions intactes.
+-- Comportement de credit_stamp, 3 cas rejoués en transactions ANNULÉES,
+-- comparés à la référence capturée AVANT M5 :
+--   CAS 1 scan comptoir nominal
+--     avant : {ok:true, stamps_added:1, new_stamps:1, stamps_required:10, reward_earned:false}
+--     après : IDENTIQUE  → contrat de sortie préservé
+--   CAS 2 scan comptoir après 3 crédits 'order' le même jour
+--     avant : {ok:false, error:"Limite atteinte : maximum 3 tampons par jour…"}
+--     après : {ok:true, stamps_added:1, …}  → c'est la CORRECTION
+--   CAS 3 quatrième scan comptoir PUR
+--     avant : refusé · après : refusé  → garde-fou anti-abus préservé
+-- Chemin HTTP : POST /api/scan/credit sans cookie = 401 (auth non touchée).
 -- ============================================================================

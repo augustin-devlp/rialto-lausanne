@@ -16,6 +16,7 @@ import { RIALTO_INFO } from "@/lib/rialto-data";
 import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
+import StampRow from "@/components/loyalty/StampRow";
 
 type OrderStatus =
   | "new"
@@ -94,6 +95,14 @@ type LoyaltyCardState =
       current_stamps: number;
       stamps_required: number;
       reward_description: string;
+      /**
+       * Tampons EN ATTENTE de validation (état dérivé, jamais écrit).
+       * Valeur BRUTE : StampRow porte le clamp.
+       * ⚠️ Ce champ manquait — le lookup le renvoyait déjà, mais il était
+       * jeté au parsing, donc la page de confirmation n'a JAMAIS affiché la
+       * gratification immédiate. C'était toute la promesse de l'architecture.
+       */
+      pending_stamps: number;
       /** Phase 10 C2D : false = SMS non parti (crédits Brevo, etc.)
        *  → afficher un fallback "copie ce lien en favori". */
       sms_sent?: boolean;
@@ -279,7 +288,14 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   /* ─── Carte fidélité : détection automatique au mount ──────────────── */
   const lookupCard = useCallback(async () => {
     if (!order.customer_phone) return;
-    setLoyalty({ status: "checking" });
+    // ⚠️ NE PAS écraser une carte déjà affichée. Un setLoyalty({checking})
+    // inconditionnel ici rendait INOPÉRANTE la mise à jour fonctionnelle plus
+    // bas (le `prev` qu'elle voit après l'await serait toujours "checking",
+    // jamais "has_card"), donc sms_sent/sms_fallback_url étaient perdus à
+    // CHAQUE relecture — et notamment juste après une inscription, seul
+    // moment où sms_sent === false existe. Effet de bord supprimé au passage :
+    // la carte ne repasse plus en squelette gris à chaque rafraîchissement.
+    setLoyalty((p) => (p.status === "has_card" ? p : { status: "checking" }));
     try {
       const res = await fetch(
         `/api/rialto/loyalty/lookup?phone=${encodeURIComponent(order.customer_phone)}`,
@@ -293,29 +309,46 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             stamps_required: number;
             reward_description: string;
           } | null;
+          // Univers SÉPARÉ de `card` : jamais additionné au solde acquis.
+          pending?: { stamps: number } | null;
         };
-        if (body.card && body.card.short_code && body.customer) {
+        const carte = body.card;
+        // Valeur narrowée capturée dans une const : le narrowing d'une
+        // PROPRIÉTÉ ne survit pas à la closure de setLoyalty (elle peut
+        // s'exécuter plus tard), celui d'une const oui — donc pas de cast.
+        const shortCode = carte?.short_code;
+        if (carte && shortCode && body.customer) {
           // Sync la session customer côté navigateur (utilisée par le
           // HamburgerMenu pour afficher les liens club connecté)
           writeCustomerSession({
             customer_id: body.customer.id,
-            short_code: body.card.short_code,
+            short_code: shortCode,
             phone: order.customer_phone,
             first_name: body.customer.first_name ?? firstName,
           });
-          setLoyalty({
+          // Mise à jour FONCTIONNELLE : préserve sms_sent / sms_fallback_url
+          // posés à l'inscription. Sans ça, cette relecture — appelée aussi à
+          // chaque changement de statut (F3) — effacerait le repli « copiez ce
+          // lien » affiché quand le SMS n'est pas parti.
+          setLoyalty((prev) => ({
             status: "has_card",
-            short_code: body.card.short_code,
-            current_stamps: body.card.current_stamps,
-            stamps_required: body.card.stamps_required,
-            reward_description: body.card.reward_description,
-          });
+            short_code: shortCode,
+            current_stamps: carte.current_stamps,
+            stamps_required: carte.stamps_required,
+            reward_description: carte.reward_description,
+            pending_stamps: Math.max(0, body.pending?.stamps ?? 0),
+            sms_sent: prev.status === "has_card" ? prev.sms_sent : undefined,
+            sms_fallback_url:
+              prev.status === "has_card" ? prev.sms_fallback_url : undefined,
+          }));
           return;
         }
       }
-      setLoyalty({ status: "needs_signup" });
+      // Un hoquet réseau ne doit JAMAIS renvoyer un membre existant sur le CTA
+      // « Créez votre carte » : on garde la carte déjà affichée.
+      setLoyalty((p) => (p.status === "has_card" ? p : { status: "needs_signup" }));
     } catch {
-      setLoyalty({ status: "needs_signup" });
+      setLoyalty((p) => (p.status === "has_card" ? p : { status: "needs_signup" }));
     }
   }, [order.customer_phone, firstName]);
 
@@ -389,9 +422,16 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         current_stamps: body.card.current_stamps,
         stamps_required: body.card.stamps_required,
         reward_description: body.card.reward_description,
+        // La réponse d'inscription ne porte pas le dérivé : 0 transitoire,
+        // complété juste après par lookupCard() (qui préserve les infos SMS).
+        pending_stamps: 0,
         sms_sent: body.sms_sent !== false, // undefined ou true → considéré envoyé
         sms_fallback_url: body.sms_fallback_url ?? null,
       });
+      // Récupère le tampon EN ATTENTE de la commande qui vient d'être passée :
+      // un nouveau membre doit le voir immédiatement, c'est le moment où la
+      // gratification compte le plus.
+      void lookupCard();
     } catch (err) {
       setLoyalty({
         status: "error",
@@ -653,12 +693,6 @@ function LoyaltyCardSection({
   }
 
   if (loyalty.status === "has_card") {
-    const pct = Math.min(
-      100,
-      Math.round(
-        (loyalty.current_stamps / Math.max(1, loyalty.stamps_required)) * 100,
-      ),
-    );
     const cardUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/c/${loyalty.short_code}`;
     return (
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white shadow-pop md:p-8">
@@ -673,10 +707,16 @@ function LoyaltyCardSection({
             ? `Encore ${loyalty.stamps_required - loyalty.current_stamps} pour ${loyalty.reward_description.toLowerCase()}.`
             : `🎉 Carte complète ! ${loyalty.reward_description} à récupérer.`}
         </p>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/20">
-          <div
-            className="h-full rounded-full bg-saffron transition-all duration-700"
-            style={{ width: `${pct}%` }}
+        {/* Pastilles + ligne texte : MÊME composant que la section Fidélité.
+            Remplace l'ancienne barre de progression, qui ne pouvait pas
+            représenter un tampon « en attente » — c'est précisément ce qui
+            manquait ici, sur la surface où le client arrive après avoir payé. */}
+        <div className="mt-4">
+          <StampRow
+            currentStamps={loyalty.current_stamps}
+            stampsRequired={loyalty.stamps_required}
+            pendingStamps={loyalty.pending_stamps}
+            tone="dark"
           />
         </div>
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">

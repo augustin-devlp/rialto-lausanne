@@ -7,6 +7,7 @@ import SpinWheel from "./SpinWheel";
 import LotteryEntry from "./LotteryEntry";
 import ReviewGateModal from "./ReviewGateModal";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
+import StampRow from "@/components/loyalty/StampRow";
 
 type Customer = {
   id: string;
@@ -375,18 +376,9 @@ function CardView({
   // le champ manque (ancienne réponse en cache) — jamais avec le pending.
   const complete =
     card.reward_available ?? card.current_stamps >= card.stamps_required;
-  // Tampons en attente de validation : jamais additionnés au solde acquis.
-  //
-  // ⚠️ pendingVisibles est CLAMPÉ aux cases restantes, et c'est LUI qu'on
-  // affiche partout (pastilles ET texte). Annoncer le brut serait un
-  // donné-repris : le RPC écrit least(acquis + n, seuil), donc une carte à
-  // 9/10 recevant une commande à 2 tampons n'en encaisse qu'UN — et la ligne
-  // d'idempotence scelle la perte. On ne promet que ce qui sera délivré.
+  // Tampons en attente : valeur BRUTE transmise à StampRow, qui porte le
+  // clamp (une carte à 9/10 ne peut pas encaisser 2 tampons — cf. StampRow).
   const pendingStamps = Math.max(0, payload.pending?.stamps ?? 0);
-  const pendingVisibles = Math.min(
-    pendingStamps,
-    Math.max(0, card.stamps_required - card.current_stamps),
-  );
   // D6 (lot 9) : valeur brute, sans préfixe STAMPIFY:, pour s'aligner sur /c/[shortCode] et le scanner /scan (qui cherchent la valeur brute).
   const qrValue = useMemo(
     () => card.qr_code_value,
@@ -440,41 +432,15 @@ function CardView({
               </span>
             )}
           </div>
-          {/* Les pastilles sont décoratives (aria-hidden) : l'état « en
-              attente » DOIT exister en texte, jamais seulement en couleur
-              et en animation (WCAG 1.4.1). Animation sous motion-safe. */}
-          <div className="flex gap-1" aria-hidden>
-            {Array.from({ length: card.stamps_required }).map((_, i) => {
-              const acquis = i < card.current_stamps;
-              const enAttente =
-                !acquis && i < card.current_stamps + pendingVisibles;
-              return (
-                <div
-                  key={i}
-                  className={`h-10 flex-1 rounded-md transition-colors ${
-                    acquis
-                      ? "bg-emerald-600"
-                      : enAttente
-                        ? "border-2 border-dashed border-saffron bg-saffron/10 motion-safe:animate-pulse"
-                        : "bg-white border border-emerald-200"
-                  }`}
-                />
-              );
-            })}
-          </div>
-          {pendingVisibles > 0 && (
-            // Puce bg-saffron/10 + text-ink (convention repo) : text-saffron-dark
-            // sur fond clair tombe à ~3,1:1, sous le 4,5:1 exigé en AA — or
-            // c'est CE texte qui porte l'accessibilité de l'état « en attente ».
-            <p
-              aria-live="polite"
-              className="mt-2 inline-block rounded-lg bg-saffron/10 px-2 py-1 text-xs font-medium text-ink"
-            >
-              {card.current_stamps} tampon{card.current_stamps > 1 ? "s" : ""}{" "}
-              acquis — {pendingVisibles} en attente de validation par le
-              restaurant.
-            </p>
-          )}
+          {/* Pastilles + ligne texte : composant PARTAGÉ avec le bloc carte de
+              /confirmation. Il porte le clamp et le texte d'accessibilité —
+              c'est ce qui empêche les deux surfaces de diverger à nouveau. */}
+          <StampRow
+            currentStamps={card.current_stamps}
+            stampsRequired={card.stamps_required}
+            pendingStamps={pendingStamps}
+            tone="light"
+          />
           {card.rewards_claimed > 0 && (
             <p className="mt-2 text-xs text-emerald-700">
               🎉 {card.rewards_claimed} récompense{card.rewards_claimed > 1 ? "s" : ""} déjà gagnée{card.rewards_claimed > 1 ? "s" : ""}

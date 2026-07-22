@@ -10,6 +10,13 @@ import {
 import { normalizePhone } from "@/lib/phone";
 import { computeSpinAvailability } from "@/lib/spinAvailability";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
+import { toStampRule } from "@/lib/loyalty/rule";
+import { formatStampRule } from "@/lib/loyalty/copy";
+import {
+  computePending,
+  EMPTY_PENDING,
+  type PendingOrder,
+} from "@/lib/loyalty/pending";
 
 export const dynamic = "force-dynamic";
 
@@ -48,12 +55,16 @@ export async function GET(req: NextRequest) {
 
   const card = Array.isArray(cards) && cards.length > 0 ? cards[0] : null;
 
-  // Seuil (stamps_required)
+  // Seuil (stamps_required) + barème de fidélité (F0/M1, lu par F2).
   const { data: loyalty } = await admin
     .from("loyalty_cards")
-    .select("stamps_required, reward_description, card_name")
+    .select(
+      "stamps_required, reward_description, card_name, stamp_credit_mode, stamp_amount_step, stamp_amount_basis, stamp_max_per_order, stamp_online_enabled",
+    )
     .eq("id", CARD_ID)
     .single();
+
+  const stampRule = toStampRule(loyalty as Record<string, unknown> | null);
 
   // 2) Spin wheel
   const { data: wheel } = await admin
@@ -145,15 +156,34 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) 10 dernières commandes Rialto
+  //    delivery_fee ajouté à la projection pour le calcul du pending (F2) :
+  //    ZÉRO requête supplémentaire. Le filtre .eq("customer_id", ...) garantit
+  //    structurellement la règle « pas de customer_id = aucun pending ».
   const { data: orders } = card
     ? await admin
         .from("orders")
-        .select("id, order_number, status, total_amount, created_at")
+        .select(
+          "id, order_number, status, total_amount, delivery_fee, customer_id, created_at",
+        )
         .eq("restaurant_id", RESTAURANT_ID)
         .eq("customer_id", card.customer_id)
         .order("created_at", { ascending: false })
         .limit(10)
     : { data: [] };
+
+  // Tampons EN ATTENTE — état DÉRIVÉ, jamais écrit (F2). Objet SÉPARÉ de
+  // `card` : la forme de l'API interdit mécaniquement current_stamps + pending.
+  const pending = computePending(
+    (orders ?? []) as unknown as PendingOrder[],
+    stampRule,
+  );
+
+  // Palier calculé SERVEUR à partir du seul solde SOLIDIFIÉ : le client ne
+  // compare plus jamais rien à stamps_required, et un pending ne peut pas
+  // rendre reward_available vrai.
+  const stampsRequired = loyalty?.stamps_required ?? 10;
+  const acquis = card ? Number(card.current_stamps ?? 0) : 0;
+  const rewardAvailable = card ? acquis >= stampsRequired : false;
 
   return NextResponse.json({
     customer: card
@@ -171,7 +201,10 @@ export async function GET(req: NextRequest) {
       ? {
           id: card.id,
           current_stamps: card.current_stamps,
-          stamps_required: loyalty?.stamps_required ?? 10,
+          stamps_required: stampsRequired,
+          // Calculés serveur sur le SOLIDIFIÉ uniquement (F2).
+          reward_available: rewardAvailable,
+          stamps_remaining: Math.max(0, stampsRequired - acquis),
           reward_description:
             loyalty?.reward_description ?? "Une pizza offerte",
           card_name: loyalty?.card_name ?? "Rialto Club",
@@ -180,6 +213,16 @@ export async function GET(req: NextRequest) {
           short_code: (card as { short_code?: string | null }).short_code ?? null,
         }
       : null,
+    // Univers TYPÉ distinct de `card` — jamais un entier frère de current_stamps.
+    pending: card ? pending : EMPTY_PENDING,
+    stamps_rule: {
+      mode: stampRule.mode,
+      step: stampRule.step,
+      basis: stampRule.basis,
+      max_per_order: stampRule.maxPerOrder,
+      enabled: stampRule.enabled,
+      label: formatStampRule(stampRule),
+    },
     spin_wheel: wheel
       ? {
           id: wheel.id,

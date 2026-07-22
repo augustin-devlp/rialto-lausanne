@@ -18,10 +18,18 @@ type Card = {
   id: string;
   current_stamps: number;
   stamps_required: number;
+  /** Calculés SERVEUR sur le solde solidifié uniquement (F2). */
+  reward_available?: boolean;
+  stamps_remaining?: number;
   reward_description: string;
   card_name: string;
   qr_code_value: string;
   rewards_claimed: number;
+};
+/** Tampons en attente de validation — univers SÉPARÉ de Card (F2). */
+type Pending = {
+  stamps: number;
+  orders: Array<{ order_number: string; stamps: number }>;
 };
 type Wheel = {
   id: string;
@@ -58,6 +66,7 @@ type ReviewGate = {
 type LookupPayload = {
   customer: Customer | null;
   card: Card | null;
+  pending?: Pending;
   spin_wheel: Wheel | null;
   lottery: Lottery | null;
   orders: Order[];
@@ -354,7 +363,16 @@ function CardView({
     }
   };
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const complete = card.current_stamps >= card.stamps_required;
+  // Palier calculé SERVEUR sur le solidifié (F2). Repli local uniquement si
+  // le champ manque (ancienne réponse en cache) — jamais avec le pending.
+  const complete =
+    card.reward_available ?? card.current_stamps >= card.stamps_required;
+  // Tampons en attente de validation : jamais additionnés au solde acquis.
+  const pendingStamps = Math.max(0, payload.pending?.stamps ?? 0);
+  const pendingVisibles = Math.min(
+    pendingStamps,
+    Math.max(0, card.stamps_required - card.current_stamps),
+  );
   // D6 (lot 9) : valeur brute, sans préfixe STAMPIFY:, pour s'aligner sur /c/[shortCode] et le scanner /scan (qui cherchent la valeur brute).
   const qrValue = useMemo(
     () => card.qr_code_value,
@@ -408,18 +426,41 @@ function CardView({
               </span>
             )}
           </div>
-          <div className="flex gap-1">
-            {Array.from({ length: card.stamps_required }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-10 flex-1 rounded-md transition-colors ${
-                  i < card.current_stamps
-                    ? "bg-emerald-600"
-                    : "bg-white border border-emerald-200"
-                }`}
-              />
-            ))}
+          {/* Les pastilles sont décoratives (aria-hidden) : l'état « en
+              attente » DOIT exister en texte, jamais seulement en couleur
+              et en animation (WCAG 1.4.1). Animation sous motion-safe. */}
+          <div className="flex gap-1" aria-hidden>
+            {Array.from({ length: card.stamps_required }).map((_, i) => {
+              const acquis = i < card.current_stamps;
+              const enAttente =
+                !acquis && i < card.current_stamps + pendingVisibles;
+              return (
+                <div
+                  key={i}
+                  className={`h-10 flex-1 rounded-md transition-colors ${
+                    acquis
+                      ? "bg-emerald-600"
+                      : enAttente
+                        ? "border-2 border-dashed border-saffron bg-saffron/10 motion-safe:animate-pulse"
+                        : "bg-white border border-emerald-200"
+                  }`}
+                />
+              );
+            })}
           </div>
+          {pendingStamps > 0 && (
+            // Puce bg-saffron/10 + text-ink (convention repo) : text-saffron-dark
+            // sur fond clair tombe à ~3,1:1, sous le 4,5:1 exigé en AA — or
+            // c'est CE texte qui porte l'accessibilité de l'état « en attente ».
+            <p
+              aria-live="polite"
+              className="mt-2 inline-block rounded-lg bg-saffron/10 px-2 py-1 text-xs font-medium text-ink"
+            >
+              {card.current_stamps} tampon{card.current_stamps > 1 ? "s" : ""}{" "}
+              acquis — {pendingStamps} en attente de validation par le
+              restaurant.
+            </p>
+          )}
           {card.rewards_claimed > 0 && (
             <p className="mt-2 text-xs text-emerald-700">
               🎉 {card.rewards_claimed} récompense{card.rewards_claimed > 1 ? "s" : ""} déjà gagnée{card.rewards_claimed > 1 ? "s" : ""}

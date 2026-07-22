@@ -111,6 +111,20 @@ export default function AccueilClient() {
           <Arrow />
         </Link>
         <Link
+          href="/dashboard/fidelite"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Fidélité
+            </div>
+            <div className="text-xs text-mute">
+              Barème des tampons sur les commandes en ligne
+            </div>
+          </div>
+          <Arrow />
+        </Link>
+        <Link
           href="/dashboard/jeux"
           className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
         >

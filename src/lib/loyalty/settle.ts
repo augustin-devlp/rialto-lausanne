@@ -91,9 +91,10 @@ export type SettleableOrder = {
 
 /**
  * Colonnes indispensables au calcul. EXPORTÉE et à utiliser TELLE QUELLE
- * partout : recopier cette chaîne est le vecteur n°1 de perte silencieuse
- * de `promo_discount_amount` — et donc de réouverture de la faille des codes
- * de parrainage à −100 %.
+ * partout — recopier cette chaîne à la main est le vecteur n°1 de perte
+ * silencieuse de colonnes. NB : depuis le fix total_amount (23.07.2026),
+ * `promo_discount_amount` n'entre plus dans le calcul (la remise est déjà
+ * dans total_amount) ; il reste projeté à titre informatif.
  */
 export const ORDER_COLS =
   "id, order_number, status, total_amount, delivery_fee, promo_discount_amount, customer_id, created_at";

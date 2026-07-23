@@ -8,9 +8,11 @@
  *   - `birthday`     : offert pour un anniversaire
  *   - `manual`       : généré depuis le back-office (admin)
  *
- * Les codes sont consommés à la création d'une commande, via
- * l'endpoint `/api/promo-codes/validate` (vérif en temps réel côté client)
- * puis `/api/promo-codes/apply` (consommation atomique côté serveur).
+ * Les codes sont consommés à la création d'une commande : vérif en temps
+ * réel via `/api/promo-codes/validate` pendant la saisie, puis le code
+ * entre dans le body de POST /api/orders qui valide, consomme (atomique)
+ * et INSÈRE la commande avec un total_amount déjà remisé (fix 23.07.2026 —
+ * l'ancien flux en deux temps laissait total_amount brut en base).
  *
  * Scope serveur : on filtre TOUJOURS par BUSINESS_ID (constante). On ne fait
  * jamais confiance au business_id envoyé par le client.
@@ -234,15 +236,16 @@ export function computeDiscount(
 }
 
 /**
- * Consomme un code promo de manière atomique et l'associe à la commande.
- * Vérifie que le code n'a pas dépassé `max_uses` avant d'incrémenter.
+ * Consomme un code promo de manière atomique (garde anti-race sur
+ * `uses_count < max_uses`). N'écrit RIEN sur la commande : depuis le fix
+ * total_amount (23.07.2026), c'est POST /api/orders qui INSÈRE directement
+ * promo_code_id + promo_discount_amount + le total remisé, PUIS appelle
+ * markPromoCodeUsedOnOrder (best-effort) une fois l'id de commande connu.
  *
  * @returns Le row mis à jour, ou une erreur si déjà consommé.
  */
-export async function applyPromoCode(params: {
+export async function consumePromoCode(params: {
   promo_code_id: string;
-  order_id: string;
-  discount_amount: number;
 }): Promise<{ ok: true; code: PromoCodeRow } | { ok: false; error: string }> {
   const admin = supabaseService();
 
@@ -268,7 +271,6 @@ export async function applyPromoCode(params: {
       uses_count: row.uses_count + 1,
       used_at:
         row.uses_count + 1 >= row.max_uses ? new Date().toISOString() : null,
-      used_on_order_id: params.order_id,
     })
     .eq("id", params.promo_code_id)
     .lt("uses_count", row.max_uses) // garde-fou anti-race
@@ -279,14 +281,44 @@ export async function applyPromoCode(params: {
     return { ok: false, error: "Impossible d'appliquer le code" };
   }
 
-  // Met à jour la commande avec la référence + montant remisé
-  await admin
-    .from("orders")
-    .update({
-      promo_code_id: params.promo_code_id,
-      promo_discount_amount: params.discount_amount,
-    })
-    .eq("id", params.order_id);
-
   return { ok: true, code: updated as PromoCodeRow };
+}
+
+/**
+ * Rollback best-effort si l'INSERT de la commande échoue APRÈS la
+ * consommation : rend son utilisation au code (sinon un 500 brûlerait un
+ * code à usage unique — un gain roue/parrainage perdu pour le client).
+ */
+export async function releasePromoCode(promo_code_id: string): Promise<void> {
+  const admin = supabaseService();
+  const { data } = await admin
+    .from("promo_codes")
+    .select("uses_count")
+    .eq("id", promo_code_id)
+    .maybeSingle();
+  const uses = (data as { uses_count: number } | null)?.uses_count ?? 0;
+  if (uses <= 0) return;
+  const { error } = await admin
+    .from("promo_codes")
+    .update({ uses_count: uses - 1, used_at: null, used_on_order_id: null })
+    .eq("id", promo_code_id)
+    .gt("uses_count", 0);
+  if (error) {
+    console.error("[promoCodes] release failed", promo_code_id, error);
+  }
+}
+
+/** Trace informative (best-effort) : quel ordre a consommé le code. */
+export async function markPromoCodeUsedOnOrder(
+  promo_code_id: string,
+  order_id: string,
+): Promise<void> {
+  const admin = supabaseService();
+  const { error } = await admin
+    .from("promo_codes")
+    .update({ used_on_order_id: order_id })
+    .eq("id", promo_code_id);
+  if (error) {
+    console.error("[promoCodes] mark order failed", promo_code_id, error);
+  }
 }

@@ -437,6 +437,9 @@ export default function CheckoutPageClient({
             paymentMethod === "card" ? cardTiming : null,
           payment_cash_bills:
             paymentMethod === "cash" ? cashBills : null,
+          // Fix total_amount 23.07.2026 : le code entre dans le POST — le
+          // serveur valide, consomme et insère le total déjà remisé.
+          promo_code: promo?.code ?? null,
           notes: null,
           items: cart.map((c) => ({
             menu_item_id: c.menu_item_id,
@@ -452,23 +455,6 @@ export default function CheckoutPageClient({
       const body = await res.json();
       if (!res.ok || !body?.order?.id) {
         throw new Error(body?.error ?? "Erreur lors de la commande");
-      }
-
-      if (promo) {
-        try {
-          await fetch(`/api/promo-codes/apply`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              business_id: STAMPIFY_BUSINESS_ID,
-              code: promo.code,
-              order_id: body.order.id,
-              subtotal,
-            }),
-          });
-        } catch (err) {
-          console.error("[checkout] promo apply failed", err);
-        }
       }
 
       clearCart();

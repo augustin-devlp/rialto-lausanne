@@ -38,6 +38,13 @@ type CustomerEmailOrder = {
   payment_method: "card" | "cash" | "twint" | null;
   payment_card_timing: "on_delivery" | "remote" | null;
   total_amount: number;
+  /**
+   * Remise promo déjà déduite de total_amount (fix 23.07.2026). Affichée en
+   * ligne dédiée pour que items + livraison − remise = total sous les yeux
+   * du client — sans elle, le reçu semblerait faux.
+   */
+  promo_discount_amount?: number | null;
+  promo_code?: string | null;
   notes: string | null;
 };
 
@@ -60,6 +67,7 @@ const L = {
   deliveryTo: "Livraison à",
   pickupAt: "À retirer chez",
   deliveryFee: "Frais de livraison",
+  promo: "Remise",
   total: "Total",
   yourNote: "Votre note",
   // Libellé neutre « Paiement » (pas « sur place ») : le mode carte à
@@ -156,6 +164,18 @@ export function buildCustomerOrderEmail(params: {
       </tr>`
       : "";
 
+  const promoDiscount = Number(order.promo_discount_amount ?? 0);
+  const promoLabel = order.promo_code
+    ? `${L.promo} (${order.promo_code})`
+    : L.promo;
+  const promoRowHtml =
+    promoDiscount > 0
+      ? `<tr>
+        <td colspan="2" style="padding:6px 8px;color:#6b7280">${esc(promoLabel)}</td>
+        <td style="padding:6px 8px;text-align:right;white-space:nowrap">−${chf(promoDiscount)}</td>
+      </tr>`
+      : "";
+
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
   <div style="background:#C73E1D;color:#fff;padding:16px 18px;border-radius:10px 10px 0 0">
     <div style="font-size:20px;font-weight:bold">Rialto</div>
@@ -168,6 +188,7 @@ export function buildCustomerOrderEmail(params: {
     <table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0">
       ${itemsHtml}
       ${feeRowHtml}
+      ${promoRowHtml}
       <tr>
         <td colspan="2" style="padding:8px;font-weight:bold">${L.total}</td>
         <td style="padding:8px;text-align:right;font-weight:bold;white-space:nowrap">${chf(Number(order.total_amount))}</td>
@@ -214,6 +235,7 @@ export function buildCustomerOrderEmail(params: {
     "",
     itemsText,
     deliveryFee > 0 ? `${L.deliveryFee} : ${chf(deliveryFee)}` : "",
+    promoDiscount > 0 ? `${promoLabel} : −${chf(promoDiscount)}` : "",
     `${L.total} : ${chf(Number(order.total_amount))}`,
     addressBlock ? `\n${addressTitle} :\n${addressBlock}` : "",
     order.notes ? `${L.yourNote} : ${order.notes}` : "",

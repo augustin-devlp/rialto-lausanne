@@ -10,6 +10,12 @@ import {
 import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
+import {
+  validatePromoCode,
+  consumePromoCode,
+  releasePromoCode,
+  markPromoCodeUsedOnOrder,
+} from "@/lib/promoCodes";
 
 // Route d'écriture : toujours dynamique (client Supabase créé au runtime, jamais au build).
 export const dynamic = "force-dynamic";
@@ -51,6 +57,10 @@ type Payload = {
   payment_method?: "card" | "cash" | "twint" | null;
   payment_card_timing?: "on_delivery" | "remote" | null;
   payment_cash_bills?: number | null;
+  // Fix total_amount 23.07.2026 : le code promo entre dans CE handler
+  // (l'ancien flux en deux temps — POST /api/orders puis
+  // /api/promo-codes/apply côté client — laissait total_amount brut).
+  promo_code?: string | null;
 };
 
 function parsePickupISO(value: string): string | null {
@@ -152,7 +162,33 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const total = subtotal + deliveryFee;
+  // --- Code promo : VALIDATION ici, CONSOMMATION juste avant l'INSERT ---
+  // Deux temps volontaires : toutes les validations 400 qui suivent (heure,
+  // horaires…) doivent pouvoir refuser la commande SANS avoir brûlé un code
+  // à usage unique. total_amount naît remisé = le montant réellement payé
+  // (fix 23.07.2026 — CA, exports et reçu email étaient surestimés avant).
+  let promoDiscount = 0;
+  let promoCodeId: string | null = null;
+  let promoCodeLabel: string | null = null;
+  if (body.promo_code?.trim()) {
+    const validation = await validatePromoCode({
+      code: body.promo_code,
+      subtotal,
+    });
+    if (!validation.ok) {
+      // Refus net plutôt qu'une commande au prix plein que le client n'a
+      // pas vue à l'écran : il retire ou corrige le code et resoumet.
+      return NextResponse.json(
+        { error: `Code promo : ${validation.error}` },
+        { status: 400 },
+      );
+    }
+    promoDiscount = validation.discount_amount;
+    promoCodeId = validation.code.id;
+    promoCodeLabel = validation.code.code;
+  }
+
+  const total = Math.max(0, subtotal + deliveryFee - promoDiscount);
 
   // --- Heure de retrait / livraison ---
   // Pickup : obligatoire. Delivery : optionnelle (asap possible).
@@ -222,6 +258,18 @@ export async function POST(req: NextRequest) {
   });
   const orderNumber = nbErr || !nbData ? `X-${Date.now()}` : (nbData as string);
 
+  // Consommation atomique du code (garde anti-race) — dernier point de
+  // sortie 400 possible : après, tout échec doit rendre le code (release).
+  if (promoCodeId) {
+    const consumed = await consumePromoCode({ promo_code_id: promoCodeId });
+    if (!consumed.ok) {
+      return NextResponse.json(
+        { error: `Code promo : ${consumed.error}` },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data: order, error: oErr } = await sb
     .from("orders")
     .insert({
@@ -234,6 +282,8 @@ export async function POST(req: NextRequest) {
       requested_pickup_time: pickupISO,
       status: "new",
       total_amount: total,
+      promo_code_id: promoCodeId,
+      promo_discount_amount: promoDiscount,
       notes: body.notes,
       fulfillment_type: fulfillmentType,
       delivery_address: body.delivery_address ?? null,
@@ -259,10 +309,16 @@ export async function POST(req: NextRequest) {
 
   if (oErr || !order) {
     console.error("[orders] insert failed", oErr);
+    if (promoCodeId) await releasePromoCode(promoCodeId);
     return NextResponse.json(
       { error: "Impossible de créer la commande" },
       { status: 500 },
     );
+  }
+
+  if (promoCodeId) {
+    // Trace informative (best-effort) : quel ordre a consommé le code.
+    void markPromoCodeUsedOnOrder(promoCodeId, order.id as string);
   }
 
   const rows = body.items.map((it) => ({
@@ -280,6 +336,7 @@ export async function POST(req: NextRequest) {
   if (iErr) {
     console.error("[orders] items insert failed", iErr);
     await sb.from("orders").delete().eq("id", order.id);
+    if (promoCodeId) await releasePromoCode(promoCodeId);
     return NextResponse.json(
       { error: "Impossible d'enregistrer les articles" },
       { status: 500 },
@@ -476,6 +533,8 @@ export async function POST(req: NextRequest) {
             payment_method: body.payment_method ?? null,
             payment_card_timing: body.payment_card_timing ?? null,
             total_amount: total,
+            promo_discount_amount: promoDiscount,
+            promo_code: promoCodeLabel,
             notes: body.notes,
           },
           items: body.items.map((it) => ({

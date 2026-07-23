@@ -41,8 +41,11 @@ export type StampableOrder = {
   total_amount: number | string;
   delivery_fee?: number | string | null;
   /**
-   * Remise promo, stockée À PART par le modèle (elle n'est jamais déduite de
-   * total_amount). TOUJOURS la projeter quand on calcule des tampons.
+   * INFORMATIF uniquement : depuis le fix total_amount (23.07.2026), la
+   * remise promo est DÉJÀ déduite de total_amount à l'INSERT. Ne JAMAIS la
+   * re-déduire ici — ce serait une double peine (tampons volés au client
+   * sur ce qu'il a réellement payé). Le champ reste projeté pour
+   * traçabilité/affichage.
    */
   promo_discount_amount?: number | string | null;
 };
@@ -75,21 +78,20 @@ export function toStampRule(row: Record<string, unknown> | null | undefined): St
 /**
  * Assiette de calcul : ce que le client a EFFECTIVEMENT PAYÉ en marchandise.
  *
- *   base = (basis === 'goods' ? total_amount - delivery_fee : total_amount)
- *          - promo_discount_amount
+ *   base = basis === 'goods' ? total_amount - delivery_fee : total_amount
  *
- * ⚠️ La remise promo est TOUJOURS déduite, quelle que soit l'assiette
- * (décision Augustin 22.07.2026). Raison décisive : les codes de parrainage
- * sont à −100 %. Sans cette déduction, une commande ENTIÈREMENT GRATUITE
- * rapporterait des tampons — ce n'est pas de la générosité, c'est une faille
- * exploitable. On récompense ce qui est payé.
+ * total_amount est le montant RÉELLEMENT PAYÉ — remise promo déjà déduite à
+ * l'INSERT (fix 23.07.2026). L'invariant « on ne récompense que ce qui est
+ * payé » (décision Augustin 22.07.2026, codes de parrainage à −100 %) tient
+ * toujours : une commande intégralement remisée a un total ≈ frais de
+ * livraison, donc une assiette 'goods' à 0. NE PAS re-déduire
+ * promo_discount_amount ici — double peine (cf. StampableOrder).
  */
 export function stampableBase(order: StampableOrder, rule: StampRule): number {
   const total = num(order.total_amount);
   const fee = num(order.delivery_fee);
-  const promo = num(order.promo_discount_amount);
   const brut = rule.basis === "goods" ? total - fee : total;
-  return Math.max(0, brut - promo);
+  return Math.max(0, brut);
 }
 
 /**

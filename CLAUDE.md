@@ -30,5 +30,10 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 - Fidélité v2 : le tampon EN ATTENTE est **dérivé**, jamais écrit ; le palier/la récompense ne se calcule QUE sur `customer_cards.current_stamps` (le solidifié). Ne jamais additionner pending et acquis.
 - Tout DDL passe en **navette** (review) puis est exécuté via `apply_migration` par la conversation propriétaire du repo. Jamais de SQL brut hors historique versionné.
 
+## Tracking (Lots B-C livrés 23.07.2026)
+- Source unique des événements = `src/lib/tracking.ts` ; RIEN ne part sans consentement (clé `rialto_cookie_consent_v2`).
+- **Stub gtag : TOUJOURS une `function` qui pousse l'objet `arguments`, JAMAIS un Array `...args`** — gtag.js ignore silencieusement les commandes poussées en tableau (symptôme : dataLayer visuellement correct mais `google_tag_data.ics` vide, aucun `/g/collect`, pas de `_ga`), alors que fbevents.js accepte les tableaux : Meta part, GA muet. Piège constaté en QA prod 23.07.2026.
+- `consent update granted` AVANT `gtag('config')` (une page_view évaluée sous denied est retenue), ET rejoué HORS du bloc d'injection one-shot (cycle retrait → ré-acceptation).
+
 ## Utilisation des agents
 - Design/UI → `designer` · comprendre avant de modifier → `explorateur` (lecture seule) · après écriture → `relecteur`.

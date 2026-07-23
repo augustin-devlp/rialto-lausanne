@@ -85,8 +85,15 @@ export function grantTracking(): void {
 
     // ── Google : stub + Consent Mode v2 AVANT le script distant ──
     window.dataLayer = window.dataLayer || [];
-    const gtag = (...args: unknown[]) => {
-      window.dataLayer!.push(args);
+    // ⚠️ Le stub DOIT pousser l'objet `arguments`, PAS un Array (...args) :
+    // gtag.js ignore silencieusement les commandes poussées en tableau.
+    // Constaté en QA prod : dataLayer visuellement correct, mais état de
+    // consentement interne vide (ics usedDefault:false) → aucun config
+    // traité, pas de cookie _ga, aucun beacon /g/collect. fbevents.js,
+    // lui, accepte les tableaux — d'où Meta qui partait quand même.
+    const gtag = function (..._args: unknown[]) {
+      // eslint-disable-next-line prefer-rest-params
+      window.dataLayer!.push(arguments);
     };
     window.gtag = gtag;
     gtag("consent", "default", {
@@ -95,10 +102,9 @@ export function grantTracking(): void {
       ad_personalization: "denied",
       analytics_storage: "denied",
     });
-    // ⚠️ L'update granted DOIT précéder le config : un config évalué sous
-    // « denied » JETTE sa page_view initiale (constaté en QA prod — beacon
-    // /g/collect absent alors que Meta partait bien). L'update est AUSSI
-    // rejoué hors du bloc, pour le cycle retrait → ré-acceptation.
+    // L'update granted précède le config : en Consent Mode, un config
+    // évalué sous « denied » retient sa page_view initiale. L'update est
+    // AUSSI rejoué hors du bloc, pour le cycle retrait → ré-acceptation.
     gtag("consent", "update", {
       ad_storage: "granted",
       ad_user_data: "granted",

@@ -13,7 +13,7 @@
  * Numéro WhatsApp Mehmet en placeholder — Augustin remplace.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -21,7 +21,9 @@ import type { CartItem } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { normalizePhone } from "@/lib/phone";
 import {
+  addLinesToCart,
   cartCount,
+  cartLineKey,
   cartSubtotal,
   clearCart,
   readAddress,
@@ -29,6 +31,7 @@ import {
   writeCart,
   type QualifiedAddress,
 } from "@/lib/clientStore";
+import { track } from "@/lib/tracking";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 
@@ -208,6 +211,10 @@ export default function CheckoutPageClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Lot D : begin_checkout UNE seule fois par arrivée sur la page (le ref
+  // survit aux re-renders ; en dev, StrictMode double-monte les effects).
+  const beganCheckout = useRef(false);
+
   // Init : cart + address + prefill silencieux
   useEffect(() => {
     const c = readCart();
@@ -222,6 +229,23 @@ export default function CheckoutPageClient({
     if (c.length === 0) {
       router.replace("/menu");
       return;
+    }
+    // Lot D : begin_checkout à l'ENTRÉE du checkout, panier garanti non
+    // vide (guards ci-dessus). Valeur = subtotal + livraison — le code
+    // promo se saisit plus bas dans ce même formulaire, donc pas encore
+    // connu ici : c'est l'état du panier à l'entrée, sémantique GA4 normale.
+    if (!beganCheckout.current) {
+      beganCheckout.current = true;
+      track.beginCheckout({
+        value: cartSubtotal(c) + (a.delivery_fee ?? 0),
+        items: c.map((it) => ({
+          id: it.menu_item_id,
+          name: it.name,
+          price: it.unit_price,
+          quantity: it.quantity,
+          category: it.category ?? undefined,
+        })),
+      });
     }
     // Prérempli adresse depuis QualifiedAddress homepage si rien en prefill
     setStreet(p.street ?? a.address ?? "");
@@ -268,34 +292,23 @@ export default function CheckoutPageClient({
         item = (await res.json()).item ?? null;
       }
       if (!item) return;
-      const key = `${item.id}::::`;
-      const existing = cart.find((c) => c.key === key);
-      const next: CartItem[] = existing
-        ? cart.map((c) =>
-            c.key === key
-              ? {
-                  ...c,
-                  quantity: c.quantity + 1,
-                  subtotal: c.unit_price * (c.quantity + 1),
-                }
-              : c,
-          )
-        : [
-            ...cart,
-            {
-              key,
-              menu_item_id: item.id,
-              name: item.name,
-              base_price: item.price,
-              quantity: 1,
-              options: [],
-              notes: "",
-              unit_price: item.price,
-              subtotal: item.price,
-            },
-          ];
+      // Helper unique Lot D (remplace aussi l'ancienne clé construite à la
+      // main `${id}::::`, fragile si cartLineKey change de format).
+      const next = addLinesToCart([
+        {
+          key: cartLineKey(item.id, [], ""),
+          menu_item_id: item.id,
+          name: item.name,
+          base_price: item.price,
+          quantity: 1,
+          options: [],
+          notes: "",
+          unit_price: item.price,
+          subtotal: item.price,
+          category: null,
+        },
+      ]);
       setCart(next);
-      writeCart(next);
     } catch (err) {
       console.error("[upsell] add failed", err);
     }

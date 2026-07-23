@@ -27,15 +27,16 @@ import CartPanel from "./CartPanel";
 import SidebarMenu from "@/components/layout/SidebarMenu";
 import { formatCHF } from "@/lib/format";
 import {
+  addLinesToCart,
   cartCount,
   cartLineKey,
   cartSubtotal,
   readAddress,
   readCart,
-  writeCart,
   type QualifiedAddress,
 } from "@/lib/clientStore";
 import { RIALTO_INFO } from "@/lib/rialto-data";
+import { track } from "@/lib/tracking";
 
 type Props = {
   categories: MenuCategory[];
@@ -250,6 +251,20 @@ export default function MenuClient({ categories, items, options }: Props) {
     addToCart(item, [], 1, "");
   }
 
+  // Lot D : view_item à l'OUVERTURE effective de la modale produit
+  // (décision actée). Les items SANS options s'ajoutent en direct sans
+  // jamais ouvrir de modale → pas de view_item pour eux, trou assumé et
+  // documenté dans le rapport du lot.
+  useEffect(() => {
+    if (!selectedItem) return;
+    track.viewItem({
+      id: selectedItem.id,
+      name: selectedItem.name,
+      price: Number(selectedItem.price),
+      category: categoryById[selectedItem.category_id],
+    });
+  }, [selectedItem, categoryById]);
+
   function addToCart(
     item: MenuItem,
     sel: CartOptionSelection[],
@@ -259,36 +274,21 @@ export default function MenuClient({ categories, items, options }: Props) {
     const key = cartLineKey(item.id, sel, notes);
     const unitPrice =
       Number(item.price) + sel.reduce((s, o) => s + o.extra_price, 0);
-    const existing = cart.find((c) => c.key === key);
-    let next: CartItem[];
-    if (existing) {
-      next = cart.map((c) =>
-        c.key === key
-          ? {
-              ...c,
-              quantity: c.quantity + quantity,
-              subtotal: unitPrice * (c.quantity + quantity),
-            }
-          : c,
-      );
-    } else {
-      next = [
-        ...cart,
-        {
-          key,
-          menu_item_id: item.id,
-          name: item.name,
-          base_price: Number(item.price),
-          quantity,
-          options: sel,
-          notes,
-          unit_price: unitPrice,
-          subtotal: unitPrice * quantity,
-        },
-      ];
-    }
+    const next = addLinesToCart([
+      {
+        key,
+        menu_item_id: item.id,
+        name: item.name,
+        base_price: Number(item.price),
+        quantity,
+        options: sel,
+        notes,
+        unit_price: unitPrice,
+        subtotal: unitPrice * quantity,
+        category: categoryById[item.category_id] ?? null,
+      },
+    ]);
     setCart(next);
-    writeCart(next);
     setSelectedItem(null);
   }
 

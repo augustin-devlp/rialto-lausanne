@@ -7,6 +7,7 @@
  * migration de schéma.
  */
 import type { CartItem, CartOptionSelection } from "./types";
+import { track } from "./tracking";
 
 const CART_KEY = "RIALTO:CART:V2";
 const ADDRESS_KEY = "RIALTO:ADDRESS:V2";
@@ -79,6 +80,51 @@ export function updateCartQuantity(
       subtotal: c.unit_price * quantity,
     };
   });
+}
+
+/**
+ * Point d'entrée UNIQUE pour AJOUTER des lignes au panier (Lot D tracking,
+ * 23.07.2026). Lit le panier courant (source de vérité : localStorage),
+ * merge par `key`, écrit, ET émet un add_to_cart par ligne ajoutée.
+ *
+ * ⚠️ Tout nouvel ajout au panier DOIT passer par ici : un chemin d'ajout
+ * qui appelle writeCart directement fait un trou silencieux dans le funnel
+ * publicitaire (GA4/Meta). Les 5 chemins historiques (modale menu, bouton
+ * direct, upsell panier, upsell checkout, re-commande, page produit) sont
+ * tous branchés dessus.
+ *
+ * `lines[].quantity` = la quantité AJOUTÉE (c'est elle qui part dans
+ * l'événement), pas le total de la ligne après merge.
+ * Retourne le nouveau panier — à passer à setCart par les composants qui
+ * tiennent un état local.
+ */
+export function addLinesToCart(lines: CartItem[]): CartItem[] {
+  let next = readCart();
+  for (const line of lines) {
+    const existing = next.find((c) => c.key === line.key);
+    if (existing) {
+      next = next.map((c) =>
+        c.key === line.key
+          ? {
+              ...c,
+              quantity: c.quantity + line.quantity,
+              subtotal: c.unit_price * (c.quantity + line.quantity),
+            }
+          : c,
+      );
+    } else {
+      next = [...next, line];
+    }
+    track.addToCart({
+      id: line.menu_item_id,
+      name: line.name,
+      price: line.unit_price,
+      quantity: line.quantity,
+      category: line.category ?? undefined,
+    });
+  }
+  writeCart(next);
+  return next;
 }
 
 /* Clé canonique pour fusionner 2 lignes identiques (même item + options) */

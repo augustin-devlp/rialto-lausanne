@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { formatCHF } from "@/lib/format";
 import { readCustomerSession } from "@/lib/customerSession";
-import { readCart, writeCart } from "@/lib/clientStore";
+import { addLinesToCart } from "@/lib/clientStore";
 import type { CartItem } from "@/lib/types";
 
 type OrderRow = {
@@ -54,19 +54,9 @@ export default function MesCommandesClient() {
         );
         return;
       }
-      // Merge avec cart actuel : si même key, incrément quantité
-      const currentCart = readCart();
-      const merged: CartItem[] = [...currentCart];
-      for (const newItem of body.cart_items) {
-        const existing = merged.find((c) => c.key === newItem.key);
-        if (existing) {
-          existing.quantity += newItem.quantity;
-          existing.subtotal = existing.unit_price * existing.quantity;
-        } else {
-          merged.push(newItem);
-        }
-      }
-      writeCart(merged);
+      // Helper unique Lot D : merge par key + écriture + un add_to_cart
+      // tracké PAR LIGNE re-commandée (quantité = quantité ajoutée).
+      addLinesToCart(body.cart_items);
       const note =
         body.unavailable_count > 0
           ? ` (${body.unavailable_count} plat${body.unavailable_count > 1 ? "s" : ""} indisponible${body.unavailable_count > 1 ? "s" : ""} ignoré${body.unavailable_count > 1 ? "s" : ""})`

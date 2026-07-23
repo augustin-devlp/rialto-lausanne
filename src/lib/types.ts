@@ -93,6 +93,13 @@ export type CartItem = {
   notes: string;
   unit_price: number;
   subtotal: number;
+  /**
+   * Nom de catégorie, porté pour le tracking (item_category GA4, Lot D).
+   * Optionnel : les paniers persistés d'avant le Lot D n'en ont pas, et
+   * certains chemins (upsell) ne le connaissent pas — les événements
+   * partent alors sans catégorie, c'est accepté.
+   */
+  category?: string | null;
 };
 
 export type OrderStatus =

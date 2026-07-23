@@ -14,7 +14,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { CartItem } from "@/lib/types";
-import { cartCount, cartSubtotal, updateCartQuantity, writeCart, cartLineKey } from "@/lib/clientStore";
+import { addLinesToCart, cartCount, cartSubtotal, updateCartQuantity, writeCart, cartLineKey } from "@/lib/clientStore";
 import { formatCHF } from "@/lib/format";
 import UpsellPanel from "@/components/checkout/UpsellPanel";
 
@@ -77,30 +77,24 @@ export default function CartPanel({
       const body = await resp.json();
       const item = body.item;
       if (!item) return;
-      const key = cartLineKey(item.id, [], "");
-      const existing = cart.find((c) => c.key === key);
-      const next: CartItem[] = existing
-        ? cart.map((c) =>
-            c.key === key
-              ? { ...c, quantity: c.quantity + 1, subtotal: c.unit_price * (c.quantity + 1) }
-              : c,
-          )
-        : [
-            ...cart,
-            {
-              key,
-              menu_item_id: item.id,
-              name: item.name,
-              base_price: Number(item.price),
-              quantity: 1,
-              options: [],
-              notes: "",
-              unit_price: Number(item.price),
-              subtotal: Number(item.price),
-            },
-          ];
+      // Helper unique Lot D : merge + écriture + add_to_cart tracké.
+      // Catégorie inconnue ici (l'API menu-item ne renvoie pas le nom) →
+      // l'événement part sans item_category, accepté.
+      const next = addLinesToCart([
+        {
+          key: cartLineKey(item.id, [], ""),
+          menu_item_id: item.id,
+          name: item.name,
+          base_price: Number(item.price),
+          quantity: 1,
+          options: [],
+          notes: "",
+          unit_price: Number(item.price),
+          subtotal: Number(item.price),
+          category: null,
+        },
+      ]);
       setCart(next);
-      writeCart(next);
     } catch {
       /* noop */
     }

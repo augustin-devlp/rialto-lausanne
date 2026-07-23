@@ -16,7 +16,8 @@ import type {
 } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { matchDishImage } from "@/lib/rialto-data";
-import { cartLineKey, readAddress, readCart, writeCart } from "@/lib/clientStore";
+import { addLinesToCart, cartLineKey, readAddress } from "@/lib/clientStore";
+import { track } from "@/lib/tracking";
 
 type EnrichedItem = MenuItem & {
   is_gluten_free?: boolean | null;
@@ -158,40 +159,37 @@ export default function ProductPageClient({
   const extras = flatSelected.reduce((s, o) => s + o.extra_price, 0);
   const total = (Number(item.price) + extras) * qty;
 
+  // Lot D : la page produit standalone est une vraie vue produit (cible du
+  // lien « Voir détail ») — même événement view_item que l'ouverture de la
+  // modale du menu. Une fois au montage : item est figé pour la page.
+  useEffect(() => {
+    track.viewItem({
+      id: item.id,
+      name: item.name,
+      price: Number(item.price),
+      category: item.category_name ?? undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function addToCart() {
     if (!canAdd) return;
     const unitPrice = Number(item.price) + extras;
     const key = cartLineKey(item.id, flatSelected, notes.trim());
-    const current = readCart();
-    const existing = current.find((c) => c.key === key);
-    let next;
-    if (existing) {
-      next = current.map((c) =>
-        c.key === key
-          ? {
-              ...c,
-              quantity: c.quantity + qty,
-              subtotal: unitPrice * (c.quantity + qty),
-            }
-          : c,
-      );
-    } else {
-      next = [
-        ...current,
-        {
-          key,
-          menu_item_id: item.id,
-          name: item.name,
-          base_price: Number(item.price),
-          quantity: qty,
-          options: flatSelected,
-          notes: notes.trim(),
-          unit_price: unitPrice,
-          subtotal: unitPrice * qty,
-        },
-      ];
-    }
-    writeCart(next);
+    addLinesToCart([
+      {
+        key,
+        menu_item_id: item.id,
+        name: item.name,
+        base_price: Number(item.price),
+        quantity: qty,
+        options: flatSelected,
+        notes: notes.trim(),
+        unit_price: unitPrice,
+        subtotal: unitPrice * qty,
+        category: item.category_name ?? null,
+      },
+    ]);
     setAdded(true);
     setTimeout(() => {
       router.push("/menu");

@@ -95,6 +95,16 @@ export function grantTracking(): void {
       ad_personalization: "denied",
       analytics_storage: "denied",
     });
+    // ⚠️ L'update granted DOIT précéder le config : un config évalué sous
+    // « denied » JETTE sa page_view initiale (constaté en QA prod — beacon
+    // /g/collect absent alors que Meta partait bien). L'update est AUSSI
+    // rejoué hors du bloc, pour le cycle retrait → ré-acceptation.
+    gtag("consent", "update", {
+      ad_storage: "granted",
+      ad_user_data: "granted",
+      ad_personalization: "granted",
+      analytics_storage: "granted",
+    });
     gtag("js", new Date());
     if (GA_ID) {
       gtag("config", GA_ID, { cookie_expires: 33696000 });

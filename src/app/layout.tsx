@@ -7,6 +7,7 @@ import PwaRegister from "@/components/PwaRegister";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import LanguageToggle from "@/components/LanguageToggle";
 import GoogleAnalytics from "@/components/analytics/GoogleAnalytics";
+import CookieBanner from "@/components/analytics/CookieBanner";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -83,6 +84,7 @@ export default function RootLayout({
           {children}
           <PwaRegister />
           <GoogleAnalytics />
+          <CookieBanner />
         </I18nProvider>
       </body>
     </html>

@@ -17,6 +17,7 @@ import {
   type CustomerSession,
 } from "@/lib/customerSession";
 import { RIALTO_INFO } from "@/lib/rialto-data";
+import ManageCookiesButton from "@/components/analytics/ManageCookiesButton";
 
 export default function HamburgerMenu() {
   const [open, setOpen] = useState(false);
@@ -254,6 +255,12 @@ export default function HamburgerMenu() {
               <Link href="/privacy" className="block py-1 hover:text-ink">
                 Politique de confidentialité
               </Link>
+              {/* onDone referme le menu : le bandeau rouvert (z-60) serait
+                  sinon invisible derrière l'overlay (z-90). */}
+              <ManageCookiesButton
+                className="block cursor-pointer py-1 text-left hover:text-ink"
+                onDone={() => setOpen(false)}
+              />
             </div>
           </div>
         </nav>

@@ -49,9 +49,11 @@ export default function LegalSection() {
         <section>
           <h3 className="mb-2 text-base font-bold">Cookies</h3>
           <p>
-            Ce site utilise uniquement des cookies techniques (panier en
-            cours, préférence d'affichage). Aucun cookie de tracking
-            publicitaire n'est déposé.
+            Ce site utilise des cookies techniques (panier en cours,
+            préférences d&apos;affichage) et, avec votre consentement
+            uniquement, des cookies de mesure d&apos;audience et de
+            publicité (Google, Meta). Détails et retrait du consentement
+            dans la politique de confidentialité.
           </p>
         </section>
 

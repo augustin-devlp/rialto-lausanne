@@ -1,110 +1,54 @@
 "use client";
 
 /**
- * GoogleAnalytics + RGPD Cookie banner — Chantier 4.
+ * Chargement GA4 conditionné au consentement (Lot B tracking, 23.07.2026).
  *
- * Charge GA4 uniquement après consentement explicite stocké dans
- * localStorage (`rialto_cookie_consent` = "accepted" | "rejected").
- * Tant qu'aucune valeur n'est posée, on affiche un bandeau bottom
- * (slide-up). Refus = pas de chargement gtag, aucun cookie tiers.
+ * Refactor : le bandeau vit désormais dans CookieBanner.tsx et l'état dans
+ * lib/consent.ts (clé versionnée _v2, retrait possible). Ce composant ne
+ * fait plus QUE charger les tags — et sera REMPLACÉ au Lot C par le
+ * TrackingProvider (Consent Mode v2, fbq Meta, pageviews SPA, funnel).
  *
- * GA_ID lu via NEXT_PUBLIC_GA_ID (si absent, le composant ne charge rien
- * mais le bandeau reste pour conformité).
+ * Comportement : GA4 chargé uniquement si consentement "accepted" ET
+ * NEXT_PUBLIC_GA_ID posée. Un RETRAIT du consentement coupe les tirs
+ * suivants au prochain chargement de page (le script déjà chargé dans
+ * l'onglet courant ne peut pas être déchargé — limite classique, documentée).
  */
 
 import Script from "next/script";
 import { useEffect, useState } from "react";
+import { getConsent, onConsentChange, type Consent } from "@/lib/consent";
 
-const STORAGE_KEY = "rialto_cookie_consent";
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
-type Consent = "accepted" | "rejected" | null;
-
 export default function GoogleAnalytics() {
-  const [consent, setConsent] = useState<Consent>(null);
-  const [hydrated, setHydrated] = useState(false);
+  const [consent, setConsentState] = useState<Consent>(null);
 
   useEffect(() => {
-    setHydrated(true);
-    try {
-      const v = localStorage.getItem(STORAGE_KEY);
-      if (v === "accepted" || v === "rejected") setConsent(v);
-    } catch {
-      /* noop */
-    }
+    setConsentState(getConsent());
+    return onConsentChange(setConsentState);
   }, []);
 
-  function persist(next: Consent) {
-    setConsent(next);
-    try {
-      if (next) localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      /* noop */
-    }
-  }
-
-  const showBanner = hydrated && consent === null;
-  const loadGA = hydrated && consent === "accepted" && Boolean(GA_ID);
+  if (consent !== "accepted" || !GA_ID) return null;
 
   return (
     <>
-      {loadGA && (
-        <>
-          <Script
-            src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
-            strategy="afterInteractive"
-          />
-          <Script id="ga-init" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GA_ID}', { anonymize_ip: true });
-            `}
-          </Script>
-        </>
-      )}
-
-      {showBanner && (
-        <div
-          role="dialog"
-          aria-live="polite"
-          aria-label="Consentement cookies"
-          className="fixed inset-x-0 bottom-0 z-[60] border-t border-border bg-white/98 px-4 py-3 shadow-pop backdrop-blur-md md:px-6 md:py-4 animate-fade-up"
-        >
-          <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs leading-snug text-ink/85 md:text-sm">
-              <strong className="font-display text-rialto-dark">
-                🍪 Cookies
-              </strong>{" "}
-              On utilise des cookies pour mesurer l&apos;audience (Google
-              Analytics anonymisé). Ton choix est respecté.{" "}
-              <a
-                href="/legal"
-                className="underline underline-offset-2 hover:text-rialto"
-              >
-                En savoir plus
-              </a>
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => persist("rejected")}
-                className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-cream-dark md:text-sm"
-              >
-                Refuser
-              </button>
-              <button
-                type="button"
-                onClick={() => persist("accepted")}
-                className="rounded-full bg-rialto px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-rialto-dark md:text-sm"
-              >
-                Accepter
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+        strategy="afterInteractive"
+      />
+      <Script id="ga-init" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${GA_ID}', { cookie_expires: 33696000 });
+        `}
+      </Script>
+      {/* cookie_expires 33 696 000 s = 390 jours : TIENT la promesse « durée
+          de vie maximale de 13 mois » écrite dans /privacy — le défaut GA
+          (_ga) serait de 2 ans. À CONSERVER dans le TrackingProvider du
+          Lot C. (anonymize_ip retiré : paramètre Universal Analytics, no-op
+          sous GA4, qui ne journalise pas l'IP.) */}
     </>
   );
 }

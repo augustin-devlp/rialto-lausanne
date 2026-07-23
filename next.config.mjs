@@ -13,6 +13,14 @@ const nextConfig = {
         destination: "/",
         permanent: true,
       },
+      // Le bandeau cookies pointait /legal, qui n'a jamais existé (404).
+      // Le lien est corrigé vers /privacy ; ce redirect rattrape les liens
+      // externes ou favoris qui auraient retenu /legal.
+      {
+        source: "/legal",
+        destination: "/privacy",
+        permanent: true,
+      },
     ];
   },
 };

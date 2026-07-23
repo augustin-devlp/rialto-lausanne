@@ -22,8 +22,9 @@
  * audiences Google Ads seraient rejetées. En mode basic, le script n'est
  * même pas chargé avant acceptation : aucun ping cookieless.
  *
- * ORDRE D'INJECTION : tout est fait impérativement dans initTracking() —
- * stub gtag + consent default + config PUIS append du <script> distant.
+ * ORDRE D'INJECTION : tout est fait impérativement dans grantTracking() —
+ * stub gtag + consent default → update granted → js → config PUIS append
+ * du <script> distant.
  * gtag.js rejoue dataLayer dans l'ordre : le consent default est
  * structurellement lu en premier, aucune course possible (le piège
  * documenté du plan : deux <Script> next/script ne garantissent pas cet
@@ -91,7 +92,7 @@ export function grantTracking(): void {
     // consentement interne vide (ics usedDefault:false) → aucun config
     // traité, pas de cookie _ga, aucun beacon /g/collect. fbevents.js,
     // lui, accepte les tableaux — d'où Meta qui partait quand même.
-    const gtag = function (..._args: unknown[]) {
+    const gtag: (...args: unknown[]) => void = function () {
       // eslint-disable-next-line prefer-rest-params
       window.dataLayer!.push(arguments);
     };

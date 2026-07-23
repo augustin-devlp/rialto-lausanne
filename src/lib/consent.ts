@@ -2,9 +2,8 @@
  * Consentement cookies — SOURCE UNIQUE (Lot B tracking, 23.07.2026).
  *
  * Trois consommateurs : le bandeau (CookieBanner), le chargement des tags
- * (GoogleAnalytics aujourd'hui, TrackingProvider au Lot C), et le lien
- * « Gérer les cookies » (/privacy + menu) qui permet le RETRAIT — exigence
- * de base nLPD/PFPDT, absente jusqu'ici.
+ * (TrackingProvider), et le lien « Gérer les cookies » (/privacy + menu)
+ * qui permet le RETRAIT — exigence de base nLPD/PFPDT, absente jusqu'ici.
  *
  * ⚠️ CLÉ VERSIONNÉE (`_v2`) : l'ancien bandeau ne mentionnait que « Google
  * Analytics anonymisé ». Un « accepted » stocké sous cet ancien libellé ne

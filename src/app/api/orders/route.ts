@@ -304,7 +304,11 @@ export async function POST(req: NextRequest) {
       payment_card_timing: body.payment_card_timing ?? null,
       payment_cash_bills: body.payment_cash_bills ?? null,
     })
-    .select("id, order_number")
+    // total_amount renvoyé pour le tracking purchase (Lot E) : la valeur
+    // trackée doit être le montant AUTORITAIRE en base, pas le total
+    // recalculé côté client (qui peut diverger : promo % figée à
+    // l'application, CP édité vers une autre zone de livraison).
+    .select("id, order_number, total_amount")
     .single();
 
   if (oErr || !order) {

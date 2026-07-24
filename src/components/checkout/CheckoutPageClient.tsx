@@ -466,7 +466,7 @@ export default function CheckoutPageClient({
         }),
       });
       const body = await res.json();
-      if (!res.ok || !body?.order?.id) {
+      if (!res.ok || !body?.order?.id || !body?.order?.order_number) {
         throw new Error(body?.error ?? "Erreur lors de la commande");
       }
 
@@ -474,22 +474,30 @@ export default function CheckoutPageClient({
       // /confirmation (page rechargeable → doublons garantis). eventID =
       // order_number des deux côtés (transaction_id GA4 / eventID Meta) :
       // la déduplication CAPI sera plug-and-play si activée plus tard.
-      // Valeur = total remisé réellement payé (= total_amount en base
-      // depuis le fix du 23.07.2026 ; un 400 promo côté serveur n'atteint
-      // jamais cette ligne, donc client et base ne peuvent pas diverger).
-      // La redirection est une navigation SPA : la page n'est pas
-      // déchargée, les beacons partent.
-      track.purchase({
-        orderNumber: body.order.order_number as string,
-        value: total,
-        items: cart.map((it) => ({
-          id: it.menu_item_id,
-          name: it.name,
-          price: it.unit_price,
-          quantity: it.quantity,
-          category: it.category ?? undefined,
-        })),
-      });
+      // Valeur = le total_amount AUTORITAIRE renvoyé par le serveur — pas
+      // le `total` client, qui peut diverger sans 400 (remise % figée à
+      // l'application du code puis panier modifié, CP édité vers une autre
+      // zone de livraison). Relevé relecteur 24.07.2026.
+      // try/catch dédié : la commande EST déjà créée en base — un pépin de
+      // tracking ne doit JAMAIS sauter clearCart + redirection (panier
+      // intact → resoumission → commande en double).
+      // La redirection est une navigation SPA : pas de déchargement, les
+      // beacons partent.
+      try {
+        track.purchase({
+          orderNumber: body.order.order_number as string,
+          value: Number(body.order.total_amount ?? total),
+          items: cart.map((it) => ({
+            id: it.menu_item_id,
+            name: it.name,
+            price: it.unit_price,
+            quantity: it.quantity,
+            category: it.category ?? undefined,
+          })),
+        });
+      } catch (err) {
+        console.error("[tracking] purchase failed", err);
+      }
 
       clearCart();
       router.push(`/confirmation/${body.order.order_number}`);

@@ -470,6 +470,27 @@ export default function CheckoutPageClient({
         throw new Error(body?.error ?? "Erreur lors de la commande");
       }
 
+      // Lot E : purchase UNE seule fois, AU RETOUR du POST — jamais sur
+      // /confirmation (page rechargeable → doublons garantis). eventID =
+      // order_number des deux côtés (transaction_id GA4 / eventID Meta) :
+      // la déduplication CAPI sera plug-and-play si activée plus tard.
+      // Valeur = total remisé réellement payé (= total_amount en base
+      // depuis le fix du 23.07.2026 ; un 400 promo côté serveur n'atteint
+      // jamais cette ligne, donc client et base ne peuvent pas diverger).
+      // La redirection est une navigation SPA : la page n'est pas
+      // déchargée, les beacons partent.
+      track.purchase({
+        orderNumber: body.order.order_number as string,
+        value: total,
+        items: cart.map((it) => ({
+          id: it.menu_item_id,
+          name: it.name,
+          price: it.unit_price,
+          quantity: it.quantity,
+          category: it.category ?? undefined,
+        })),
+      });
+
       clearCart();
       router.push(`/confirmation/${body.order.order_number}`);
     } catch (err) {

@@ -16,6 +16,10 @@ import {
   releasePromoCode,
   markPromoCodeUsedOnOrder,
 } from "@/lib/promoCodes";
+import {
+  toFreeDeliveryRule,
+  effectiveDeliveryFee,
+} from "@/lib/delivery/rule";
 
 // Route d'écriture : toujours dynamique (client Supabase créé au runtime, jamais au build).
 export const dynamic = "force-dynamic";
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest) {
   const { data: restaurant, error: rErr } = await sb
     .from("restaurants")
     .select(
-      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes, offers_pickup, offers_delivery",
+      "id, name, order_min_amount, accepting_orders, phone, address, order_open_time, order_close_time, prep_time_minutes, offers_pickup, offers_delivery, free_delivery_threshold, free_delivery_enabled",
     )
     .eq("id", body.restaurant_id)
     .single();
@@ -108,6 +112,9 @@ export async function POST(req: NextRequest) {
   let deliveryFee = 0;
   let deliveryZoneId: string | null = null;
   let deliveryCity: string | null = null;
+  // LS1 : vrai quand le seuil de livraison offerte a mangé des frais de
+  // zone non nuls — porte la ligne « Livraison offerte » du reçu email.
+  let freeDeliveryApplied = false;
 
   if (fulfillmentType === "delivery") {
     if (restaurant.offers_delivery === false) {
@@ -149,7 +156,20 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    deliveryFee = Number(zone.delivery_fee);
+    // LS1 : livraison offerte à partir d'un seuil (réglage dashboard,
+    // désactivé par défaut). Assiette = `subtotal` — le sous-total
+    // marchandise que CE handler tient déjà en main (Σ items, AVANT la
+    // remise promo calculée plus bas) : le calcul se fait avant l'INSERT,
+    // jamais en relecture (point 1 review navette LS0). delivery_fee
+    // stocké = le facturé réel (0 si offerte) → CA, exports, rendu
+    // espèces, assiette fidélité et purchase suivent mécaniquement.
+    const zoneFee = Number(zone.delivery_fee);
+    deliveryFee = effectiveDeliveryFee(
+      subtotal,
+      zoneFee,
+      toFreeDeliveryRule(restaurant as Record<string, unknown>),
+    );
+    freeDeliveryApplied = zoneFee > 0 && deliveryFee === 0;
     deliveryZoneId = zone.id as string;
     deliveryCity = (zone.city as string | null) ?? body.delivery_city ?? null;
   } else {
@@ -534,6 +554,7 @@ export async function POST(req: NextRequest) {
             delivery_postal_code: body.delivery_postal_code ?? null,
             delivery_city: deliveryCity,
             delivery_fee: deliveryFee,
+            free_delivery: freeDeliveryApplied,
             payment_method: body.payment_method ?? null,
             payment_card_timing: body.payment_card_timing ?? null,
             total_amount: total,

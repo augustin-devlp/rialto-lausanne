@@ -125,6 +125,20 @@ export default function AccueilClient() {
           <Arrow />
         </Link>
         <Link
+          href="/dashboard/livraison"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Livraison
+            </div>
+            <div className="text-xs text-mute">
+              Seuil de livraison offerte
+            </div>
+          </div>
+          <Arrow />
+        </Link>
+        <Link
           href="/dashboard/jeux"
           className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
         >

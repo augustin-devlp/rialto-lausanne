@@ -35,6 +35,12 @@ type CustomerEmailOrder = {
   delivery_postal_code: string | null;
   delivery_city: string | null;
   delivery_fee: number | null;
+  /**
+   * LS1 : vrai quand le seuil « livraison offerte » a annulé des frais de
+   * zone non nuls. Porte la ligne dédiée — sans elle, le client qui connaît
+   * les frais habituels croirait à un oubli de facturation.
+   */
+  free_delivery?: boolean;
   payment_method: "card" | "cash" | "twint" | null;
   payment_card_timing: "on_delivery" | "remote" | null;
   total_amount: number;
@@ -67,6 +73,7 @@ const L = {
   deliveryTo: "Livraison à",
   pickupAt: "À retirer chez",
   deliveryFee: "Frais de livraison",
+  freeDelivery: "Livraison offerte",
   promo: "Remise",
   total: "Total",
   yourNote: "Votre note",
@@ -162,7 +169,12 @@ export function buildCustomerOrderEmail(params: {
         <td colspan="2" style="padding:6px 8px;color:#6b7280">${L.deliveryFee}</td>
         <td style="padding:6px 8px;text-align:right;white-space:nowrap">${chf(deliveryFee)}</td>
       </tr>`
-      : "";
+      : order.free_delivery
+        ? `<tr>
+        <td colspan="2" style="padding:6px 8px;color:#6b7280">${L.deliveryFee}</td>
+        <td style="padding:6px 8px;text-align:right;white-space:nowrap;color:#047857;font-weight:bold">${L.freeDelivery}</td>
+      </tr>`
+        : "";
 
   const promoDiscount = Number(order.promo_discount_amount ?? 0);
   const promoLabel = order.promo_code
@@ -234,7 +246,11 @@ export function buildCustomerOrderEmail(params: {
     `${modeLabel} · ${L.when} ${time}`,
     "",
     itemsText,
-    deliveryFee > 0 ? `${L.deliveryFee} : ${chf(deliveryFee)}` : "",
+    deliveryFee > 0
+      ? `${L.deliveryFee} : ${chf(deliveryFee)}`
+      : order.free_delivery
+        ? `${L.deliveryFee} : ${L.freeDelivery.toLowerCase()}`
+        : "",
     promoDiscount > 0 ? `${promoLabel} : −${chf(promoDiscount)}` : "",
     `${L.total} : ${chf(Number(order.total_amount))}`,
     addressBlock ? `\n${addressTitle} :\n${addressBlock}` : "",

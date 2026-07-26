@@ -34,6 +34,9 @@ import {
 import { track } from "@/lib/tracking";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
+import { effectiveDeliveryFee } from "@/lib/delivery/rule";
+import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
+import { computeMilestones } from "@/lib/delivery/milestones";
 
 type Props = {
   restaurantId: string;
@@ -230,23 +233,6 @@ export default function CheckoutPageClient({
       router.replace("/menu");
       return;
     }
-    // Lot D : begin_checkout à l'ENTRÉE du checkout, panier garanti non
-    // vide (guards ci-dessus). Valeur = subtotal + livraison — le code
-    // promo se saisit plus bas dans ce même formulaire, donc pas encore
-    // connu ici : c'est l'état du panier à l'entrée, sémantique GA4 normale.
-    if (!beganCheckout.current) {
-      beganCheckout.current = true;
-      track.beginCheckout({
-        value: cartSubtotal(c) + (a.delivery_fee ?? 0),
-        items: c.map((it) => ({
-          id: it.menu_item_id,
-          name: it.name,
-          price: it.unit_price,
-          quantity: it.quantity,
-          category: it.category ?? undefined,
-        })),
-      });
-    }
     // Prérempli adresse depuis QualifiedAddress homepage si rien en prefill
     setStreet(p.street ?? a.address ?? "");
     setPostalCode(p.postalCode ?? a.postal_code ?? "");
@@ -265,11 +251,48 @@ export default function CheckoutPageClient({
 
   const subtotal = useMemo(() => cartSubtotal(cart), [cart]);
   const count = cartCount(cart);
-  const deliveryFee = address?.delivery_fee ?? 0;
+  const zoneFee = address?.delivery_fee ?? 0;
+  // LS2 : fee EFFECTIF via la MÊME fonction pure que le serveur — le
+  // delivery_fee figé dans localStorage à la qualification d'adresse ne
+  // sait rien du seuil « livraison offerte ». Tant que la règle charge
+  // (fdRule null), on affiche le fee de zone : jamais une gratuité
+  // inventée qui serait reprise au POST.
+  const fdRule = useFreeDeliveryRule();
+  const deliveryFee = fdRule
+    ? effectiveDeliveryFee(subtotal, zoneFee, fdRule)
+    : zoneFee;
+  const freeDelivery = zoneFee > 0 && deliveryFee === 0;
+  const fdMilestone =
+    computeMilestones(subtotal, { freeDelivery: fdRule }).find(
+      (m) => m.key === "free_delivery",
+    ) ?? null;
   const promoDiscount = promo?.discount_amount ?? 0;
   const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);
   const total = Math.max(0, subtotal + deliveryFee - promoDiscount);
+
+  // Lot D → LS2 : begin_checkout à l'ENTRÉE du checkout, une seule fois
+  // (ref), avec le fee EFFECTIF — le tir attend que la règle « livraison
+  // offerte » soit connue (fdRule non null). La règle arrive vite (CDN
+  // 60 s) et retombe sur « désactivée » en cas d'erreur réseau : le tir
+  // est différé de quelques centaines de ms, jamais perdu. Le code promo
+  // se saisit plus bas dans ce même formulaire, donc pas encore connu :
+  // c'est l'état du panier à l'entrée, sémantique GA4 normale.
+  useEffect(() => {
+    if (beganCheckout.current) return;
+    if (!fdRule || !address || cart.length === 0) return;
+    beganCheckout.current = true;
+    track.beginCheckout({
+      value: subtotal + deliveryFee,
+      items: cart.map((it) => ({
+        id: it.menu_item_id,
+        name: it.name,
+        price: it.unit_price,
+        quantity: it.quantity,
+        category: it.category ?? undefined,
+      })),
+    });
+  }, [fdRule, address, cart, subtotal, deliveryFee]);
 
   function updateQuantity(key: string, delta: number) {
     const next = cart
@@ -1023,7 +1046,11 @@ export default function CheckoutPageClient({
                 label={`Sous-total (${count} article${count > 1 ? "s" : ""})`}
                 value={formatCHF(subtotal)}
               />
-              <Row label="Frais de livraison" value={formatCHF(deliveryFee)} />
+              {freeDelivery ? (
+                <Row label="Frais de livraison" value="Offerte" accent />
+              ) : (
+                <Row label="Frais de livraison" value={formatCHF(deliveryFee)} />
+              )}
               {promo && promoDiscount > 0 && (
                 <Row
                   label={`Code ${promo.code}`}
@@ -1044,6 +1071,13 @@ export default function CheckoutPageClient({
               <div className="mt-4 rounded-xl bg-rialto/10 p-3 text-xs font-medium text-rialto">
                 Ajoutez {formatCHF(missing)} pour atteindre le minimum (
                 {formatCHF(minAmount)}).
+              </div>
+            )}
+            {/* LS2 : encouragement au palier — l'état « atteint » est porté
+                par la ligne « Offerte » du récapitulatif ci-dessus. */}
+            {fdMilestone && !fdMilestone.reached && (
+              <div className="mt-4 rounded-xl bg-emerald-50 p-3 text-xs font-medium text-emerald-800">
+                {fdMilestone.labelPending}
               </div>
             )}
             {!accepting && (

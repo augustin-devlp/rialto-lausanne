@@ -17,6 +17,8 @@ import type { CartItem } from "@/lib/types";
 import { addLinesToCart, cartCount, cartSubtotal, updateCartQuantity, writeCart, cartLineKey } from "@/lib/clientStore";
 import { formatCHF } from "@/lib/format";
 import UpsellPanel from "@/components/checkout/UpsellPanel";
+import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
+import { computeMilestones } from "@/lib/delivery/milestones";
 
 type Props = {
   cart: CartItem[];
@@ -38,6 +40,13 @@ export default function CartPanel({
   const subtotal = cartSubtotal(cart);
   const missing = Math.max(0, minOrderAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
+  // LS2 : moteur « distance au palier » — n'affiche rien tant que la règle
+  // n'est pas chargée ou que le seuil est désactivé (tableau vide).
+  const fdRule = useFreeDeliveryRule();
+  const fdMilestone =
+    computeMilestones(subtotal, { freeDelivery: fdRule }).find(
+      (m) => m.key === "free_delivery",
+    ) ?? null;
   const progressPct = Math.min(100, (subtotal / minOrderAmount) * 100);
 
   // Ferme drawer si panier vidé
@@ -233,6 +242,22 @@ export default function CartPanel({
               {formatCHF(subtotal)}
             </span>
           </div>
+
+          {/* LS2 : encouragement au palier « livraison offerte ». Le
+              minimum de commande garde la priorité visuelle quand il n'est
+              pas atteint (il gate le checkout, le palier non). */}
+          {fdMilestone && (
+            <div
+              className={`mb-1.5 text-xs font-medium ${
+                fdMilestone.reached ? "text-emerald-700" : "text-ink/80"
+              }`}
+              aria-live="polite"
+            >
+              {fdMilestone.reached
+                ? fdMilestone.labelReached
+                : fdMilestone.labelPending}
+            </div>
+          )}
 
           {missing > 0 ? (
             <>

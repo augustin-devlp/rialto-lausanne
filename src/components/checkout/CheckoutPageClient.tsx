@@ -37,6 +37,7 @@ import UpsellPanel from "./UpsellPanel";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
 import { computeMilestones } from "@/lib/delivery/milestones";
+import { readAttribution } from "@/lib/attribution";
 
 type Props = {
   restaurantId: string;
@@ -476,6 +477,9 @@ export default function CheckoutPageClient({
           // Fix total_amount 23.07.2026 : le code entre dans le POST — le
           // serveur valide, consomme et insère le total déjà remisé.
           promo_code: promo?.code ?? null,
+          // Lot F : snapshot d'attribution last-touch (UTM/referrer),
+          // capté par TrackingProvider, null si provenance inconnue.
+          attribution: readAttribution(),
           notes: null,
           items: cart.map((c) => ({
             menu_item_id: c.menu_item_id,

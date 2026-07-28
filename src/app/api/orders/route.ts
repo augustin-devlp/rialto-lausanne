@@ -65,6 +65,9 @@ type Payload = {
   // (l'ancien flux en deux temps — POST /api/orders puis
   // /api/promo-codes/apply côté client — laissait total_amount brut).
   promo_code?: string | null;
+  // Lot F : snapshot d'attribution last-touch (UTM/referrer/landing),
+  // capté côté client — re-filtré en liste blanche avant écriture.
+  attribution?: Record<string, unknown> | null;
 };
 
 function parsePickupISO(value: string): string | null {
@@ -345,6 +348,25 @@ export async function POST(req: NextRequest) {
     void markPromoCodeUsedOnOrder(promoCodeId, order.id as string);
   }
 
+  // Lot F : attribution marketing (colonne orders.attribution, migration
+  // TR1). Écriture SÉPARÉE de l'INSERT et best-effort : tant que TR1 (en
+  // navette) n'est pas exécutée, l'erreur « colonne inconnue » est avalée
+  // — pattern lottery month — et la création de commande ne peut JAMAIS
+  // en souffrir. Liste blanche + troncature : on ne stocke pas un blob
+  // client arbitraire.
+  const attribution = sanitizeAttribution(body.attribution);
+  if (attribution) {
+    void (async () => {
+      const { error: attrErr } = await sb
+        .from("orders")
+        .update({ attribution })
+        .eq("id", order.id);
+      if (attrErr && attrErr.code !== "PGRST204" && attrErr.code !== "42703") {
+        console.error("[orders] attribution non écrite", attrErr.code);
+      }
+    })();
+  }
+
   const rows = body.items.map((it) => ({
     order_id: order.id,
     menu_item_id: it.menu_item_id,
@@ -587,6 +609,32 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ order });
+}
+
+/** Clés admises dans orders.attribution — tout le reste est jeté. */
+const ATTRIBUTION_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "referrer",
+  "landing",
+  "captured_at",
+] as const;
+
+function sanitizeAttribution(
+  input: unknown,
+): Record<string, string> | null {
+  if (!input || typeof input !== "object") return null;
+  const out: Record<string, string> = {};
+  for (const k of ATTRIBUTION_KEYS) {
+    const v = (input as Record<string, unknown>)[k];
+    if (typeof v === "string" && v.trim()) {
+      out[k] = v.trim().slice(0, 200);
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 async function notifyDashboard(input: {

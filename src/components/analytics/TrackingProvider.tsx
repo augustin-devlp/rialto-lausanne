@@ -27,6 +27,7 @@ import {
   suspendTracking,
   track,
 } from "@/lib/tracking";
+import { captureAttribution } from "@/lib/attribution";
 
 function applyConsent(value: Consent): void {
   if (value === "accepted") grantTracking();
@@ -54,6 +55,11 @@ function PageViewTracker() {
 
 export default function TrackingProvider() {
   useEffect(() => {
+    // Lot F : capture d'attribution au CHARGEMENT de page (les UTM d'une
+    // pub arrivent toujours par un chargement complet, jamais par une
+    // navigation SPA interne). Indépendante du consentement — donnée
+    // first-party sans aucun tiers (posture documentée dans attribution.ts).
+    captureAttribution();
     applyConsent(getConsent());
     return onConsentChange(applyConsent);
   }, []);

@@ -116,6 +116,14 @@ export default function PrivacyPage() {
           sans consentement car indispensables au service.
         </p>
         <p>
+          Nous conservons également dans votre navigateur, pendant 30 jours
+          au maximum, l&apos;origine de votre visite (par exemple le lien ou
+          la campagne qui vous a amené sur le site), afin de savoir comment
+          nos clients nous trouvent. Cette information reste entre vous et
+          nous : elle n&apos;est transmise à aucun tiers et est rattachée à
+          votre commande uniquement si vous en passez une.
+        </p>
+        <p>
           <strong>Avec votre consentement uniquement</strong> (bandeau
           « Cookies » lors de votre première visite), nous utilisons en plus :
         </p>

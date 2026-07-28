@@ -19,11 +19,16 @@
 -- blanche, valeurs tronquées à 200 caractères côté serveur) :
 --   { "utm_source": "...", "utm_medium": "...", "utm_campaign": "...",
 --     "utm_term": "...", "utm_content": "...",
+--     "gclid": "...", "fbclid": "...", "msclkid": "...",
 --     "referrer": "hôte externe de provenance", "landing": "/chemin",
---     "captured_at": "ISO-8601" }
---   Toutes les clés optionnelles. Modèle LAST-TOUCH non-direct : la
---   dernière visite porteuse d'UTM (ou de referrer externe) dans les
---   30 jours gagne, persistée côté client (localStorage versionné).
+--     "captured_at": "ISO-8601 (format vérifié côté serveur)" }
+--   Toutes les clés optionnelles. gclid/fbclid/msclkid = IDs de clic des
+--   régies (l'auto-tagging Google Ads n'appose QUE gclid, pas d'utm_*).
+--   Modèle LAST-TOUCH non-direct HIÉRARCHISÉ, 30 jours, persisté côté
+--   client (localStorage versionné) : une visite CAMPAGNE (UTM/click id)
+--   remplace la précédente ; une visite referrer-seul ne remplace JAMAIS
+--   une campagne encore valide (sinon les canaux payants seraient
+--   systématiquement sous-comptés) ; une visite directe ne touche rien.
 --
 -- ÉCRITURE TOLÉRANTE : le code applicatif écrit l'attribution par un
 -- UPDATE séparé APRÈS l'INSERT de la commande, en avalant l'erreur

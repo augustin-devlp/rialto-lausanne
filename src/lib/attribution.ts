@@ -26,6 +26,10 @@ const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** Anti-déchet : borne dure sur chaque valeur captée. */
 const MAX_LEN = 200;
 
+// ⚠️ MIROIR : toute clé ajoutée ici doit l'être dans ATTRIBUTION_KEYS de
+// src/app/api/orders/route.ts (liste blanche serveur, dupliquée à dessein —
+// on n'importe pas un module "use client" dans un route handler), et dans
+// le COMMENT de la migration TR1.
 const UTM_KEYS = [
   "utm_source",
   "utm_medium",
@@ -34,12 +38,24 @@ const UTM_KEYS = [
   "utm_content",
 ] as const;
 
+/**
+ * IDs de clic des régies : l'auto-tagging Google Ads n'appose QUE gclid
+ * (pas d'utm_*), Meta appose fbclid. Sans eux, le canal payant — le but
+ * même de l'attribution — serait classé « direct » ou confondu avec
+ * l'organique (relevé relecteur 28.07.2026). First-party au même titre
+ * que les UTM.
+ */
+const CLICK_ID_KEYS = ["gclid", "fbclid", "msclkid"] as const;
+
 export type Attribution = {
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
   utm_term?: string;
   utm_content?: string;
+  gclid?: string;
+  fbclid?: string;
+  msclkid?: string;
   /** Hôte externe de provenance (jamais le nôtre). */
   referrer?: string;
   /** Chemin d'atterrissage de la visite captée. */
@@ -61,11 +77,14 @@ export function captureAttribution(): void {
   if (typeof window === "undefined") return;
   try {
     const params = new URLSearchParams(window.location.search);
-    const utm: Partial<Record<(typeof UTM_KEYS)[number], string>> = {};
-    for (const k of UTM_KEYS) {
+    const campaign: Partial<
+      Record<(typeof UTM_KEYS | typeof CLICK_ID_KEYS)[number], string>
+    > = {};
+    for (const k of [...UTM_KEYS, ...CLICK_ID_KEYS]) {
       const v = clean(params.get(k));
-      if (v) utm[k] = v;
+      if (v) campaign[k] = v;
     }
+    const hasCampaign = Object.keys(campaign).length > 0;
 
     let referrer: string | undefined;
     if (document.referrer) {
@@ -78,10 +97,27 @@ export function captureAttribution(): void {
     }
 
     // Visite directe : on ne touche à rien (cf. en-tête).
-    if (Object.keys(utm).length === 0 && !referrer) return;
+    if (!hasCampaign && !referrer) return;
+
+    // HIÉRARCHIE DES TOUCHES (décision 28.07.2026, relevé relecteur) : une
+    // visite referrer-seul (retour par Google organique, lien SMS, webmail…)
+    // n'écrase JAMAIS un touch CAMPAGNE (UTM/click id) encore dans la
+    // fenêtre — sinon le client qui clique la pub Meta puis revient
+    // commander via une recherche serait compté « organique » et les
+    // campagnes payantes seraient systématiquement sous-comptées. Seule une
+    // nouvelle CAMPAGNE remplace une campagne.
+    if (!hasCampaign) {
+      const existing = readAttribution();
+      const existingHasCampaign =
+        !!existing &&
+        [...UTM_KEYS, ...CLICK_ID_KEYS].some(
+          (k) => typeof existing[k] === "string" && existing[k],
+        );
+      if (existingHasCampaign) return;
+    }
 
     const snapshot: Attribution = {
-      ...utm,
+      ...campaign,
       ...(referrer ? { referrer } : {}),
       landing: clean(window.location.pathname),
       captured_at: new Date().toISOString(),

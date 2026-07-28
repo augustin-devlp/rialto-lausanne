@@ -348,25 +348,6 @@ export async function POST(req: NextRequest) {
     void markPromoCodeUsedOnOrder(promoCodeId, order.id as string);
   }
 
-  // Lot F : attribution marketing (colonne orders.attribution, migration
-  // TR1). Écriture SÉPARÉE de l'INSERT et best-effort : tant que TR1 (en
-  // navette) n'est pas exécutée, l'erreur « colonne inconnue » est avalée
-  // — pattern lottery month — et la création de commande ne peut JAMAIS
-  // en souffrir. Liste blanche + troncature : on ne stocke pas un blob
-  // client arbitraire.
-  const attribution = sanitizeAttribution(body.attribution);
-  if (attribution) {
-    void (async () => {
-      const { error: attrErr } = await sb
-        .from("orders")
-        .update({ attribution })
-        .eq("id", order.id);
-      if (attrErr && attrErr.code !== "PGRST204" && attrErr.code !== "42703") {
-        console.error("[orders] attribution non écrite", attrErr.code);
-      }
-    })();
-  }
-
   const rows = body.items.map((it) => ({
     order_id: order.id,
     menu_item_id: it.menu_item_id,
@@ -387,6 +368,25 @@ export async function POST(req: NextRequest) {
       { error: "Impossible d'enregistrer les articles" },
       { status: 500 },
     );
+  }
+
+  // Lot F : attribution marketing (colonne orders.attribution, migration
+  // TR1). Écriture SÉPARÉE de l'INSERT et best-effort : tant que TR1 (en
+  // navette) n'est pas exécutée, l'erreur « colonne inconnue » est avalée
+  // — pattern lottery month — et la création de commande ne peut JAMAIS
+  // en souffrir. Liste blanche + troncature (sanitizeAttribution) : on ne
+  // stocke pas un blob client arbitraire. Placée APRÈS l'insert des items
+  // (dont l'échec SUPPRIME la commande) et attendue : pas de course avec
+  // le DELETE ni avec la fin du lambda.
+  const attribution = sanitizeAttribution(body.attribution);
+  if (attribution) {
+    const { error: attrErr } = await sb
+      .from("orders")
+      .update({ attribution })
+      .eq("id", order.id);
+    if (attrErr && attrErr.code !== "PGRST204" && attrErr.code !== "42703") {
+      console.error("[orders] attribution non écrite", attrErr.code);
+    }
   }
 
   await sb.from("order_status_history").insert({
@@ -611,13 +611,22 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ order });
 }
 
-/** Clés admises dans orders.attribution — tout le reste est jeté. */
+/**
+ * Clés admises dans orders.attribution — tout le reste est jeté.
+ * ⚠️ MIROIR de UTM_KEYS + CLICK_ID_KEYS de src/lib/attribution.ts
+ * (duplication à dessein : pas d'import d'un module "use client" ici).
+ * Toute clé ajoutée là-bas doit l'être ici ET dans le COMMENT de TR1 —
+ * sinon la capture marche et l'écriture jette en silence.
+ */
 const ATTRIBUTION_KEYS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
   "utm_term",
   "utm_content",
+  "gclid",
+  "fbclid",
+  "msclkid",
   "referrer",
   "landing",
   "captured_at",
@@ -630,9 +639,14 @@ function sanitizeAttribution(
   const out: Record<string, string> = {};
   for (const k of ATTRIBUTION_KEYS) {
     const v = (input as Record<string, unknown>)[k];
-    if (typeof v === "string" && v.trim()) {
-      out[k] = v.trim().slice(0, 200);
+    if (typeof v !== "string" || !v.trim()) continue;
+    // captured_at : format ISO exigé — une seule chaîne empoisonnée ferait
+    // échouer un futur cast ::timestamptz sur la requête ENTIÈRE de
+    // reporting. Clé jetée si le format ne colle pas, le reste survit.
+    if (k === "captured_at" && !/^\d{4}-\d{2}-\d{2}T/.test(v.trim())) {
+      continue;
     }
+    out[k] = v.trim().slice(0, 200);
   }
   return Object.keys(out).length > 0 ? out : null;
 }

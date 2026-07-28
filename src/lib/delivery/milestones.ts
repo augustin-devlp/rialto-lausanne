@@ -14,7 +14,7 @@
  */
 
 import { formatCHF } from "@/lib/format";
-import type { FreeDeliveryRule } from "./rule";
+import { isFreeDeliveryReached, type FreeDeliveryRule } from "./rule";
 
 export type MilestoneKey = "free_delivery"; // à étendre : | "next_stamp" ...
 
@@ -37,11 +37,19 @@ export function computeMilestones(
 
   const fd = sources.freeDelivery;
   if (fd?.enabled) {
-    const remaining = Math.max(0, fd.threshold - subtotalGoods);
+    // `reached` = LE prédicat serveur (jamais re-dérivé de remaining).
+    // `remaining` arrondi au centime SUPÉRIEUR : les sommes de prix ne sont
+    // pas représentables en binaire — sans le ceil, un panier à 7e-15 CHF
+    // du seuil afficherait « Plus que 0.00 CHF pour la livraison offerte »
+    // (relevé relecteur 28.07.2026). Pire cas du ceil : 0.01, jamais 0.
+    const reached = isFreeDeliveryReached(subtotalGoods, fd);
+    const remaining = reached
+      ? 0
+      : Math.ceil((fd.threshold - subtotalGoods) * 100) / 100;
     out.push({
       key: "free_delivery",
       threshold: fd.threshold,
-      reached: remaining === 0,
+      reached,
       remaining,
       labelPending: `Plus que ${formatCHF(remaining)} pour la livraison offerte`,
       labelReached: "Livraison offerte ✓",

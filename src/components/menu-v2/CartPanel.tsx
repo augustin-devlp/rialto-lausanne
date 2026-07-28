@@ -41,8 +41,9 @@ export default function CartPanel({
   const missing = Math.max(0, minOrderAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
   // LS2 : moteur « distance au palier » — n'affiche rien tant que la règle
-  // n'est pas chargée ou que le seuil est désactivé (tableau vide).
-  const fdRule = useFreeDeliveryRule();
+  // n'est pas chargée ou que le seuil est désactivé (tableau vide). Pas de
+  // requête tant que le panier est vide (rien ne s'afficherait).
+  const fdRule = useFreeDeliveryRule(count > 0);
   const fdMilestone =
     computeMilestones(subtotal, { freeDelivery: fdRule }).find(
       (m) => m.key === "free_delivery",

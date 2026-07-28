@@ -23,10 +23,16 @@ import {
   type FreeDeliveryRule,
 } from "./rule";
 
-export function useFreeDeliveryRule(): FreeDeliveryRule | null {
+/**
+ * @param actif passer false pour ne pas déclencher la requête du tout
+ *   (parité de pattern avec useStampRule — ex. panier vide, rien à
+ *   afficher). La requête part dès que `actif` devient vrai.
+ */
+export function useFreeDeliveryRule(actif = true): FreeDeliveryRule | null {
   const [rule, setRule] = useState<FreeDeliveryRule | null>(null);
 
   useEffect(() => {
+    if (!actif) return;
     let annule = false;
     (async () => {
       try {
@@ -51,7 +57,7 @@ export function useFreeDeliveryRule(): FreeDeliveryRule | null {
     return () => {
       annule = true;
     };
-  }, []);
+  }, [actif]);
 
   return rule;
 }

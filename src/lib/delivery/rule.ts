@@ -57,6 +57,20 @@ export function toFreeDeliveryRule(
 }
 
 /**
+ * LE prédicat « seuil franchi » — unique, partagé par le calcul du fee
+ * (serveur ET client) et par l'affichage des paliers (milestones.ts).
+ * Ne JAMAIS re-dériver cet état d'un autre calcul (ex. remaining === 0) :
+ * deux expressions de la même décision finissent toujours par diverger
+ * (relevé relecteur 28.07.2026 — résidu flottant sur les sommes de prix).
+ */
+export function isFreeDeliveryReached(
+  subtotalGoods: number,
+  rule: FreeDeliveryRule,
+): boolean {
+  return rule.enabled && subtotalGoods >= rule.threshold;
+}
+
+/**
  * Frais de livraison effectifs pour un panier donné. Calcul pur, sans effet
  * de bord — MÊME fonction côté serveur (POST /api/orders) et côté client
  * (affichage panier/checkout, LS2) : les deux ne peuvent pas diverger.
@@ -69,6 +83,5 @@ export function effectiveDeliveryFee(
   zoneFee: number,
   rule: FreeDeliveryRule,
 ): number {
-  if (rule.enabled && subtotalGoods >= rule.threshold) return 0;
-  return zoneFee;
+  return isFreeDeliveryReached(subtotalGoods, rule) ? 0 : zoneFee;
 }

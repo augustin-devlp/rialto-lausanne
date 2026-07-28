@@ -35,10 +35,16 @@ export async function GET() {
     { ok: true, rule },
     // s-maxage indispensable : sans lui Vercel ne met RIEN en cache CDN et
     // chaque visiteur déclenche une invocation + une requête Supabase.
+    // ⚠️ VOLONTAIREMENT plus strict que loyalty/rule (pas de max-age
+    // navigateur, pas de stale-while-revalidate) : ce réglage est
+    // TARIFAIRE. Avec le profil de loyalty, un toggle ON→OFF au dashboard
+    // laissait jusqu'à ~6-7 min d'écran « Offerte » pendant que le serveur
+    // facturait (relevé relecteur 28.07.2026). Fenêtre bornée ici à ~60 s
+    // CDN — et le toast « nouvelle version » ne couvre PAS ce cas (aucun
+    // déploiement n'a lieu quand une ligne de restaurants change).
     {
       headers: {
-        "cache-control":
-          "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
+        "cache-control": "public, max-age=0, s-maxage=60",
       },
     },
   );

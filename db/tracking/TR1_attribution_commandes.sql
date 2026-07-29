@@ -53,4 +53,4 @@ ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS attribution jsonb;
 
 COMMENT ON COLUMN orders.attribution IS
-  'Attribution marketing last-touch (UTM + referrer + landing + captured_at), écrite best-effort au POST. NULL = provenance inconnue. Lot F tracking, TR1.';
+  'Attribution marketing last-touch hiérarchisé (UTM + gclid/fbclid/msclkid + referrer + landing + captured_at), écrite best-effort au POST. NULL = provenance inconnue. Lot F tracking, TR1.';

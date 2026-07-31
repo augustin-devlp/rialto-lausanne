@@ -67,7 +67,13 @@ export function isFreeDeliveryReached(
   subtotalGoods: number,
   rule: FreeDeliveryRule,
 ): boolean {
-  return rule.enabled && subtotalGoods >= rule.threshold;
+  // Tolérance d'un demi-centime (décision Augustin 29.07.2026) : les sommes
+  // de prix ne sont pas représentables en binaire — un panier composé à
+  // 50.00 pile peut valoir 49.999999999999993. Facturer la livraison sur un
+  // résidu binaire serait indéfendable au comptoir. Le prédicat étant
+  // UNIQUE, la tolérance s'applique partout d'un coup (serveur, client,
+  // paliers).
+  return rule.enabled && subtotalGoods >= rule.threshold - 0.005;
 }
 
 /**

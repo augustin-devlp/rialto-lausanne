@@ -28,6 +28,7 @@ import {
   clearCart,
   readAddress,
   readCart,
+  writeAddress,
   writeCart,
   type QualifiedAddress,
 } from "@/lib/clientStore";
@@ -211,6 +212,11 @@ export default function CheckoutPageClient({
     free_item_label: string | null;
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
+  // Petit lot checkout (29.07.2026, relevés relecteur Lot E) : dernier
+  // sous-total pour lequel la remise a été validée (évite les re-fetchs en
+  // boucle), et erreur de zone quand le CP édité n'est pas desservi.
+  const lastValidatedSubtotal = useRef<number | null>(null);
+  const [cpZoneError, setCpZoneError] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,6 +301,119 @@ export default function CheckoutPageClient({
     });
   }, [fdRule, address, cart, subtotal, deliveryFee]);
 
+  // Re-validation du code promo à CHAQUE changement de sous-total (relevé
+  // relecteur Lot E) : la remise % est recalculée par le serveur sur le
+  // sous-total du moment — sans ce rejeu, un upsell ou un +/- après la
+  // saisie du code faisait diverger l'écran du montant réellement facturé.
+  useEffect(() => {
+    if (!promo || subtotal <= 0) return;
+    if (lastValidatedSubtotal.current === subtotal) return;
+    const code = promo.code;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/promo-codes/validate`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            business_id: STAMPIFY_BUSINESS_ID,
+            code,
+            subtotal,
+          }),
+        });
+        const body = (await res.json()) as {
+          valid: boolean;
+          error?: string;
+          discount_amount?: number;
+          message?: string;
+        };
+        lastValidatedSubtotal.current = subtotal;
+        if (!body.valid) {
+          // Le panier modifié ne satisfait plus le code (ex. repassé sous
+          // son minimum) : on retire la remise et on le DIT.
+          setPromo(null);
+          setPromoError(
+            body.error
+              ? `Code ${code} retiré : ${body.error}`
+              : `Le code ${code} ne s'applique plus à ce panier.`,
+          );
+        } else {
+          setPromo((p) =>
+            p && p.code === code
+              ? {
+                  ...p,
+                  discount_amount: body.discount_amount ?? 0,
+                  message: body.message ?? p.message,
+                }
+              : p,
+          );
+        }
+      } catch {
+        /* réseau : on garde l'ancienne remise — le serveur reste l'autorité
+           au POST, et un 400 promo y bloque la commande proprement */
+      }
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [subtotal, promo]);
+
+  // Re-qualification de la zone quand le CP change (relevé relecteur
+  // Lot E) : l'adresse qualifiée en page d'accueil fige frais/minimum —
+  // un CP édité ici vers une autre zone faisait payer des frais différents
+  // de ceux affichés. On relit la zone, on met à jour frais/minimum/ville
+  // (récap, paliers et begin_checkout suivent), on bloque si non desservie.
+  useEffect(() => {
+    if (!address) return;
+    const pc = postalCode.trim();
+    if (!/^\d{4}$/.test(pc) || pc === address.postal_code) {
+      setCpZoneError(null);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
+            restaurantId,
+          )}&postal_code=${encodeURIComponent(pc)}`,
+        );
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          covered: boolean;
+          zone?: {
+            id: string;
+            city: string | null;
+            delivery_fee: number | string;
+            min_order_amount: number | string;
+            estimated_delivery_minutes: number | null;
+          };
+        };
+        if (!body.covered || !body.zone) {
+          setCpZoneError(
+            `Nous ne livrons pas au ${pc}. Corrigez le code postal ou choisissez une adresse desservie.`,
+          );
+          return;
+        }
+        setCpZoneError(null);
+        const next: QualifiedAddress = {
+          ...address,
+          postal_code: pc,
+          city: body.zone.city ?? address.city,
+          zone_id: body.zone.id,
+          delivery_fee: Number(body.zone.delivery_fee),
+          min_order_amount: Number(body.zone.min_order_amount),
+          estimated_delivery_minutes:
+            body.zone.estimated_delivery_minutes ??
+            address.estimated_delivery_minutes,
+        };
+        setAddress(next);
+        writeAddress(next);
+        if (body.zone.city) setCity(body.zone.city);
+      } catch {
+        /* réseau : on garde la zone connue — le POST serveur re-vérifie la
+           zone de toute façon et refuse un CP non desservi */
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [postalCode, address, restaurantId]);
+
   function updateQuantity(key: string, delta: number) {
     const next = cart
       .map((c) => {
@@ -374,6 +493,7 @@ export default function CheckoutPageClient({
           free_item_label: body.free_item_label ?? null,
         });
         setPromoError(null);
+        lastValidatedSubtotal.current = subtotal;
       }
     } catch {
       setPromoError("Erreur réseau");
@@ -404,6 +524,7 @@ export default function CheckoutPageClient({
     paymentSubValid &&
     contactValid &&
     amountValid &&
+    !cpZoneError &&
     !loading &&
     !!address &&
     accepting;
@@ -654,6 +775,12 @@ export default function CheckoutPageClient({
                     className="col-span-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>
+
+                {cpZoneError && (
+                  <p className="text-xs font-medium text-rialto">
+                    ⚠️ {cpZoneError}
+                  </p>
+                )}
 
                 {housingType === "apartment" && (
                   <div className="space-y-3 bg-[#F9F1E4]/40 p-4 rounded-2xl border border-[#E6A12C]/20">

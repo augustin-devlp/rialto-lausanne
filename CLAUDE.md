@@ -29,6 +29,7 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 - **Ordre de verrouillage : `orders` AVANT `customer_cards`, jamais l'inverse** (acté 22.07.2026). Vrai de facto aujourd'hui, mais rien dans le schéma ne l'impose : une fonction qui partirait de `customer_cards` pour lire `orders` (recalcul de tier VIP…) créerait un interblocage réel avec `credit_order_stamps`.
 - Fidélité v2 : le tampon EN ATTENTE est **dérivé**, jamais écrit ; le palier/la récompense ne se calcule QUE sur `customer_cards.current_stamps` (le solidifié). Ne jamais additionner pending et acquis.
 - Tout DDL passe en **navette** (review) puis est exécuté via `apply_migration` par la conversation propriétaire du repo. Jamais de SQL brut hors historique versionné.
+- **Toute migration touchant `orders` commence par `SET lock_timeout = '5s';`** (migration ET rollback) — sans cette garde, un ALTER en file derrière un verrou long gèle tous les accès à orders : blocage silencieux de la caisse (amendement navette TR1b, obligatoire depuis le 31.07.2026).
 
 ## Tracking (Lots B-C livrés 23.07.2026)
 - Source unique des événements = `src/lib/tracking.ts` ; RIEN ne part sans consentement (clé `rialto_cookie_consent_v2`).

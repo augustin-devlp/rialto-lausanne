@@ -217,6 +217,13 @@ export default function CheckoutPageClient({
   // boucle), et erreur de zone quand le CP édité n'est pas desservi.
   const lastValidatedSubtotal = useRef<number | null>(null);
   const [cpZoneError, setCpZoneError] = useState<string | null>(null);
+  // Miroirs « dernière valeur » de street/city pour les callbacks async de
+  // re-qualification (lire l'état frais sans mettre ces champs en deps —
+  // sinon chaque frappe relancerait le debounce du CP).
+  const streetRef = useRef("");
+  const cityRef = useRef("");
+  streetRef.current = street;
+  cityRef.current = city;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,10 +247,13 @@ export default function CheckoutPageClient({
       router.replace("/menu");
       return;
     }
-    // Prérempli adresse depuis QualifiedAddress homepage si rien en prefill
+    // Rue : le prefill (dernière commande) est le plus précis. CP/ville :
+    // l'adresse QUALIFIÉE dans CETTE session l'emporte sur le prefill — la
+    // priorité inverse déclenchait au montage une re-qualification muette
+    // vers la zone de la commande précédente (majeur relecteur 31.07.2026).
     setStreet(p.street ?? a.address ?? "");
-    setPostalCode(p.postalCode ?? a.postal_code ?? "");
-    setCity(p.city ?? a.city ?? "");
+    setPostalCode(a.postal_code ?? p.postalCode ?? "");
+    setCity(a.city ?? p.city ?? "");
     setHousingType(p.housingType ?? null);
     setEntryCode1(p.entryCode1 ?? "");
     setEntryCode2(p.entryCode2 ?? "");
@@ -309,6 +319,11 @@ export default function CheckoutPageClient({
     if (!promo || subtotal <= 0) return;
     if (lastValidatedSubtotal.current === subtotal) return;
     const code = promo.code;
+    // AbortController : clearTimeout n'annule QUE le timer, jamais un fetch
+    // déjà parti — une réponse périmée (panier re-modifié pendant le vol)
+    // pouvait retirer une remise redevenue valide, définitivement
+    // (majeur relecteur 31.07.2026).
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const res = await fetch(`/api/promo-codes/validate`, {
@@ -319,6 +334,7 @@ export default function CheckoutPageClient({
             code,
             subtotal,
           }),
+          signal: controller.signal,
         });
         const body = (await res.json()) as {
           valid: boolean;
@@ -348,11 +364,14 @@ export default function CheckoutPageClient({
           );
         }
       } catch {
-        /* réseau : on garde l'ancienne remise — le serveur reste l'autorité
-           au POST, et un 400 promo y bloque la commande proprement */
+        /* réseau ou abort : on garde l'ancienne remise — le serveur reste
+           l'autorité au POST, et un 400 promo y bloque la commande */
       }
     }, 400);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [subtotal, promo]);
 
   // Re-qualification de la zone quand le CP change (relevé relecteur
@@ -367,14 +386,23 @@ export default function CheckoutPageClient({
       setCpZoneError(null);
       return;
     }
+    // Même AbortController que l'effet promo : sans lui, des réponses
+    // désordonnées laissaient un cpZoneError collé sur un CP corrigé.
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const res = await fetch(
           `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
             restaurantId,
           )}&postal_code=${encodeURIComponent(pc)}`,
+          { signal: controller.signal },
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          // Erreur serveur ≠ zone non desservie : ne JAMAIS laisser un
+          // blocage collé sur cette base (le POST re-vérifiera).
+          setCpZoneError(null);
+          return;
+        }
         const body = (await res.json()) as {
           covered: boolean;
           zone?: {
@@ -394,6 +422,10 @@ export default function CheckoutPageClient({
         setCpZoneError(null);
         const next: QualifiedAddress = {
           ...address,
+          // La rue AFFICHÉE (état street) doit suivre : {...address} seul
+          // persistait une chimère « ancienne rue + nouveau CP », rediffusée
+          // à l'en-tête via rialto:address-updated (majeur relecteur).
+          address: streetRef.current.trim() || address.address,
           postal_code: pc,
           city: body.zone.city ?? address.city,
           zone_id: body.zone.id,
@@ -405,13 +437,27 @@ export default function CheckoutPageClient({
         };
         setAddress(next);
         writeAddress(next);
-        if (body.zone.city) setCity(body.zone.city);
+        // Ne remplir la ville QUE si le champ est vierge ou porte encore
+        // la ville de l'ancienne zone : la réponse arrive ~600 ms + RTT
+        // après la frappe du CP, pile quand le client tape sa ville — ne
+        // jamais écraser sa saisie (majeur relecteur). Lecture via ref :
+        // mettre city en dépendance relancerait le debounce à chaque
+        // frappe de ville.
+        if (
+          body.zone.city &&
+          (!cityRef.current.trim() || cityRef.current === address.city)
+        ) {
+          setCity(body.zone.city);
+        }
       } catch {
-        /* réseau : on garde la zone connue — le POST serveur re-vérifie la
-           zone de toute façon et refuse un CP non desservi */
+        /* réseau ou abort : on garde la zone connue — le POST serveur
+           re-vérifie la zone de toute façon et refuse un CP non desservi */
       }
     }, 600);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [postalCode, address, restaurantId]);
 
   function updateQuantity(key: string, delta: number) {

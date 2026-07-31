@@ -107,7 +107,16 @@ export default function PwaRegister() {
     };
 
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", surChargement);
+      // ⚠️ Sur un shell servi par le SW, la page est instantanée et `load`
+      // a souvent DÉJÀ tiré avant que cet effet ne s'attache — le listener
+      // ne se déclenchait jamais : pas d'enregistrement, pas de détection
+      // de mise à jour, pas de toast (constaté en QA prod 31.07.2026 :
+      // worker en attente présent, toast absent). readyState arbitre.
+      if (document.readyState === "complete") {
+        surChargement();
+      } else {
+        window.addEventListener("load", surChargement);
+      }
       navigator.serviceWorker.addEventListener(
         "controllerchange",
         surBascule,

@@ -640,10 +640,15 @@ function sanitizeAttribution(
   for (const k of ATTRIBUTION_KEYS) {
     const v = (input as Record<string, unknown>)[k];
     if (typeof v !== "string" || !v.trim()) continue;
-    // captured_at : format ISO exigé — une seule chaîne empoisonnée ferait
-    // échouer un futur cast ::timestamptz sur la requête ENTIÈRE de
-    // reporting. Clé jetée si le format ne colle pas, le reste survit.
-    if (k === "captured_at" && !/^\d{4}-\d{2}-\d{2}T/.test(v.trim())) {
+    if (k === "captured_at") {
+      // Endpoint public : ne JAMAIS stocker une date non parsée. L'ancien
+      // test de préfixe laissait passer « 2026-99-99Tpotato » — une seule
+      // chaîne empoisonnée ferait échouer tout futur cast ::timestamptz
+      // sur la requête ENTIÈRE de reporting (correctif demandé par la
+      // review navette TR1b, 31.07.2026). Parse réel, stockage normalisé.
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) continue;
+      out[k] = d.toISOString();
       continue;
     }
     out[k] = v.trim().slice(0, 200);

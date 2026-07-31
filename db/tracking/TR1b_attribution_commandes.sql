@@ -1,9 +1,13 @@
 -- ============================================================================
--- TR1 — Attribution marketing des commandes : colonne orders.attribution
+-- TR1b — Attribution marketing des commandes : colonne orders.attribution
 -- Chantier tracking Lot F (UTM), séquencement validé par Augustin 24.07.2026.
--- STATUT : EN NAVETTE (review caisse) — NE PAS EXÉCUTER avant le retour
---          « GO D'EXÉCUTION ». Exécution via apply_migration par la
---          conversation propriétaire du repo rialto-lausanne UNIQUEMENT.
+-- STATUT : GO NAVETTE 31.07.2026 avec UN amendement obligatoire (d'où le
+--          « b ») : SET lock_timeout en tête de la migration ET du rollback.
+--          Raison caisse : sans cette garde, un ALTER en file derrière un
+--          verrou long gèle TOUS les accès à orders — blocage silencieux de
+--          la caisse. RÉFLEXE OBLIGATOIRE pour toute migration future
+--          touchant orders. Exécution via apply_migration par la
+--          conversation propriétaire du repo, hors heures de service.
 -- ============================================================================
 --
 -- CE QUE FAIT CE SQL, EXACTEMENT :
@@ -42,12 +46,18 @@
 -- REJOUABLE : oui — ADD COLUMN IF NOT EXISTS ; COMMENT ON est idempotent.
 --
 -- ROLLBACK (inline) :
+--   SET lock_timeout = '5s';
 --   ALTER TABLE orders DROP COLUMN IF EXISTS attribution;
 --
 -- IMPACT CAISSE ATTENDU : nul — colonne nullable jamais NOT NULL, la
 -- caisse ne projette pas `attribution` (à confirmer en review, comme
 -- pour LS0).
 -- ============================================================================
+
+-- Garde caisse (amendement navette 31.07.2026) : si un verrou long tient
+-- orders, on ABANDONNE au bout de 5 s au lieu de faire la file en gelant
+-- tous les accès derrière nous.
+SET lock_timeout = '5s';
 
 ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS attribution jsonb;

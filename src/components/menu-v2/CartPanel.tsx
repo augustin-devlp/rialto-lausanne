@@ -18,7 +18,7 @@ import { addLinesToCart, cartCount, cartSubtotal, updateCartQuantity, writeCart,
 import { formatCHF } from "@/lib/format";
 import UpsellPanel from "@/components/checkout/UpsellPanel";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
-import { computeMilestones } from "@/lib/delivery/milestones";
+import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 
 type Props = {
   cart: CartItem[];
@@ -44,10 +44,7 @@ export default function CartPanel({
   // n'est pas chargée ou que le seuil est désactivé (tableau vide). Pas de
   // requête tant que le panier est vide (rien ne s'afficherait).
   const fdRule = useFreeDeliveryRule(count > 0);
-  const fdMilestone =
-    computeMilestones(subtotal, { freeDelivery: fdRule }).find(
-      (m) => m.key === "free_delivery",
-    ) ?? null;
+  const fdMilestone = getFreeDeliveryMilestone(subtotal, fdRule);
   const progressPct = Math.min(100, (subtotal / minOrderAmount) * 100);
 
   // Ferme drawer si panier vidé
@@ -144,7 +141,7 @@ export default function CartPanel({
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="text-5xl">🛒</div>
             <p className="text-sm text-mute">
-              Ton panier est vide. Ajoute des plats pour commencer.
+              Votre panier est vide. Ajoutez des plats pour commencer.
             </p>
           </div>
         ) : (

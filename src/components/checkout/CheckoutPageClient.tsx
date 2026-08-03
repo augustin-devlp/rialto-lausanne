@@ -37,7 +37,7 @@ import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
-import { computeMilestones } from "@/lib/delivery/milestones";
+import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 import { readAttribution } from "@/lib/attribution";
 
 type Props = {
@@ -210,10 +210,7 @@ export default function CheckoutPageClient({
     ? effectiveDeliveryFee(subtotal, zoneFee, fdRule)
     : zoneFee;
   const freeDelivery = zoneFee > 0 && deliveryFee === 0;
-  const fdMilestone =
-    computeMilestones(subtotal, { freeDelivery: fdRule }).find(
-      (m) => m.key === "free_delivery",
-    ) ?? null;
+  const fdMilestone = getFreeDeliveryMilestone(subtotal, fdRule);
   const promoDiscount = promo?.discount_amount ?? 0;
   const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);

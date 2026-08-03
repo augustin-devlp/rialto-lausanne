@@ -189,7 +189,32 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
             </li>
           ))}
         </ul>
-        <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+        {/* Lignes de réconciliation (03.08.2026) : la somme des articles
+            doit se recomposer en Total sous les yeux du restaurateur —
+            sans elles, remise et livraison rendaient l'écart inexplicable. */}
+        {order.fulfillment_type === "delivery" && (
+          <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
+            <span className="text-xs text-mute">Livraison</span>
+            <span className="tabular text-sm text-ink">
+              {Number(order.delivery_fee ?? 0) > 0
+                ? formatCHF(Number(order.delivery_fee))
+                : "Offerte"}
+            </span>
+          </div>
+        )}
+        {Number(order.promo_discount_amount) > 0 && (
+          <div
+            className={`flex items-center justify-between ${order.fulfillment_type === "delivery" ? "mt-1" : "mt-2 border-t border-border pt-2"}`}
+          >
+            <span className="text-xs text-mute">Remise</span>
+            <span className="tabular text-sm font-medium text-rialto">
+              −{formatCHF(Number(order.promo_discount_amount))}
+            </span>
+          </div>
+        )}
+        <div
+          className={`flex items-center justify-between ${order.fulfillment_type === "delivery" || Number(order.promo_discount_amount) > 0 ? "mt-1 border-t border-border pt-2" : "mt-2 border-t border-border pt-2"}`}
+        >
           <span className="text-sm font-semibold text-ink">Total</span>
           <span className="tabular font-display text-base font-bold text-ink">
             {formatCHF(Number(order.total_amount))}

@@ -118,11 +118,6 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
         minute: "2-digit",
       })
     : "dès que possible";
-  const rendu =
-    order.payment_method === "cash" && order.payment_cash_bills
-      ? Number(order.payment_cash_bills) - Number(order.total_amount)
-      : null;
-
   return (
     <div className="space-y-4 pb-6">
       <Link
@@ -255,23 +250,13 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
         <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-mute">
           Paiement
         </h2>
+        {/* Le champ « billets » du checkout a été supprimé (03.08.2026) —
+            l'affichage « rendu à préparer » est neutralisé avec lui, les
+            livreurs gèrent leur monnaie hors outil. payment_cash_bills
+            reste en base sur les commandes historiques, sans affichage. */}
         {order.payment_method === "cash" && (
           <p className="text-sm text-ink">
-            💵 Espèces — le client donnera{" "}
-            <strong>
-              {order.payment_cash_bills
-                ? formatCHF(Number(order.payment_cash_bills))
-                : "un montant non précisé"}
-            </strong>
-            {rendu !== null && rendu > 0 && (
-              <>
-                {" "}
-                → préparer{" "}
-                <strong className="text-rialto">{formatCHF(rendu)}</strong> de
-                rendu
-              </>
-            )}
-            {rendu === 0 && " (compte juste)"}
+            💵 Espèces — encaissement à la livraison
           </p>
         )}
         {order.payment_method === "card" && (

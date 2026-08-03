@@ -93,74 +93,6 @@ function writePrefill(p: Prefill): void {
   }
 }
 
-/* ─── Calcul des billets cash (CHF) ─────────────────────────────────── */
-type CashOption = { label: string; value: number; notes: string };
-
-function getCashOptions(total: number): CashOption[] {
-  const billets = [10, 20, 50, 100, 200];
-  const options: CashOption[] = [];
-
-  // 1 billet seul
-  for (const b of billets) {
-    if (b >= total && b <= total + 100) {
-      const rendu = b - total;
-      options.push({
-        label: `1 billet de ${b} CHF`,
-        value: b,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
-      });
-    }
-  }
-  // 2 billets identiques
-  for (const b of billets) {
-    const sum = b * 2;
-    if (sum >= total && sum <= total + 50) {
-      const rendu = sum - total;
-      options.push({
-        label: `2 billets de ${b} CHF`,
-        value: sum,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
-      });
-    }
-  }
-  // Combinaisons logiques
-  const combos: [number, number][] = [
-    [50, 20],
-    [50, 50],
-    [100, 20],
-    [100, 50],
-    [200, 50],
-    [50, 10],
-    [20, 10],
-    [100, 10],
-  ];
-  for (const [a, b] of combos) {
-    const sum = a + b;
-    if (sum >= total && sum <= total + 30) {
-      const rendu = sum - total;
-      options.push({
-        label: `${a} CHF + ${b} CHF`,
-        value: sum,
-        notes:
-          rendu > 0 ? `Rendu : ${rendu.toFixed(2)} CHF` : "Compte juste",
-      });
-    }
-  }
-  // Dédupliquer + tri par rendu croissant
-  const seen = new Set<number>();
-  return options
-    .filter((o) => {
-      if (seen.has(o.value)) return false;
-      seen.add(o.value);
-      return true;
-    })
-    .sort((a, b) => a.value - b.value - (a.value - total - (b.value - total)))
-    .sort((a, b) => a.value - total - (b.value - total))
-    .slice(0, 4);
-}
-
 export default function CheckoutPageClient({
   restaurantId,
   accepting,
@@ -193,7 +125,6 @@ export default function CheckoutPageClient({
     null,
   );
   const [cardTiming, setCardTiming] = useState<CardTiming | null>(null);
-  const [cashBills, setCashBills] = useState<number>(0);
 
   // Section 4 : coordonnées
   const [firstName, setFirstName] = useState("");
@@ -552,14 +483,12 @@ export default function CheckoutPageClient({
   const housingValid = housingType !== null;
   const addressValid = street.trim().length >= 3;
   const paymentBaseValid = paymentMethod !== null;
+  // Espèces : plus aucune sous-option depuis la suppression du champ
+  // « billets » (décision produit 03.08.2026) — le choix du mode suffit.
   const paymentSubValid =
     paymentMethod === "card"
       ? cardTiming !== null
-      : paymentMethod === "cash"
-        ? cashBills > 0
-        : paymentMethod === "twint"
-          ? true
-          : false;
+      : paymentMethod === "cash" || paymentMethod === "twint";
   const contactValid =
     firstName.trim().length >= 2 && phone.trim().length >= 8;
   const amountValid = missing === 0;
@@ -639,8 +568,6 @@ export default function CheckoutPageClient({
           payment_method: paymentMethod,
           payment_card_timing:
             paymentMethod === "card" ? cardTiming : null,
-          payment_cash_bills:
-            paymentMethod === "cash" ? cashBills : null,
           // Fix total_amount 23.07.2026 : le code entre dans le POST — le
           // serveur valide, consomme et insère le total déjà remisé.
           promo_code: promo?.code ?? null,
@@ -702,8 +629,6 @@ export default function CheckoutPageClient({
   }
 
   if (!address) return null;
-
-  const cashOptions = getCashOptions(total);
 
   return (
     <main className="min-h-screen bg-cream pb-28 md:pb-12">
@@ -947,10 +872,7 @@ export default function CheckoutPageClient({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPaymentMethod("card");
-                    setCashBills(0);
-                  }}
+                  onClick={() => setPaymentMethod("card")}
                   className={`p-5 rounded-2xl border-2 transition-all text-left ${
                     paymentMethod === "card"
                       ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
@@ -978,7 +900,7 @@ export default function CheckoutPageClient({
                   <div className="text-2xl mb-2">💵</div>
                   <div className="font-bold text-[#9A2E14]">Espèces</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    Le livreur prépare la monnaie
+                    À régler au livreur
                   </div>
                 </button>
                 <button
@@ -986,7 +908,6 @@ export default function CheckoutPageClient({
                   onClick={() => {
                     setPaymentMethod("twint");
                     setCardTiming(null);
-                    setCashBills(0);
                   }}
                   className={`p-5 rounded-2xl border-2 transition-all text-left ${
                     paymentMethod === "twint"
@@ -1054,51 +975,13 @@ export default function CheckoutPageClient({
                 </div>
               )}
 
-              {/* Sous-options espèces */}
+              {/* Espèces : note informative seule — le champ « billets » a
+                  été SUPPRIMÉ (décision produit 03.08.2026, les livreurs
+                  gèrent leur monnaie hors outil). Même motif visuel que les
+                  notes carte/Twint. */}
               {paymentMethod === "cash" && (
-                <div className="mt-4 space-y-3 transition-all duration-200">
-                  <p className="text-sm font-medium text-gray-700">
-                    Avec quel(s) billet(s) allez-vous payer ?
-                    <span className="block text-xs text-gray-500 mt-1">
-                      Pour que le livreur prépare la bonne monnaie
-                    </span>
-                  </p>
-                  {cashOptions.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      {cashOptions.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setCashBills(opt.value)}
-                          className={`p-3 rounded-xl border-2 text-left transition-all ${
-                            cashBills === opt.value
-                              ? "border-[#C73E1D] bg-[#F9F1E4]"
-                              : "border-gray-200 bg-white"
-                          }`}
-                        >
-                          <div className="font-bold text-sm text-[#9A2E14]">
-                            {opt.label}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {opt.notes}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <input
-                      type="number"
-                      step="1"
-                      min={total}
-                      placeholder={`Montant approximatif (≥ ${total.toFixed(
-                        2,
-                      )} CHF)`}
-                      onChange={(e) =>
-                        setCashBills(parseFloat(e.target.value) || 0)
-                      }
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                    />
-                  )}
+                <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 transition-all duration-200">
+                  💵 Vous paierez en espèces au livreur, à la livraison.
                 </div>
               )}
 

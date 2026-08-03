@@ -39,9 +39,11 @@ export function getFreeDeliveryMilestone(
   // `reached` = LE prédicat serveur (jamais re-dérivé de remaining).
   // `remaining` : normaliser au 1/100e de centime AVANT le ceil — un ceil
   // directement sur la différence flottante sur-corrige d'un centime sur
-  // les paniers courants (prix en .90/.80). Le plancher 0.01 garantit
-  // qu'un résidu à 7e-15 n'affiche jamais « Plus que 0.00 CHF ».
-  // Formule re-vérifiée numériquement (relecture 28.07.2026).
+  // les paniers courants (prix en .90/.80 : 39.80 face au seuil 50
+  // affichait « Plus que 10.21 CHF » au lieu de 10.20). Le plancher 0.01
+  // garantit qu'un résidu à 7e-15 n'affiche jamais « Plus que 0.00 CHF ».
+  // Formule re-vérifiée numériquement (relecture 28.07.2026) — ne PAS la
+  // « simplifier » en Math.ceil(threshold - subtotal).
   const reached = isFreeDeliveryReached(subtotalGoods, rule);
   const remaining = reached
     ? 0

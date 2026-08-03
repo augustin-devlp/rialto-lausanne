@@ -377,7 +377,7 @@ export async function computeSpinAvailability(params: {
     can_spin: false,
     config_mode: configMode,
     message:
-      "Il n'y a pas de roue prévue pour l'instant. Tu seras prévenu par SMS quand une sera lancée.",
+      "Il n'y a pas de roue prévue pour l'instant. Vous serez prévenu par SMS quand une sera lancée.",
     last_prize: null,
     wait_info: null,
     frequency_days: null,

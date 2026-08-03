@@ -1,7 +1,8 @@
 /**
  * ⚠️ AVANT de brancher/modifier un SMS : lire docs/SMS_TEMPLATES.md —
  * la table de référence des 18 templates (statut, appelant, interdits).
- * 12 sur 18 sont orphelins et order_cancelled est INTERDIT (19.07.2026).
+ * 11 sur 18 sont orphelins (birthday_wish ACTIF depuis le 03.08.2026 via
+ * src/lib/birthday.ts) et order_cancelled est INTERDIT (19.07.2026).
  *
  * Version CŒUR-ONLY découplée de loyalty-cards/src/lib/smsTemplates.ts.
  *

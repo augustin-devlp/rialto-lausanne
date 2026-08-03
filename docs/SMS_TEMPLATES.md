@@ -3,7 +3,8 @@
 > **Source de vérité pour tout lot qui veut « brancher un SMS ».**
 > État constaté et audité le 22.07.2026 (base `ymnhfdkyqbhucxdrnyzq`,
 > table `sms_templates`, restaurant `046d930d-…`). 18 templates seedés en
-> base + 1 clé active servie depuis le code. **12 sur 18 sont orphelins** :
+> base + 1 clé active servie depuis le code. **11 sur 18 sont orphelins**
+> (birthday_wish est ACTIF depuis le 03.08.2026) :
 > sans cette table, un futur lot ne peut pas savoir lesquels sont interdits,
 > lesquels attendent leur moteur, et lesquels mentent encore.
 >
@@ -42,13 +43,13 @@
 Le moteur (preparing→ready→completed selon charge cuisine, heure, distance)
 est le SEUL chantier acté qui doive brancher des SMS de statut.
 
-## Les 3 ORPHELINS-PRÊTS — anniversaire
+## Anniversaire — 1 ACTIF (depuis le 03.08.2026) + 2 orphelins-prêts
 
-| Template | Attend | Notes |
+| Template | Statut | Notes |
 |---|---|---|
-| `birthday_wish` | Un cron anniversaire (n'existe pas encore) | ⚠️ La page d'inscription du Club **promet déjà** « Offre anniversaire envoyée par SMS » (`JoinClient.tsx`) et la carte demande la date de naissance : promesse affichée, générateur manquant. Tutoie encore. Cite « 7 jours » sans générateur : à valider au branchement. |
-| `birthday_offer` | Idem | Tutoie. Cite « 30 jours » sans générateur : à valider au branchement. |
-| `birthday_wish_vip` | Idem | Tutoie. |
+| `birthday_wish` | **ACTIF** — appelé par `src/lib/birthday.ts` (greffé au cron quotidien `loyalty-settle`) | Vouvoyé en base le 03.08. ⚠️ COUPLAGE : le texte répète « -20% » (aussi en dur dans `ActivationModal.tsx` et le `FALLBACK_CONTENT` de birthday.ts — 3 endroits) et « valable 7 jours » (= `BIRTHDAY_PROMO_VALID_DAYS`). Changer l'un sans les autres enverrait une promesse fausse. |
+| `birthday_offer` | Orphelin-prêt | Vouvoyé le 03.08. Cite « 30 jours » sans générateur : à valider au branchement. |
+| `birthday_wish_vip` | Orphelin-prêt | Vouvoyé le 03.08. Attend des paliers dans `vip_tiers` (table VIDE — personne ne peut être VIP, branche volontairement non codée dans birthday.ts). |
 
 ## Les 6 ORPHELINS — loterie & roue (hors v1 par décision)
 

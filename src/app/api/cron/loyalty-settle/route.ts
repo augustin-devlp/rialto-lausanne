@@ -11,6 +11,11 @@ import {
 import { envoieCadeauxAnniversaire } from "@/lib/birthday";
 
 export const dynamic = "force-dynamic";
+// Budget temps explicite : la greffe anniversaire consomme du temps AVANT
+// le filet de solidification — sans borne, un Brevo lent ferait expirer la
+// fonction et le crédit des tampons ne tournerait pas du tout ce jour-là
+// (même valeur que dashboard/push/send).
+export const maxDuration = 60;
 
 /**
  * GET /api/cron/loyalty-settle — FILET de la solidification (F3).
@@ -65,8 +70,10 @@ export async function GET(req: NextRequest) {
 
   const rule = await loadStampRule(sb);
   if (!rule) {
+    // Les vœux sont DÉJÀ partis : le rapport doit le dire même en échec
+    // du barème, sinon un retry manuel croirait la fournée jamais servie.
     return NextResponse.json(
-      { ok: false, error: "bareme_introuvable" },
+      { ok: false, error: "bareme_introuvable", anniversaires },
       { status: 500 },
     );
   }

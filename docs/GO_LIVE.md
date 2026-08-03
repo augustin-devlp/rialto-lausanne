@@ -22,8 +22,11 @@
 - [ ] **Push** : ≥ 1 appareil abonné (`push_subscriptions` — 0 au 03.08),
       envoi depuis le composer `/dashboard/push` (PIN Augustin), preuve =
       réception + ligne `push_logs`.
-- [ ] Anniversaire : vérifié par le cron du 04.08 (client test fêté) —
-      reporter ici le bilan.
+- [ ] Anniversaire : vérifié par le cron du 04.08 — ⚠️ les crons Vercel
+      sont en UTC : « 30 9 * * * » part à 11h30 heure suisse (été), pas
+      09h30. Pré-vols du 03.08 : type date_of_birth = `date` ✓, CHECK
+      promo_codes.source contient 'birthday' ✓, carte test activée ✓,
+      variables du template ⊆ fournies ✓. Reporter ici le bilan.
 
 ## QA finale (répéter la matrice des lots sur le domaine final)
 
@@ -39,6 +42,16 @@
 - [ ] Emails Brevo : reçu réel sur domaine final (piège Authorised IPs).
 - [ ] Import base clients Mehmet : consentement SMS d'abord — sinon ne
       pas importer.
+
+## Question produit ouverte (avant le gel)
+
+- [ ] **FideliteSection est ORPHELIN** (constat relecture 03.08) : plus
+      aucune route ne le rend depuis la suppression de l'arbre v1 — or il
+      porte le travail F4/F6 (StampRow light, barème dynamique). Où le
+      client voit-il sa carte aujourd'hui hors /confirmation ? Décision
+      Augustin : re-router (page Club fidélité ?) ou acter la mort. Même
+      question pour AvisSection, ContactSection, LegalSection,
+      FloatingCallButton (orphelins du même arbre, non supprimés).
 
 ## Hors périmètre G (backlog v1.1, ne pas ouvrir pendant le gel)
 

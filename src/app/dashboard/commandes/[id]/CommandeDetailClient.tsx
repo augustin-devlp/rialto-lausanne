@@ -196,9 +196,12 @@ export default function CommandeDetailClient({ orderId }: { orderId: string }) {
           <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
             <span className="text-xs text-mute">Livraison</span>
             <span className="tabular text-sm text-ink">
-              {Number(order.delivery_fee ?? 0) > 0
-                ? formatCHF(Number(order.delivery_fee))
-                : "Offerte"}
+              {order.delivery_fee == null
+                ? "—" // NULL ≠ 0 : une commande legacy/importée sans frais
+                : // connus ne doit pas afficher « Offerte » à tort
+                  Number(order.delivery_fee) > 0
+                  ? formatCHF(Number(order.delivery_fee))
+                  : "Offerte"}
             </span>
           </div>
         )}

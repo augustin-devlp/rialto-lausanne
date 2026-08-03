@@ -374,7 +374,7 @@ function ScanScreen({
           htmlFor="manual-code"
           className="mb-1.5 block text-sm font-medium text-ink"
         >
-          Ou saisis le code de la carte
+          Ou saisissez le code de la carte
         </label>
         <div className="flex gap-2">
           <input

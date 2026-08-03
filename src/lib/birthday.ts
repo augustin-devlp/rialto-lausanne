@@ -28,6 +28,7 @@ import { CARD_ID } from "@/lib/loyaltyConstants";
 import { generatePromoCode } from "@/lib/promoCodes";
 import { renderTemplate } from "@/lib/smsTemplates";
 import { sendSms } from "@/lib/brevo";
+import { logSms } from "@/lib/smsLogging";
 import { toZurichDate } from "@/lib/timezone";
 
 /**
@@ -51,7 +52,20 @@ type Bilan = {
   codes_generes: number;
   sms_envoyes: number;
   erreurs: number;
+  /** Vrai si la fournée dépassait la borne de sécurité : RIEN n'est parti. */
+  fournee_suspendue?: boolean;
+  /** Vrai si le template est désactivé au dashboard : RIEN n'est généré. */
+  template_desactive?: boolean;
 };
+
+/**
+ * Borne dure anti envoi massif (relecture 03.08.2026) : le seul verrou
+ * entre une erreur d'import (dates par défaut, is_fully_activated posé en
+ * bloc) et un SMS de masse non consenti à 11h30 sans personne devant
+ * l'écran. Au volume Rialto, une vraie fournée dépasse rarement quelques
+ * unités — au-delà de cette borne on SUSPEND tout et on logge.
+ */
+const FOURNEE_MAX = 50;
 
 function estBissextile(annee: number): boolean {
   return (annee % 4 === 0 && annee % 100 !== 0) || annee % 400 === 0;
@@ -75,6 +89,9 @@ export async function envoieCadeauxAnniversaire(
   const mmddAcceptes =
     mmdd === "02-28" && !estBissextile(annee) ? [mmdd, "02-29"] : [mmdd];
 
+  // .limit explicite : PostgREST tronque à max_rows (1000) SILENCIEUSEMENT
+  // et sans ordre — une borne assumée vaut mieux qu'une troncature muette.
+  // Après l'import de la base Mehmet, prévoir une pagination.
   const { data: clients, error } = await sb
     .from("customers")
     .select(
@@ -83,7 +100,8 @@ export async function envoieCadeauxAnniversaire(
     .eq("customer_cards.card_id", CARD_ID)
     .eq("customer_cards.is_fully_activated", true)
     .not("date_of_birth", "is", null)
-    .not("phone", "is", null);
+    .not("phone", "is", null)
+    .limit(500);
 
   if (error) {
     console.error("[birthday] lecture clients échouée", error);
@@ -91,17 +109,36 @@ export async function envoieCadeauxAnniversaire(
     return bilan;
   }
 
+  // slice(5, 10) borné : robuste même si la colonne devenait un
+  // timestamp (rendu ISO complet → slice(5) ne matcherait JAMAIS,
+  // silencieusement). Type vérifié `date` en base le 03.08 — la borne est
+  // une assurance gratuite. Téléphone : exclut aussi les chaînes vides
+  // (l'échec Brevo brûlerait le créneau annuel du client).
   const fetes = ((clients ?? []) as Array<{
     id: string;
     first_name: string | null;
     phone: string | null;
     date_of_birth: string;
-  }>).filter((c) => mmddAcceptes.includes(String(c.date_of_birth).slice(5)));
+  }>).filter(
+    (c) =>
+      mmddAcceptes.includes(String(c.date_of_birth).slice(5, 10)) &&
+      !!c.phone?.trim(),
+  );
 
   bilan.eligibles = fetes.length;
   if (fetes.length === 0) return bilan;
 
-  // Template chargé UNE fois pour toute la fournée.
+  if (fetes.length > FOURNEE_MAX) {
+    console.error(
+      `[birthday] FOURNÉE ANORMALE : ${fetes.length} anniversaires (> ${FOURNEE_MAX}) — envoi SUSPENDU (erreur d'import probable)`,
+    );
+    bilan.fournee_suspendue = true;
+    return bilan;
+  }
+
+  // Template chargé UNE fois. Désactivé au dashboard = on s'arrête AVANT
+  // de générer le moindre code : générer sans envoyer brûlerait le
+  // créneau annuel (garde 300 j) de chaque client, en silence.
   const { data: tmpl } = await sb
     .from("sms_templates")
     .select("content, enabled")
@@ -109,6 +146,13 @@ export async function envoieCadeauxAnniversaire(
     .eq("template_key", "birthday_wish")
     .maybeSingle();
   const effective = tmpl ?? { content: FALLBACK_CONTENT, enabled: true };
+  if (!effective.enabled) {
+    console.log(
+      "[birthday] template birthday_wish désactivé — aucune génération",
+    );
+    bilan.template_desactive = true;
+    return bilan;
+  }
 
   const garde = new Date(
     Date.now() - REGREET_GUARD_DAYS * 24 * 60 * 60 * 1000,
@@ -149,27 +193,62 @@ export async function envoieCadeauxAnniversaire(
       }
       bilan.codes_generes++;
 
-      if (!effective.enabled) {
-        console.log("[birthday] template birthday_wish désactivé — pas de SMS");
-        continue;
-      }
       const contenu = renderTemplate(effective.content, {
         customer_name: client.first_name ?? "",
         code: gen.code.code,
         restaurant_name: "Rialto",
       });
+      let senderUtilise = "Rialto";
       try {
-        await sendSms(client.phone as string, contenu, "Rialto");
-      } catch {
-        // Cascade sender (pattern roue) : certains réseaux refusent
-        // l'expéditeur alphanumérique « Rialto ».
-        await sendSms(client.phone as string, contenu);
+        try {
+          await sendSms(client.phone as string, contenu, "Rialto");
+        } catch (err) {
+          // Cascade sender = pattern maison (reward-referrals, signup,
+          // spin, scan/credit) : on ne retombe sur l'expéditeur par défaut
+          // QUE si le réseau refuse l'alphanumérique — un catch nu
+          // renverrait aussi sur timeout APRÈS acceptation Brevo (double
+          // SMS) ou sur clé absente (appel inutile).
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("sender") && !msg.includes("400")) throw err;
+          senderUtilise = "Stampify";
+          await sendSms(client.phone as string, contenu, "Stampify");
+        }
+        bilan.sms_envoyes++;
+        void logSms({
+          restaurant_id: RESTAURANT_ID,
+          customer_id: client.id,
+          phone: client.phone as string,
+          template_key: "birthday_wish",
+          sender_used: senderUtilise,
+          content: contenu,
+          status: "sent",
+        });
+        console.log("[birthday] cadeau envoyé", {
+          customer_id: client.id,
+          code: gen.code.code,
+        });
+      } catch (smsErr) {
+        // Le code EST généré mais le SMS n'est pas parti : journaliser
+        // AVEC le code — sans lui, la reprise manuelle exigerait une
+        // requête en base (relevé relecteur 03.08).
+        const msg =
+          smsErr instanceof Error ? smsErr.message : String(smsErr);
+        void logSms({
+          restaurant_id: RESTAURANT_ID,
+          customer_id: client.id,
+          phone: client.phone as string,
+          template_key: "birthday_wish",
+          content: contenu,
+          status: "failed",
+          error_message: msg,
+          context_meta: { code_genere: gen.code.code },
+        });
+        console.error(
+          "[birthday] SMS non parti — code généré à reprendre manuellement",
+          { customer_id: client.id, code: gen.code.code, erreur: msg },
+        );
+        bilan.erreurs++;
       }
-      bilan.sms_envoyes++;
-      console.log("[birthday] cadeau envoyé", {
-        customer_id: client.id,
-        code: gen.code.code,
-      });
     } catch (err) {
       console.error("[birthday] échec pour", client.id, err);
       bilan.erreurs++;

@@ -8,6 +8,7 @@ import {
   SETTLE_WINDOW_MS,
   type SettleableOrder,
 } from "@/lib/loyalty/settle";
+import { envoieCadeauxAnniversaire } from "@/lib/birthday";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,13 @@ export async function GET(req: NextRequest) {
   const debut = Date.now();
   const sb = supabaseService();
 
+  // Cadeaux d'anniversaire (03.08.2026) : greffés sur CE cron — Hobby
+  // n'autorise qu'une exécution quotidienne par cron, un second cron
+  // dédié ferait rejeter le déploiement (leçon F3). AVANT le check du
+  // killswitch tampons : les vœux ne dépendent pas de la fidélité en
+  // ligne.
+  const anniversaires = await envoieCadeauxAnniversaire(sb);
+
   const rule = await loadStampRule(sb);
   if (!rule) {
     return NextResponse.json(
@@ -67,6 +75,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       inactif: true,
       raison: "stamp_online_enabled = false",
+      anniversaires,
     });
   }
 
@@ -110,6 +119,7 @@ export async function GET(req: NextRequest) {
     credited_orders: bilan.orders,
     skipped: bilan.skipped,
     commandes_new_de_plus_de_2h: newVieilles ?? 0,
+    anniversaires,
     duration_ms: Date.now() - debut,
   };
   console.log("[loyalty-settle]", JSON.stringify(rapport));

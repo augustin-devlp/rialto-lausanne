@@ -13,7 +13,7 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 - Style : éditorial chaleureux, généreux, appétissant. ⚠️ Ne JAMAIS utiliser le teal Servato ici.
 
 ## Règles métier
-- Vouvoiement systématique pour **TOUS les messages clients** — upsell, fidélité, erreurs, sans exception (décision Augustin 2026-07-11 ; l'ancienne tolérance tutoiement sur l'upsell est caduque). NB : le reste du Club (loterie, etc.) tutoie encore par héritage → passe globale prévue dans un lot cosmétique dédié, ne pas corriger au fil de l'eau.
+- **Tutoiement/vouvoiement (règle unifiée 04.08.2026, vaut aussi pour servato-site)** : la MARQUE vouvoie toujours (UI, SMS, emails, erreurs, SEO — passe globale faite le 03.08.2026). EXCEPTION : les messages PRÉ-RÉDIGÉS énoncés par le CLIENT à ses proches (partage pair-à-pair, invitations parrainage — ex. `navigator.share` de ParrainageClient) TUTOIENT — c'est l'ami qui parle, pas Rialto.
 - JAMAIS d'alcool en upsell · bénéfices > fonctionnalités · aucune invention.
 - Aucun paiement en ligne (règlement sur place : espèces / TWINT).
 - SMS : consulter `docs/SMS_TEMPLATES.md` avant tout branchement (12 templates orphelins sur 18 ; `order_cancelled` = INTERDIT sur le flux de refus, décision contractuelle 19.07.2026).

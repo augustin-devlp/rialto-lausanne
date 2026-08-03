@@ -96,7 +96,10 @@ export default function ParrainageClient() {
       try {
         await navigator.share({
           title: "Rialto — Pizza Marguerite offerte",
-          text: `Testez Rialto (Lausanne) avec mon code ${code} — votre 1re pizza Marguerite est offerte !`,
+          // Doctrine 04.08.2026 : message PRÉ-RÉDIGÉ énoncé par le client à
+          // son ami → TUTOIEMENT (c'est l'ami qui parle, pas Rialto).
+          // Cf. CLAUDE.md « la marque vouvoie, le client tutoie ses proches ».
+          text: `Teste Rialto (Lausanne) avec mon code ${code} — ta 1re pizza Marguerite est offerte !`,
           url: shareUrl,
         });
       } catch {

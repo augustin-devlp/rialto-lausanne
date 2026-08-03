@@ -217,6 +217,14 @@ export default function HamburgerMenu() {
                   icon="🔑"
                   label="Se connecter"
                 />
+                {/* Page fidélité re-routée (04.08.2026) : retrouve la
+                    carte par téléphone — l'entrée des non-connectés. Les
+                    connectés gardent le lien direct /c/{code} ci-dessus. */}
+                <Item
+                  href="/rialto-club/fidelite"
+                  icon="🎁"
+                  label="Ma carte fidélité"
+                />
               </>
             )}
           </Section>

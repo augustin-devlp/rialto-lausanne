@@ -133,7 +133,7 @@ export async function computeSpinAvailability(params: {
       can_spin: false,
       config_mode: (wheel?.config_mode as string) ?? "disabled",
       message:
-        "Il n'y a pas de roue prévue pour l'instant. Tu seras prévenu par SMS quand une sera lancée.",
+        "Il n'y a pas de roue prévue pour l'instant. Vous serez prévenu par SMS quand une sera lancée.",
       last_prize: null,
       wait_info: null,
       frequency_days: null,
@@ -203,7 +203,7 @@ export async function computeSpinAvailability(params: {
         code: (promo.code as string) ?? "",
         description:
           promo.discount_type === "percent"
-            ? `-${promo.discount_value}% sur ta commande`
+            ? `-${promo.discount_value}% sur votre commande`
             : promo.discount_type === "fixed"
               ? `-${promo.discount_value} CHF`
               : (promo.free_item_label as string) ?? "Article offert",
@@ -240,7 +240,7 @@ export async function computeSpinAvailability(params: {
         state: "B",
         can_spin: false,
         config_mode: configMode,
-        message: "Laisse un avis Google pour débloquer la roue",
+        message: "Laissez un avis Google pour débloquer la roue",
         last_prize: lastPrize,
         wait_info: null,
         frequency_days: frequencyDays,
@@ -258,7 +258,7 @@ export async function computeSpinAvailability(params: {
         state: "A",
         can_spin: true,
         config_mode: "frequency",
-        message: "C'est parti, tourne la roue !",
+        message: "C'est parti, tournez la roue !",
         last_prize: null,
         wait_info: null,
         frequency_days: frequencyDays,
@@ -276,7 +276,7 @@ export async function computeSpinAvailability(params: {
         state: "C",
         can_spin: false,
         config_mode: "frequency",
-        message: `Tu as déjà tourné la roue. Prochaine chance le ${dateFR} (dans ${daysRemaining} jour${daysRemaining > 1 ? "s" : ""})`,
+        message: `Vous avez déjà tourné la roue. Prochaine chance le ${dateFR} (dans ${daysRemaining} jour${daysRemaining > 1 ? "s" : ""})`,
         last_prize: lastPrize,
         wait_info: {
           next_available_date: nextDate.toISOString(),
@@ -293,7 +293,7 @@ export async function computeSpinAvailability(params: {
       state: "A",
       can_spin: true,
       config_mode: "frequency",
-      message: "C'est parti, tourne la roue !",
+      message: "C'est parti, tournez la roue !",
       last_prize: null,
       wait_info: null,
       frequency_days: frequencyDays,
@@ -311,7 +311,7 @@ export async function computeSpinAvailability(params: {
         can_spin: false,
         config_mode: "weekdays",
         message:
-          "Il n'y a pas de roue prévue pour l'instant. Tu seras prévenu par SMS quand une sera lancée.",
+          "Il n'y a pas de roue prévue pour l'instant. Vous serez prévenu par SMS quand une sera lancée.",
         last_prize: lastPrize,
         wait_info: null,
         frequency_days: null,
@@ -362,7 +362,7 @@ export async function computeSpinAvailability(params: {
       state: "A",
       can_spin: true,
       config_mode: "weekdays",
-      message: "C'est parti, tourne la roue !",
+      message: "C'est parti, tournez la roue !",
       last_prize: null,
       wait_info: null,
       frequency_days: null,

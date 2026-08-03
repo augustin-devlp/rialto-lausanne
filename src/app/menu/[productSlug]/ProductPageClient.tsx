@@ -442,7 +442,7 @@ export default function ProductPageClient({
       {similar.length > 0 && (
         <section className="container-hero pb-24 pt-4">
           <h2 className="mb-4 font-display text-xl font-bold">
-            Tu pourrais aussi aimer
+            Vous pourriez aussi aimer
           </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {similar.slice(0, 4).map((s) => (

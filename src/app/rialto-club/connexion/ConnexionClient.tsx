@@ -125,11 +125,11 @@ export default function ConnexionClient() {
               <span className="eyebrow">Rialto Club</span>
               <h1 className="mt-3 font-display text-h1 font-bold leading-tight">
                 Se connecter{" "}
-                <em className="italic text-rialto">à ton compte.</em>
+                <em className="italic text-rialto">à votre compte.</em>
               </h1>
               <p className="mt-3 text-base text-mute">
-                Entre ton numéro de téléphone pour retrouver ta carte
-                fidélité et tes tampons accumulés.
+                Entrez votre numéro de téléphone pour retrouver votre carte
+                fidélité et vos tampons accumulés.
               </p>
             </header>
 
@@ -157,7 +157,7 @@ export default function ConnexionClient() {
                   placeholder="+41 79 123 45 67"
                 />
                 <p className="mt-1 text-xs text-mute">
-                  Utilise le numéro avec lequel tu as créé ta carte.
+                  Utilisez le numéro avec lequel vous avez créé votre carte.
                 </p>
               </label>
 
@@ -173,7 +173,7 @@ export default function ConnexionClient() {
                     Aucune carte trouvée avec ce numéro.
                   </div>
                   <p className="mt-1 text-[#8F4A00]/80">
-                    Vérifie le numéro ou crée ta carte maintenant.
+                    Vérifiez le numéro ou créez votre carte maintenant.
                   </p>
                   <Link
                     href="/rialto-club/join"
@@ -229,7 +229,7 @@ export default function ConnexionClient() {
             </form>
 
             <p className="mt-4 text-center text-[11px] text-mute">
-              Pas de mot de passe à retenir. Ton numéro de téléphone
+              Pas de mot de passe à retenir. Votre numéro de téléphone
               suffit.
             </p>
           </div>

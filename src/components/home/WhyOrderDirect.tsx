@@ -42,7 +42,7 @@ export default function WhyOrderDirect() {
           <Arg
             number="03"
             title="0 commission"
-            text="Paiement au livreur. Ton argent va au restaurant, pas à Silicon Valley."
+            text="Paiement au livreur. Votre argent va au restaurant, pas à Silicon Valley."
           />
         </div>
       </div>

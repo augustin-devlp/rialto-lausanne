@@ -128,7 +128,7 @@ export default function MesCommandesClient() {
               Mes commandes
             </h1>
             <p className="mt-1 text-sm text-mute">
-              Historique de tes commandes Rialto.
+              Historique de vos commandes Rialto.
             </p>
           </header>
 
@@ -139,8 +139,8 @@ export default function MesCommandesClient() {
                 Pas de compte Rialto Club
               </h2>
               <p className="mt-2 text-sm text-mute">
-                Pour voir ton historique, crée ta carte fidélité (gratuite,
-                30 sec).
+                Pour voir votre historique, créez votre carte fidélité
+                (gratuite, 30 sec).
               </p>
               <Link
                 href="/rialto-club/join"

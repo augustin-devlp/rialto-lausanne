@@ -44,7 +44,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Rialto — Pizzeria & livraison à Lausanne",
     description:
-      "Pizzas à 22 CHF, faites devant toi. Livré en 30 min. Paie au livreur.",
+      "Pizzas à 22 CHF, faites devant vous. Livré en 30 min. Payez au livreur.",
     locale: "fr_CH",
     type: "website",
     images: [

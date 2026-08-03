@@ -148,8 +148,8 @@ export default function RoueClient() {
             </div>
             <h1 className="font-display text-h2 font-bold">La roue Rialto</h1>
             <p className="mt-3 text-base text-mute">
-              Tente ta chance pour gagner des réductions et des plats offerts.
-              Rejoins le Rialto Club pour y accéder.
+              Tentez votre chance pour gagner des réductions et des plats
+              offerts. Rejoignez le Rialto Club pour y accéder.
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Link href="/rialto-club/join" className="btn-primary">
@@ -184,7 +184,7 @@ export default function RoueClient() {
             Il n&apos;y a pas de roue prévue
           </h1>
           <p className="mt-3 text-base text-mute">
-            Tu seras prévenu par SMS quand une nouvelle roue sera lancée.
+            Vous serez prévenu par SMS quand une nouvelle roue sera lancée.
           </p>
           <p className="mt-1 text-xs text-mute">
             Tous les membres Rialto Club sont automatiquement alertés.
@@ -220,7 +220,7 @@ export default function RoueClient() {
             <div className="relative">
               <div className="text-6xl">🎉</div>
               <h1 className="mt-4 font-display text-h1 font-bold">
-                Tu as gagné !
+                Vous avez gagné !
               </h1>
               <p className="mt-3 font-display text-xl font-semibold">
                 {spinResult.reward}
@@ -228,7 +228,7 @@ export default function RoueClient() {
               {spinResult.code && (
                 <div className="mt-6 rounded-2xl bg-white p-5 text-ink">
                   <div className="text-xs font-semibold uppercase tracking-wider text-mute">
-                    Ton code promo
+                    Votre code promo
                   </div>
                   <div className="tabular mt-1 font-mono text-2xl font-bold text-rialto">
                     {spinResult.code}
@@ -239,7 +239,7 @@ export default function RoueClient() {
                 </div>
               )}
               <p className="mt-4 text-sm text-white/90">
-                On t&apos;a aussi envoyé le code par SMS.
+                On vous a aussi envoyé le code par SMS.
               </p>
               <Link href="/menu" className="mt-6 inline-block">
                 <span className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-rialto hover:bg-cream">
@@ -258,11 +258,11 @@ export default function RoueClient() {
         <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
           <div className="text-5xl">🎰</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
-            Prêt à tenter ta chance ?
+            Prêt à tenter votre chance ?
           </h1>
           <p className="mt-3 text-base text-mute">
-            Tourne la roue pour découvrir ton cadeau. Le code promo te sera
-            envoyé par SMS.
+            Tournez la roue pour découvrir votre cadeau. Le code promo vous
+            sera envoyé par SMS.
           </p>
           <div className="mx-auto mt-6 flex h-48 w-48 items-center justify-center rounded-full bg-gradient-to-br from-rialto to-rialto-dark text-6xl">
             🎰
@@ -329,7 +329,7 @@ export default function RoueClient() {
         <div className="rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
           <div className="text-5xl">⏳</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
-            Tu as déjà tourné la roue
+            Vous avez déjà tourné la roue
           </h1>
           <p className="mt-3 text-base text-mute">{data.message}</p>
           {data.last_prize &&
@@ -337,7 +337,7 @@ export default function RoueClient() {
             data.last_prize.code && (
               <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left">
                 <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-                  💡 Ton code actuel est toujours valable
+                  💡 Votre code actuel est toujours valable
                 </div>
                 <div className="tabular mt-2 font-mono text-xl font-bold text-emerald-800">
                   {data.last_prize.code}
@@ -354,12 +354,13 @@ export default function RoueClient() {
             )}
           {data.last_prize?.used && data.last_prize.code && (
             <div className="mt-6 rounded-xl bg-cream p-3 text-xs text-mute">
-              Ton dernier code (<strong>{data.last_prize.code}</strong>) a déjà
-              été utilisé.
+              Votre dernier code (<strong>{data.last_prize.code}</strong>) a
+              déjà été utilisé.
             </div>
           )}
           <p className="mt-4 text-xs text-mute">
-            Tu seras automatiquement prévenu par SMS dès que tu peux retenter.
+            Vous serez automatiquement prévenu par SMS dès que vous pourrez
+            retenter.
           </p>
           <Link href="/menu" className="btn-ghost mt-6">
             Voir le menu
@@ -399,7 +400,7 @@ export default function RoueClient() {
             data.last_prize.code && (
               <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
                 <div className="text-xs text-emerald-700">
-                  Rappel : ton code{" "}
+                  Rappel : votre code{" "}
                   <strong className="font-mono">{data.last_prize.code}</strong>
                   {" "}
                   ({data.last_prize.description}) est encore valable.
@@ -407,7 +408,7 @@ export default function RoueClient() {
               </div>
             )}
           <p className="mt-4 text-xs text-mute">
-            Tu seras automatiquement prévenu par SMS.
+            Vous serez automatiquement prévenu par SMS.
           </p>
           <Link href="/menu" className="btn-ghost mt-6">
             Voir le menu

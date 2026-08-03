@@ -96,7 +96,7 @@ export default function ParrainageClient() {
       try {
         await navigator.share({
           title: "Rialto — Pizza Marguerite offerte",
-          text: `Teste Rialto (Lausanne) avec mon code ${code} — ta 1re pizza Marguerite est offerte !`,
+          text: `Testez Rialto (Lausanne) avec mon code ${code} — votre 1re pizza Marguerite est offerte !`,
           url: shareUrl,
         });
       } catch {
@@ -111,7 +111,9 @@ export default function ParrainageClient() {
     setClaimMsg(null);
     const session = readCustomerSession();
     if (!session) {
-      setClaimMsg("Connecte-toi d'abord à Rialto Club pour utiliser un code.");
+      setClaimMsg(
+        "Connectez-vous d'abord à Rialto Club pour utiliser un code.",
+      );
       return;
     }
     try {
@@ -129,7 +131,7 @@ export default function ParrainageClient() {
       } else {
         setClaimMsg(
           body.message ??
-            "Code enregistré ! Ta 1re pizza Marguerite est offerte après commande.",
+            "Code enregistré ! Votre 1re pizza Marguerite est offerte après commande.",
         );
         setEnteringCode("");
       }
@@ -163,9 +165,9 @@ export default function ParrainageClient() {
               Parrainage 🤝
             </h1>
             <p className="mt-2 text-base text-mute">
-              Offre une <strong>Pizza Marguerite</strong> à tes amis chez
+              Offrez une <strong>Pizza Marguerite</strong> à vos amis chez
               Rialto. Quand ils passent leur 1re commande, ils en reçoivent
-              une <em>et toi aussi</em>.
+              une <em>et vous aussi</em>.
             </p>
           </header>
 
@@ -173,7 +175,7 @@ export default function ParrainageClient() {
             <div className="rounded-3xl border border-border bg-white p-6 text-center shadow-card">
               <div className="mb-3 text-4xl">🔑</div>
               <p className="mt-2 text-sm text-mute">
-                Pour parrainer, connecte-toi à ton compte Rialto Club.
+                Pour parrainer, connectez-vous à votre compte Rialto Club.
               </p>
               <Link href="/rialto-club/connexion" className="btn-primary mt-4">
                 Me connecter
@@ -184,7 +186,7 @@ export default function ParrainageClient() {
               {/* Ton code */}
               <section className="mb-6 rounded-3xl bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white shadow-pop">
                 <div className="text-xs font-semibold uppercase tracking-wider text-saffron">
-                  Ton code de parrainage
+                  Votre code de parrainage
                 </div>
                 <div className="mt-2 font-mono text-3xl font-black tracking-wider">
                   {code ?? "…"}
@@ -269,11 +271,11 @@ export default function ParrainageClient() {
           {/* Saisir un code (filleul) */}
           <section className="rounded-3xl border-2 border-saffron bg-[#FFF7E4] p-5">
             <h2 className="font-display text-lg font-bold">
-              🎁 Tu as un code de parrainage ?
+              🎁 Vous avez un code de parrainage ?
             </h2>
             <p className="mt-1 text-sm text-mute">
-              Saisis-le et ta 1re pizza Marguerite est offerte (après ta 1re
-              commande Rialto).
+              Saisissez-le et votre 1re pizza Marguerite est offerte (après
+              votre 1re commande Rialto).
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <input

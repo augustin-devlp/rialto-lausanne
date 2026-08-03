@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     {
       ok: true,
       message:
-        "Parrainage enregistré. Passe ta 1re commande pour que ton parrain et toi receviez votre pizza Marguerite offerte !",
+        "Parrainage enregistré. Passez votre 1re commande pour que votre parrain et vous receviez votre pizza Marguerite offerte !",
     },
   );
 }

@@ -89,7 +89,7 @@ export default function LotterieClient() {
             <h1 className="font-display text-h2 font-bold">La loterie Rialto</h1>
             <p className="mt-3 text-base text-mute">
               Tous les mois, un tirage au sort parmi les membres Rialto Club.
-              Rejoins gratuitement pour participer à chaque commande.
+              Rejoignez-nous gratuitement pour participer à chaque commande.
             </p>
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Link href="/rialto-club/join" className="btn-primary">
@@ -123,14 +123,14 @@ export default function LotterieClient() {
         <div className="rounded-3xl bg-gradient-to-br from-saffron to-saffron-dark p-8 text-center text-ink shadow-pop md:p-10">
           <div className="text-5xl">🎟️</div>
           <h1 className="mt-4 font-display text-h1 font-bold">
-            Tu participes !
+            Vous participez !
           </h1>
           <p className="mt-2 text-base">
             {lottery.title ?? "Loterie Rialto"}
           </p>
           <div className="mt-8 rounded-2xl bg-white/90 p-6">
             <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
-              Ton ticket
+              Votre ticket
             </div>
             <div className="tabular mt-2 font-display text-6xl font-bold text-rialto">
               n°{String(data.ticket.number).padStart(4, "0")}
@@ -165,8 +165,7 @@ export default function LotterieClient() {
   }
 
   /* ═══════════ ÉTAT PARTICIPE : inscrit ce mois, pas encore tiré ═══════════ */
-  /* Texte CLIENT neuf → vouvoiement (les états A/B/C/D hérités tutoient
-     encore, corrigés dans la passe cosmétique dédiée). */
+  /* Vouvoiement partout depuis la passe cosmétique du 03.08.2026. */
   if (data.state === "PARTICIPE" && lottery) {
     return (
       <StateWrapper>
@@ -208,7 +207,7 @@ export default function LotterieClient() {
             Pas de chance cette fois
           </h1>
           <p className="mt-2 text-base text-mute">
-            Ton ticket <strong>n°{String(data.ticket.number).padStart(4, "0")}</strong>{" "}
+            Votre ticket <strong>n°{String(data.ticket.number).padStart(4, "0")}</strong>{" "}
             n&apos;a pas été tiré sur la loterie{" "}
             <em>{lottery.title ?? "Rialto"}</em>.
           </p>
@@ -253,14 +252,14 @@ export default function LotterieClient() {
           <div className="relative">
             <div className="text-6xl">🎉</div>
             <h1 className="mt-4 font-display text-h1 font-bold uppercase">
-              Tu as gagné !
+              Vous avez gagné !
             </h1>
             <p className="mt-2 text-base text-white/90">
               Loterie {lottery.title ?? "Rialto"}
             </p>
             <div className="mt-6 rounded-2xl bg-white p-5 text-ink">
               <div className="text-xs font-semibold uppercase tracking-wider text-rialto">
-                Ton ticket gagnant
+                Votre ticket gagnant
               </div>
               <div className="tabular mt-1 font-display text-4xl font-bold">
                 n°{String(data.ticket.number).padStart(4, "0")}
@@ -285,8 +284,8 @@ export default function LotterieClient() {
               )}
             </div>
             <p className="mt-5 text-sm text-white/90">
-              Présente ton ticket (ou ce code) au restaurant pour réclamer ton
-              lot.
+              Présentez votre ticket (ou ce code) au restaurant pour réclamer
+              votre lot.
             </p>
             {claimed && (
               <div className="mt-4 rounded-xl bg-emerald-500/30 py-2 text-sm font-semibold">
@@ -346,7 +345,7 @@ export default function LotterieClient() {
           Pas de loterie en ce moment
         </h1>
         <p className="mt-3 text-base text-mute">
-          La prochaine arrive bientôt. Tu seras automatiquement prévenu par
+          La prochaine arrive bientôt. Vous serez automatiquement prévenu par
           SMS dès qu&apos;elle sera lancée — <strong className="text-ink">tous les
           membres Rialto Club</strong> reçoivent l&apos;info.
         </p>

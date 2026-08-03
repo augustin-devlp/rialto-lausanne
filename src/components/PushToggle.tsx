@@ -141,7 +141,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
   if (state === "denied") {
     return (
       <div className={`rounded-2xl border border-border bg-cream-dark p-3 text-xs text-mute ${className}`}>
-        🔕 Notifications bloquées dans ton navigateur. Va dans les
+        🔕 Notifications bloquées dans votre navigateur. Allez dans les
         paramètres du site pour les ré-autoriser.
       </div>
     );
@@ -179,7 +179,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
           {busy ? "Activation…" : "Activer les notifications"}
         </div>
         <div className="text-[11px] text-mute">
-          Reçois un ping quand ta commande est prête, sans SMS (gratuit).
+          Recevez un ping quand votre commande est prête, sans SMS (gratuit).
         </div>
       </div>
       <svg

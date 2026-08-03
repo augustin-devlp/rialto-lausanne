@@ -190,7 +190,7 @@ export default function HamburgerMenu() {
                     type="button"
                     onClick={() => {
                       const confirmed = window.confirm(
-                        "Tu vas te déconnecter de ton compte Rialto Club. Continuer ?",
+                        "Vous allez vous déconnecter de votre compte Rialto Club. Continuer ?",
                       );
                       if (!confirmed) return;
                       clearCustomerSession();

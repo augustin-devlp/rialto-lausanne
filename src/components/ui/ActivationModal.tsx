@@ -45,7 +45,7 @@ export default function ActivationModal({
     setError(null);
 
     if (!dob) {
-      setError("Merci d'indiquer ta date de naissance.");
+      setError("Merci d'indiquer votre date de naissance.");
       return;
     }
 
@@ -61,7 +61,7 @@ export default function ActivationModal({
       age--;
     }
     if (age < 18) {
-      setError("Tu dois avoir 18 ans ou plus pour activer la carte.");
+      setError("Vous devez avoir 18 ans ou plus pour activer la carte.");
       return;
     }
     if (age > 120) {
@@ -125,12 +125,12 @@ export default function ActivationModal({
                 Étape 2/2
               </div>
               <h2 className="mt-1 font-display text-2xl font-bold leading-tight">
-                Complète ta carte, {firstName || "ami"} 🎂
+                Complétez votre carte, {firstName || "ami"} 🎂
               </h2>
               <p className="mt-2 text-sm text-white/90">
-                On t&apos;envoie un cadeau le jour de ton anniversaire —{" "}
-                <strong>-20% sur ta prochaine commande</strong> ou un dessert
-                offert si tu es VIP.
+                On vous envoie un cadeau le jour de votre anniversaire —{" "}
+                <strong>-20% sur votre prochaine commande</strong> ou un
+                dessert offert si vous êtes VIP.
               </p>
             </div>
             {!submitting && (
@@ -178,7 +178,7 @@ export default function ActivationModal({
               disabled={submitting}
             />
             <p className="mt-1.5 text-[11px] text-mute">
-              On ne partage jamais ta date, juste pour le cadeau 🎁
+              On ne partage jamais votre date, juste pour le cadeau 🎁
             </p>
           </div>
 
@@ -221,7 +221,7 @@ export default function ActivationModal({
           </button>
 
           <p className="text-center text-[10px] text-mute">
-            En activant, tu acceptes de recevoir un SMS le jour de ton
+            En activant, vous acceptez de recevoir un SMS le jour de votre
             anniversaire (désinscription à tout moment).
           </p>
         </form>

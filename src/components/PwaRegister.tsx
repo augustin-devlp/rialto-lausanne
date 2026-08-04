@@ -26,12 +26,44 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+/** localStorage : version déclinée via « Plus tard » (amortisseur 04.08). */
+const DECLINED_VERSION_KEY = "rialto_sw_version_declinee";
+
+/**
+ * Demande sa CACHE_VERSION à un worker (MessageChannel). null si le worker
+ * ne répond pas (ancien sw.js sans GET_VERSION) — fail-open : sans
+ * version, on affiche le toast (jamais de front gelé par silence).
+ */
+function demandeVersion(worker: ServiceWorker): Promise<string | null> {
+  return new Promise((resolve) => {
+    const canal = new MessageChannel();
+    const timer = window.setTimeout(() => resolve(null), 1500);
+    canal.port1.onmessage = (e: MessageEvent) => {
+      window.clearTimeout(timer);
+      resolve(
+        typeof e.data?.version === "string" ? (e.data.version as string) : null,
+      );
+    };
+    try {
+      worker.postMessage({ type: "GET_VERSION" }, [canal.port2]);
+    } catch {
+      window.clearTimeout(timer);
+      resolve(null);
+    }
+  });
+}
+
 export default function PwaRegister() {
   const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
   const [hidden, setHidden] = useState(true);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(
     null,
   );
+  // Version du worker affiché par le toast — écrite en localStorage au
+  // clic « Plus tard » pour ne plus re-prompter CETTE version (les
+  // démarrages à froid PWA re-détectaient le même worker à chaque
+  // réouverture — observation Augustin 04.08).
+  const versionEnAttente = useRef<string | null>(null);
   // Vrai uniquement après le clic « Recharger » : controllerchange se
   // déclenche AUSSI au tout premier claim() d'un profil vierge — sans ce
   // garde, la première visite rechargerait en boucle.
@@ -47,6 +79,26 @@ export default function PwaRegister() {
     let intervalId: number | null = null;
     let onVisibilite: (() => void) | null = null;
 
+    // Entonnoir unique de détection : interroge la version du worker et
+    // ne montre PAS le toast si elle a déjà été déclinée (« Plus tard »).
+    // Version inconnue (ancien sw.js, timeout) → fail-open : toast montré.
+    const signaleWorker = (worker: ServiceWorker) => {
+      void demandeVersion(worker).then((version) => {
+        try {
+          if (
+            version &&
+            window.localStorage.getItem(DECLINED_VERSION_KEY) === version
+          ) {
+            return; // cette version précise a été déclinée — silence
+          }
+        } catch {
+          /* localStorage indisponible : on montre */
+        }
+        versionEnAttente.current = version;
+        setWaitingWorker(worker);
+      });
+    };
+
     const surGuetteur = (nouveau: ServiceWorker) => {
       nouveau.addEventListener("statechange", () => {
         // « installed » avec un controller = une MISE À JOUR en attente
@@ -56,7 +108,7 @@ export default function PwaRegister() {
           nouveau.state === "installed" &&
           navigator.serviceWorker.controller
         ) {
-          setWaitingWorker(nouveau);
+          signaleWorker(nouveau);
         }
       });
     };
@@ -65,7 +117,7 @@ export default function PwaRegister() {
       // Un worker déjà en attente (déploiement passé pendant que l'onglet
       // était fermé) : toast immédiat.
       if (reg.waiting && navigator.serviceWorker.controller) {
-        setWaitingWorker(reg.waiting);
+        signaleWorker(reg.waiting);
       }
       // Un worker déjà EN COURS d'installation (page ouverte pile pendant
       // un déploiement) : updatefound a déjà tiré, il faut s'accrocher
@@ -167,8 +219,21 @@ export default function PwaRegister() {
   }
 
   function handlePlusTard() {
-    // Fermeture volontairement NON persistée : le toast reviendra au
-    // prochain worker installé — persister recréerait le front gelé.
+    // Amortisseur (04.08.2026) : mémorise LA version déclinée — plus de
+    // re-prompt pour ce déploiement précis aux démarrages à froid PWA.
+    // Toute version NOUVELLE prompte toujours : la protection
+    // anti-front-gelé tient. Version inconnue (ancien SW) → rien n'est
+    // persisté, fermeture de session seulement, comme avant.
+    if (versionEnAttente.current) {
+      try {
+        window.localStorage.setItem(
+          DECLINED_VERSION_KEY,
+          versionEnAttente.current,
+        );
+      } catch {
+        /* stockage indisponible : fermeture de session seulement */
+      }
+    }
     setWaitingWorker(null);
   }
 

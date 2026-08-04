@@ -36,9 +36,17 @@ self.addEventListener("install", (event) => {
 
 // Le toast (PwaRegister) envoie SKIP_WAITING quand l'utilisateur accepte
 // de recharger : activation à la demande, jamais en douce.
+// GET_VERSION (amortisseur 04.08.2026) : permet à la page d'identifier LA
+// version d'un worker en attente — « Plus tard » mémorise cette version
+// précise et ne re-prompte plus pour elle ; toute version NOUVELLE
+// prompte toujours (protection anti-front-gelé conservée).
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+  if (event.data && event.data.type === "GET_VERSION") {
+    const port = event.ports && event.ports[0];
+    if (port) port.postMessage({ version: CACHE_VERSION });
   }
 });
 

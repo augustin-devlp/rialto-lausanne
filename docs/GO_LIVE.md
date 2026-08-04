@@ -28,6 +28,29 @@
       promo_codes.source contient 'birthday' ✓, carte test activée ✓,
       variables du template ⊆ fournies ✓. Reporter ici le bilan.
 
+## Grand ménage des données de test (DERNIÈRE étape avant ouverture)
+
+- [ ] **Inventaire chiffré PUIS purge en une fois, sur GO explicite** —
+      ouvrir sur une base 100 % réelle. Identification : téléphones de
+      test d'Augustin (+33676549598/99, +41791342996/97 — compléter la
+      liste au moment du ménage), commandes `TEST-*` et `R-2026-0xx` de
+      test. Ordre de purge (enfants d'abord, FK) :
+      1. `transactions` (crédits tampons de test — y c. le tampon 042,
+         intouchable AVANT le ménage par l'invariant « jamais reprendre »,
+         purgé AVEC tout le reste ici)
+      2. `order_items` + `order_status_history` des commandes de test
+      3. `orders` de test
+      4. `lottery_participants` / `spin_entries` / `spin_results` de test
+      5. `promo_codes` de test (RIA-TESTF consommé, RIA-QAPCT expiré,
+         codes birthday/spin de test) + `google_review_claims` (dégradé)
+      6. `sms_logs` / `push_logs` de test — à trancher (historique de coûts)
+      7. `customer_cards` puis `customers` de test
+      Méthode : script d'INVENTAIRE (counts par table sur les ids de test)
+      présenté AVANT toute suppression ; purge par la conversation
+      propriétaire du repo ; re-inventaire à zéro en preuve.
+      ⚠️ `push_subscriptions` : l'abonnement d'Augustin peut rester
+      (pilotage réel du composer).
+
 ## QA finale (répéter la matrice des lots sur le domaine final)
 
 - [ ] Bascule domaine rialto-lausanne.ch : NEXT_PUBLIC_SITE_URL, domaines

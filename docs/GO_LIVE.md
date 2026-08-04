@@ -19,9 +19,9 @@
       code `spin_wheel` en base → SMS `wheel_prize_code` reçu → code
       validé au checkout. (Premier créneau : samedi 08.08 ; un claim
       d'avis expiré devra être recréé le jour J.)
-- [ ] **Push** : ≥ 1 appareil abonné (`push_subscriptions` — 0 au 03.08),
-      envoi depuis le composer `/dashboard/push` (PIN Augustin), preuve =
-      réception + ligne `push_logs`.
+- [x] **Push** : ✅ FAIT 04.08 — 1 abonnement actif en base, envoi
+      composer reçu sur le téléphone d'Augustin, ligne `push_logs`
+      (recipients 1, sent 1, failed 0).
 - [ ] Anniversaire : vérifié par le cron du 04.08 — ⚠️ les crons Vercel
       sont en UTC : « 30 9 * * * » part à 11h30 heure suisse (été), pas
       09h30. Pré-vols du 03.08 : type date_of_birth = `date` ✓, CHECK
@@ -45,13 +45,11 @@
 
 ## Question produit ouverte (avant le gel)
 
-- [ ] **FideliteSection est ORPHELIN** (constat relecture 03.08) : plus
-      aucune route ne le rend depuis la suppression de l'arbre v1 — or il
-      porte le travail F4/F6 (StampRow light, barème dynamique). Où le
-      client voit-il sa carte aujourd'hui hors /confirmation ? Décision
-      Augustin : re-router (page Club fidélité ?) ou acter la mort. Même
-      question pour AvisSection, ContactSection, LegalSection,
-      FloatingCallButton (orphelins du même arbre, non supprimés).
+- [x] ✅ TRANCHÉ 04.08 : FideliteSection re-routé sur la nouvelle page
+      `/rialto-club/fidelite` (nav non-connectés « Ma carte fidélité ») ;
+      les 4 autres orphelins (AvisSection, ContactSection, LegalSection,
+      FloatingCallButton) SUPPRIMÉS — chacun couvert par un équivalent v2
+      vivant.
 
 ## Hors périmètre G (backlog v1.1, ne pas ouvrir pendant le gel)
 

@@ -42,17 +42,26 @@ export const maxDuration = 60;
  * (leur pending client s'évaporera à H+24 sans jamais se solidifier). Pas de
  * table de dead-letter : au volume de Rialto, le rapport en logs suffit.
  *
- * Auth : header Vercel x-vercel-cron OU x-cron-secret == CRON_SECRET.
- * Aucun secret par défaut en dur (même discipline que reward-referrals).
+ * Auth (corrigée 04.08.2026 — l'ancienne vérifiait un header
+ * `x-vercel-cron: 1` QUI N'EXISTE PAS : 401 silencieux sur CHAQUE
+ * passage depuis le 22.07, jamais détecté car le settle-on-read faisait
+ * le travail nominal) : Vercel envoie `Authorization: Bearer CRON_SECRET`
+ * quand la variable d'env CRON_SECRET est posée (doc officielle) ;
+ * x-cron-secret reste le chemin des déclenchements manuels/ordonnanceurs
+ * externes. CRON_SECRET OBLIGATOIRE : sans elle, tout est refusé (et
+ * loggé) plutôt qu'ouvert à quiconque.
  */
 export async function GET(req: NextRequest) {
-  const isCron = req.headers.get("x-vercel-cron") === "1";
-  const cronSecret = req.headers.get("x-cron-secret");
   const validSecret = process.env.CRON_SECRET;
-  if (!isCron && (!validSecret || cronSecret !== validSecret)) {
+  const authHeader = req.headers.get("authorization");
+  const manualSecret = req.headers.get("x-cron-secret");
+  const authorized =
+    !!validSecret &&
+    (authHeader === `Bearer ${validSecret}` || manualSecret === validSecret);
+  if (!authorized) {
     if (!validSecret) {
-      console.warn(
-        "[loyalty-settle] appel manuel refusé : CRON_SECRET non configurée",
+      console.error(
+        "[loyalty-settle] REFUS : CRON_SECRET non configurée sur Vercel — le cron quotidien ne peut PAS tourner",
       );
     }
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

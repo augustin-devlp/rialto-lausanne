@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
  *   - renseigne referee_promo_code (best-effort : colonne D4a en
  *     navette — l'update est ignoré si elle n'existe pas encore)
  *
- * Auth : header Vercel x-vercel-cron OU x-cron-secret == CRON_SECRET.
+ * Auth : Authorization Bearer CRON_SECRET (Vercel) OU x-cron-secret (manuel).
  * D4 : plus AUCUN secret par défaut en dur — si CRON_SECRET n'est pas
  * configurée, les appels manuels sont refusés (fail-fast).
  */
@@ -98,13 +98,20 @@ async function smsAlreadySent(
 }
 
 export async function GET(req: NextRequest) {
-  const isCron = req.headers.get("x-vercel-cron") === "1";
-  const cronSecret = req.headers.get("x-cron-secret");
+  // Auth corrigée 04.08.2026 : l'ancien header « x-vercel-cron: 1 »
+  // n'existe pas — 401 silencieux sur chaque passage. Vercel envoie
+  // `Authorization: Bearer CRON_SECRET` (doc officielle) ; x-cron-secret
+  // reste le chemin manuel. Cf. loyalty-settle/route.ts pour le détail.
   const validSecret = process.env.CRON_SECRET;
-  if (!isCron && (!validSecret || cronSecret !== validSecret)) {
+  const authHeader = req.headers.get("authorization");
+  const manualSecret = req.headers.get("x-cron-secret");
+  const authorized =
+    !!validSecret &&
+    (authHeader === `Bearer ${validSecret}` || manualSecret === validSecret);
+  if (!authorized) {
     if (!validSecret) {
-      console.warn(
-        "[reward-referrals] appel manuel refusé : CRON_SECRET non configurée",
+      console.error(
+        "[reward-referrals] REFUS : CRON_SECRET non configurée sur Vercel — le cron quotidien ne peut PAS tourner",
       );
     }
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

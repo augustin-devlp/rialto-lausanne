@@ -51,6 +51,19 @@
       ⚠️ `push_subscriptions` : l'abonnement d'Augustin peut rester
       (pilotage réel du composer).
 
+## Moteur de statuts (livré 08.08 — QA fenêtre Studio)
+
+- [ ] QA des phases intermédiaires : Augustin bascule une commande test
+      `new` → `accepted` dans Supabase Studio (le trigger horodate) et la
+      page /confirmation doit dérouler TOUTE SEULE : Confirmée (≈2 min) →
+      En préparation (fenêtre cuisine) → En livraison → Livrée à l'ETA —
+      tick 30 s, zéro écriture. Vérifier aussi la fourchette live du
+      checkout (« 35–45 min ») et le repli figé (« ~40 min ») hors ligne.
+- [ ] Recalibrage septembre : toutes les constantes du moteur vivent dans
+      `src/lib/eta/constants.ts` (file +4/cmd cap 20, aller-retour
+      livreur, rush, plafond « moins d'1h ») — les ajuster sur les
+      données réelles des premières semaines.
+
 ## QA finale (répéter la matrice des lots sur le domaine final)
 
 - [ ] Bascule domaine rialto-lausanne.ch : NEXT_PUBLIC_SITE_URL, domaines

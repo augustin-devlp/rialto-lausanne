@@ -33,15 +33,17 @@
 | `referral_success` | `src/app/api/cron/reward-referrals/route.ts:201` (SMS parrain) | ⚠️ Corrigé le 22.07 : annonçait « 30 jours » pour des codes générés à **60** (`route.ts:151`). La version EN BASE fait foi. |
 | `referral_claim_reward` | `src/app/api/cron/reward-referrals/route.ts:248` (SMS filleul) | ⚠️ **ABSENT de la base** : le cron retombe sur le `defaultContent` de `src/lib/smsTemplates.ts` (`loadTemplate`, fallback `TEMPLATE_META`). Éditer un futur seed en base prendrait le pas ; en attendant, la vérité est dans le code. |
 
-## Les 2 ORPHELINS-PRÊTS — moteur de progression automatique
+## Les 2 INACTIFS PAR DÉCISION — statuts de commande
 
-| Template | Attend | Notes |
+| Template | Statut | Notes |
 |---|---|---|
-| `order_preparing` | Moteur de progression auto (chantier à cadrer, session dédiée) | Déjà vouvoyé, prêt à brancher. |
-| `order_ready` | Moteur de progression auto | Déjà vouvoyé, prêt à brancher. |
+| `order_preparing` | **INACTIF par décision** (moteur de statuts, 08.08.2026) | Le moteur livré DÉRIVE les phases à la lecture (`src/lib/eta/phase.ts`) — AUCUN SMS de statut, aucun cron, aucune écriture. Ne pas brancher. |
+| `order_ready` | **INACTIF par décision** (idem) | Idem. |
 
-Le moteur (preparing→ready→completed selon charge cuisine, heure, distance)
-est le SEUL chantier acté qui doive brancher des SMS de statut.
+Le moteur de statuts (Confirmée → En préparation → En livraison → Livrée)
+est 100 % dérivé côté lecture — décision produit du 08.08.2026 : AUCUN
+SMS de statut n'est envoyé, ces deux templates restent en base à titre
+d'archive. Les rebrancher exigerait une nouvelle décision explicite.
 
 ## Anniversaire — 1 ACTIF (depuis le 03.08.2026) + 2 orphelins-prêts
 

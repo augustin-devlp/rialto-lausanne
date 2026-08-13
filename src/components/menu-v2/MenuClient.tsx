@@ -37,6 +37,7 @@ import {
 } from "@/lib/clientStore";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { track } from "@/lib/tracking";
+import { useEtaRange } from "@/lib/eta/useEtaRange";
 
 type Props = {
   categories: MenuCategory[];
@@ -60,6 +61,9 @@ export default function MenuClient({ categories, items, options }: Props) {
   );
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<QualifiedAddress | null>(null);
+  // Fourchette ETA vivante (même moteur que checkout + suivi) — le figé
+  // de zone n'est qu'un repli réseau (moteur de statuts, 08.08.2026).
+  const etaLive = useEtaRange(address?.postal_code);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
     new Set(),
@@ -351,7 +355,7 @@ export default function MenuClient({ categories, items, options }: Props) {
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            ~{address?.estimated_delivery_minutes ?? 30}&nbsp;min
+            {etaLive?.label ?? `~${address?.estimated_delivery_minutes ?? 30} min`}
           </div>
         </div>
 

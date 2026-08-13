@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { settleForOrder, SOLID_STATUSES } from "@/lib/loyalty/settle";
+import { intrantsPourCommande } from "@/lib/eta/server";
 
 // Empêche Next.js de cacher cet endpoint — on veut toujours la valeur DB
 // fraîche (surtout pour le polling timeline depuis /confirmation).
@@ -24,7 +25,7 @@ export async function GET(
   const { data: order, error } = await sb
     .from("orders")
     .select(
-      "id, restaurant_id, order_number, customer_name, customer_phone, payer_phone, requested_pickup_time, status, total_amount, notes, created_at, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, delivery_floor_door, delivery_instructions, delivery_fee",
+      "id, restaurant_id, order_number, customer_name, customer_phone, payer_phone, requested_pickup_time, status, total_amount, notes, created_at, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, delivery_floor_door, delivery_instructions, delivery_fee, delivery_zone_id",
     )
     .eq("id", params.id)
     .single();
@@ -59,11 +60,30 @@ export async function GET(
     await settleForOrder(sb, order.id as string);
   }
 
+  // Moteur de statuts (08.08.2026) : le serveur fournit les INTRANTS de
+  // l'ETA (heure d'acceptation via le trigger order_status_history,
+  // compteurs de file/livreur, minutes de zone) — le CLIENT dérive la
+  // phase avec le module pur src/lib/eta (le Realtime pousse la ligne DB
+  // brute, un champ calculé serveur n'y existerait jamais). Best-effort :
+  // un échec de collecte ne casse jamais le suivi, la phase retombe sur
+  // le statut brut.
+  let etaIntrants = null;
+  try {
+    etaIntrants = await intrantsPourCommande(sb, {
+      id: order.id as string,
+      created_at: order.created_at as string,
+      fulfillment_type: order.fulfillment_type as "pickup" | "delivery",
+      delivery_zone_id: order.delivery_zone_id as string | null,
+    });
+  } catch (err) {
+    console.warn("[timeline-api] intrants ETA indisponibles", err);
+  }
+
   // On renvoie à la fois order (avec items imbriqués) et items en top-level
   // pour compatibilité rétroactive avec /order/[id] legacy.
   return NextResponse.json(
     {
-      order: { ...order, items: items ?? [] },
+      order: { ...order, items: items ?? [], eta_intrants: etaIntrants },
       items: items ?? [],
     },
     {

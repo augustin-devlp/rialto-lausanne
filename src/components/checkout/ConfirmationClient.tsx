@@ -17,6 +17,9 @@ import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
 import StampRow from "@/components/loyalty/StampRow";
+import { computeEtaRange, formatEtaRange, formatEtaRemaining } from "@/lib/eta/eta";
+import { derivePhase, type PhaseKey } from "@/lib/eta/phase";
+import { PHASE_TICK_MS } from "@/lib/eta/constants";
 
 type OrderStatus =
   | "new"
@@ -25,6 +28,19 @@ type OrderStatus =
   | "ready"
   | "completed"
   | "cancelled";
+
+/**
+ * Intrants du moteur de statuts, fournis par le serveur (SSR + poll).
+ * Shape découplée de src/lib/eta/server.ts (module serveur : on ne
+ * l'importe pas ici, même en type-only, par hygiène de frontière).
+ */
+type EtaIntrants = {
+  accepted_at: string | null;
+  queue_ahead: number;
+  in_course: number;
+  zone_minutes: number | null;
+  prep_base_minutes: number;
+};
 
 type OrderData = {
   id: string;
@@ -39,6 +55,7 @@ type OrderData = {
   delivery_city: string | null;
   created_at: string;
   requested_pickup_time: string | null;
+  eta_intrants?: EtaIntrants | null;
   items: Array<{
     item_name_snapshot: string;
     item_price_snapshot: number;
@@ -52,15 +69,49 @@ type Props = {
   order: OrderData;
 };
 
-const STEPS: { key: OrderStatus; label: string; description: string }[] = [
+/**
+ * Stepper du moteur de statuts DÉRIVÉS (08.08.2026) : les étapes ne
+ * mappent plus les statuts DB bruts mais les PHASES calculées par
+ * src/lib/eta/phase.ts — f(acceptation, ETA, maintenant), rejouée à
+ * chaque render + tick 30 s. Deux variantes selon le mode.
+ */
+const STEPS_DELIVERY: { key: PhaseKey; label: string; description: string }[] = [
   {
-    key: "new",
+    key: "waiting",
     label: "Commande reçue",
     description: "Rialto a bien reçu votre commande.",
   },
   {
-    key: "accepted",
-    label: "Acceptée",
+    key: "confirmed",
+    label: "Confirmée",
+    description: "Le restaurant confirme la commande.",
+  },
+  {
+    key: "preparing",
+    label: "En préparation",
+    description: "Les pâtes sont au four.",
+  },
+  {
+    key: "delivering",
+    label: "En livraison",
+    description: "Le livreur est en route.",
+  },
+  {
+    key: "delivered",
+    label: "Livrée",
+    description: "Bon appétit !",
+  },
+];
+
+const STEPS_PICKUP: { key: PhaseKey; label: string; description: string }[] = [
+  {
+    key: "waiting",
+    label: "Commande reçue",
+    description: "Rialto a bien reçu votre commande.",
+  },
+  {
+    key: "confirmed",
+    label: "Confirmée",
     description: "Le restaurant confirme la commande.",
   },
   {
@@ -70,21 +121,10 @@ const STEPS: { key: OrderStatus; label: string; description: string }[] = [
   },
   {
     key: "ready",
-    label: "En livraison",
-    description: "Le livreur est en route.",
-  },
-  {
-    key: "completed",
-    label: "Livrée",
-    description: "Bon appétit !",
+    label: "Prête",
+    description: "À retirer au comptoir.",
   },
 ];
-
-function stepIndex(status: OrderStatus): number {
-  if (status === "cancelled") return -1;
-  const idx = STEPS.findIndex((s) => s.key === status);
-  return idx === -1 ? 0 : idx;
-}
 
 type LoyaltyCardState =
   | { status: "idle" }
@@ -195,6 +235,20 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
           } as OrderData;
         });
       }
+      if (newStatus === statusSeen && (newOrder as OrderData).eta_intrants) {
+        // Statut inchangé mais intrants ETA présents : les prendre si le
+        // SSR les avait ratés (sinon la phase resterait figée sur le
+        // statut brut jusqu'au prochain changement). Pas de re-render si
+        // déjà en place.
+        setOrder((prev) =>
+          prev.eta_intrants
+            ? prev
+            : ({
+                ...prev,
+                eta_intrants: (newOrder as OrderData).eta_intrants,
+              } as OrderData),
+        );
+      }
       if (newStatus === "completed" || newStatus === "cancelled") {
         console.log(`[timeline] terminal status ${newStatus} — stopping`);
         stop();
@@ -281,7 +335,48 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
-  const currentStep = stepIndex(order.status);
+  // ─── Moteur de statuts : phase dérivée + tick 30 s ────────────────────
+  // Le tick force un re-render : derivePhase est rejouée avec un `now`
+  // frais — la timeline avance TOUTE SEULE, sans écriture ni polling
+  // supplémentaire (les intrants, eux, arrivent par SSR/poll).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), PHASE_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const fulfillment = order.fulfillment_type ?? "delivery";
+  const intrants = order.eta_intrants ?? null;
+  const eta = intrants
+    ? computeEtaRange({
+        fulfillmentType: fulfillment,
+        prepBaseMinutes: intrants.prep_base_minutes,
+        zoneMinutes: intrants.zone_minutes,
+        queueAhead: intrants.queue_ahead,
+        inCourse: intrants.in_course,
+        now: new Date(),
+      })
+    : null;
+  const phase = derivePhase({
+    status: order.status,
+    fulfillmentType: fulfillment,
+    acceptedAt: intrants?.accepted_at ?? null,
+    eta,
+    now: new Date(),
+  });
+  const steps = fulfillment === "pickup" ? STEPS_PICKUP : STEPS_DELIVERY;
+  const currentStep = phase.stepIndex;
+  // Ligne d'estimation : fourchette prudente avant/pendant, resserrée à
+  // l'approche, rien une fois livrée/prête ou annulée.
+  const etaLabel =
+    phase.key === "delivered" || phase.key === "ready" || phase.key === "cancelled"
+      ? null
+      : phase.remainingMinutes != null
+        ? formatEtaRemaining(phase.remainingMinutes)
+        : eta
+          ? `${formatEtaRange(eta)} après confirmation`
+          : null;
+
   const firstName = order.customer_name.split(" ")[0] ?? "";
   const isCancelled = order.status === "cancelled";
 
@@ -516,8 +611,14 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             <h2 className="mb-6 font-display text-xl font-bold">
               Suivi de la commande
             </h2>
+            {etaLabel && !isCancelled && (
+              <p className="mb-4 rounded-xl bg-cream p-3 text-sm text-ink">
+                🕒 {fulfillment === "pickup" ? "Prête dans" : "Livraison estimée"}{" "}
+                <strong>{etaLabel}</strong>
+              </p>
+            )}
             <ol className="space-y-4">
-              {STEPS.map((step, idx) => {
+              {steps.map((step, idx) => {
                 const done = idx <= currentStep;
                 const current = idx === currentStep;
                 return (
@@ -549,7 +650,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                           </span>
                         )}
                       </div>
-                      {idx < STEPS.length - 1 && (
+                      {idx < steps.length - 1 && (
                         <div
                           className={`mt-1 h-full w-0.5 ${
                             done ? "bg-rialto" : "bg-border"

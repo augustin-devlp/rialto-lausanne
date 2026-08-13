@@ -36,6 +36,7 @@ import { track } from "@/lib/tracking";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
+import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
 import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 import { readAttribution } from "@/lib/attribution";
@@ -206,6 +207,9 @@ export default function CheckoutPageClient({
   // (fdRule null), on affiche le fee de zone : jamais une gratuité
   // inventée qui serait reprise au POST.
   const fdRule = useFreeDeliveryRule();
+  // Moteur de statuts (08.08.2026) : fourchette ETA VIVANTE (même moteur
+  // que la page de suivi). Le figé de zone n'est plus qu'un repli réseau.
+  const etaLive = useEtaRange(address?.postal_code);
   const deliveryFee = fdRule
     ? effectiveDeliveryFee(subtotal, zoneFee, fdRule)
     : zoneFee;
@@ -831,7 +835,8 @@ export default function CheckoutPageClient({
                   >
                     <div className="text-sm font-bold">Dès que possible</div>
                     <div className="text-xs text-gray-500 mt-0.5">
-                      ~{address.estimated_delivery_minutes} min
+                      {etaLive?.label ??
+                        `~${address.estimated_delivery_minutes} min`}
                     </div>
                   </button>
                   <button
@@ -1159,7 +1164,8 @@ export default function CheckoutPageClient({
             </button>
 
             <p className="mt-3 text-center text-xs text-mute">
-              Livré en ~{address.estimated_delivery_minutes} min
+              Livré en{" "}
+              {etaLive?.label ?? `~${address.estimated_delivery_minutes} min`}
             </p>
           </div>
         </aside>

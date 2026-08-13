@@ -1,0 +1,71 @@
+# Gate avis roue — vérification réelle (module livré 14.08.2026)
+
+> Décision Augustin 14.08 : gate ON, vérification par l'API OFFICIELLE
+> Google Business Profile UNIQUEMENT — aucun service tiers, jamais.
+> Module complet prêt à brancher ; le mode DÉCLARATIF reste actif jusqu'à
+> l'obtention de l'accès Google (~1-2 semaines).
+
+## ⚠️ Garde-fous NON NÉGOCIABLES (toute copie liée à ce flux)
+
+- On demande **UN avis** — JAMAIS « un avis positif », JAMAIS « 5
+  étoiles », aucun gating par la note (illégal/CGU Google).
+- La récompense est une **« chance de gagner »** (la roue a des segments
+  perdants) — jamais un gain garanti.
+
+## Les trois modes (`REVIEW_GATE_MODE` + `NEXT_PUBLIC_REVIEW_GATE_MODE`)
+
+| Mode | Qui vérifie | État |
+|---|---|---|
+| `declarative` (défaut) | Personne — honor-based 60 s (verify-review-degraded) | **ACTIF aujourd'hui** |
+| `api` | Business Profile API : l'avis existe, au bon nom, publié après la déclaration | Prêt, attend les credentials |
+| `mock` | Fixtures `MOCK_REVIEWS_JSON` | Dév/QA uniquement |
+
+## Le flux (mode api)
+
+1. Post-commande : carte « Votre avis compte » sur /confirmation → page
+   roue. État B de la roue : lien DIRECT vers le formulaire d'avis de la
+   fiche (`search.google.com/local/writereview?placeid=…`).
+2. Le client saisit **son nom Google** → `POST /api/rialto/loyalty/review-request`.
+3. Vérification : `matchReview` (nom normalisé strict + avis publié APRÈS
+   la déclaration, tolérance 1 h en amont). Match → claim
+   `google_review_claims` (`is_degraded_mode=false`) → **la roue se
+   débloque par le flux existant, spin/route.ts inchangé**.
+4. Pas encore publié → « en cours de publication » : re-checks
+   automatiques (UI 90 s + retour au premier plan ; serveur throttlé à
+   2 min — settle-on-read, pas de cron) + lien de retour au formulaire.
+5. « Mon avis n'apparaît pas » → `manual_pending` → file au dashboard
+   (`GET /api/dashboard/reviews`, `POST /api/dashboard/reviews/approve`).
+6. **1 avis = 1 roue max** : contrainte UNIQUE existante de
+   `google_review_claims` (business_id, author, review_time) — un avis
+   déjà consommé re-matché part en 23505, traité sans claim.
+7. Requête expirée après 7 jours de re-checks infructueux.
+
+## Migration RV1 — EN NAVETTE
+
+`db/reviews/RV1_review_verification_requests.sql` : table des requêtes
+(pending/verified/manual_pending/manual_approved/expired), aucune table
+existante modifiée. À exécuter via apply_migration APRÈS retour de
+navette caisse. Tant qu'elle n'est pas exécutée, les routes répondent
+503 `rv1_non_executee` (et le mode déclaratif ne les appelle pas).
+
+## Procédure d'accès Google (en cours, ~1-2 semaines)
+
+1. Le restaurateur ajoute Augustin **Manager** de la fiche (lundi 17.08).
+2. Projet Google Cloud → activer « Google Business Profile API » →
+   remplir le **formulaire de demande d'accès** (le quota par défaut est
+   0 tant que Google n'a pas approuvé — délai habituel ~2 semaines).
+3. Créer un **service account**, puis l'INVITER comme Manager de la
+   fiche (c'est l'invitation qui lui ouvre les avis).
+4. Récupérer account/location IDs (`accounts.list`, `locations.list`).
+
+## Bascule jour J — rien d'autre que ceci
+
+1. Exécuter RV1 (si le retour de navette n'était pas déjà fait).
+2. Poser sur Vercel : `GBP_SA_CLIENT_EMAIL`, `GBP_SA_PRIVATE_KEY`,
+   `GBP_ACCOUNT_ID`, `GBP_LOCATION_ID`,
+   `REVIEW_GATE_MODE=api`, `NEXT_PUBLIC_REVIEW_GATE_MODE=api`.
+3. Redeploy. QA : mock d'abord (`mode=mock` + `MOCK_REVIEWS_JSON`) si on
+   veut répéter le flux, puis un avis réel de test.
+
+Retour arrière instantané : `REVIEW_GATE_MODE=declarative` (+ public) +
+redeploy — le flux honor-based reprend, rien d'autre ne bouge.

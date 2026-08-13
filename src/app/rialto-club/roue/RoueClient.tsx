@@ -14,6 +14,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import ReviewGateModal from "@/components/ReviewGateModal";
+import ReviewGateApi from "@/components/loyalty/ReviewGateApi";
+
+/** Mode du gate avis — bascule par env + redeploy (docs/REVIEW_GATE.md). */
+const GATE_API_ACTIF =
+  process.env.NEXT_PUBLIC_REVIEW_GATE_MODE === "api" ||
+  process.env.NEXT_PUBLIC_REVIEW_GATE_MODE === "mock";
 import { RIALTO_PLACE_ID } from "@/lib/loyaltyConstants";
 import { readCustomerSession } from "@/lib/customerSession";
 
@@ -296,17 +302,30 @@ export default function RoueClient() {
             Un avis pour débloquer la roue
           </h1>
           <p className="mt-3 text-base text-ink/80">{data.message}</p>
-          <button
-            type="button"
-            onClick={() => setReviewOpen(true)}
-            className="btn-primary-lg mt-6"
-          >
-            ⭐ Laisser un avis Google
-          </button>
+
+          {/* Gate avis (14.08.2026) : vérification RÉELLE par l'API
+              Business Profile quand le mode est basculé (env
+              NEXT_PUBLIC_REVIEW_GATE_MODE=api|mock) ; sinon le flux
+              déclaratif existant reste la voie active. */}
+          {GATE_API_ACTIF ? (
+            <ReviewGateApi
+              customerId={customerId}
+              placeId={RIALTO_PLACE_ID}
+              onVerified={() => void fetchAvailability(customerId)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setReviewOpen(true)}
+              className="btn-primary-lg mt-6"
+            >
+              ⭐ Laisser un avis Google
+            </button>
+          )}
         </div>
         <BackHome />
 
-        {reviewOpen && (
+        {!GATE_API_ACTIF && reviewOpen && (
           <ReviewGateModal
             customerId={customerId}
             placeId={RIALTO_PLACE_ID}

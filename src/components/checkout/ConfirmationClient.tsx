@@ -704,6 +704,28 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                 );
               })}
             </ol>
+
+            {/* Gate avis (14.08.2026) : entrée post-commande du flux —
+                on demande UN avis (jamais « positif »), la roue est une
+                CHANCE de gagner (garde-fous décision Augustin). Le flux
+                complet (lien Google + vérification) vit sur la page roue. */}
+            {!isCancelled && (
+              <div className="mt-5 rounded-2xl border border-saffron/40 bg-saffron/10 p-4 text-sm">
+                <p className="font-semibold text-ink">
+                  <span aria-hidden="true">⭐</span> Votre avis compte
+                </p>
+                <p className="mt-1 text-ink/80">
+                  Partagez votre expérience sur Google et tentez votre
+                  chance à la roue Rialto.
+                </p>
+                <Link
+                  href="/rialto-club/roue"
+                  className="mt-3 inline-block font-medium text-rialto underline"
+                >
+                  Laisser mon avis et tourner la roue →
+                </Link>
+              </div>
+            )}
           </div>
         </section>
       )}

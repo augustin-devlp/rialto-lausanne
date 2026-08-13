@@ -95,8 +95,25 @@ export function derivePhase(input: {
   }
 
   const acceptedMs = new Date(acceptedAt).getTime();
-  const elapsedMin = (now.getTime() - acceptedMs) / MIN_MS;
-  const finMax = eta.maxMinutes;
+  if (!Number.isFinite(acceptedMs)) {
+    // acceptedAt non parsable : NaN ferait basculer toutes les
+    // comparaisons en « Livrée » immédiate et afficher « NaN–NaN min »
+    // (relevé relecteur 13.08). On retombe sur le statut brut.
+    return {
+      key: "confirmed",
+      stepIndex: 1,
+      remainingMinutes: null,
+    };
+  }
+  // Math.max(0, …) : une horloge client en retard donnerait un elapsed
+  // négatif — phase bloquée et restant gonflé sinon.
+  const elapsedMin = Math.max(0, (now.getTime() - acceptedMs) / MIN_MS);
+  // Cible du compte à rebours : en retrait, tout se joue à la fin de la
+  // fenêtre cuisine (la bascule « Prête ») — décompter vers maxMinutes
+  // ferait passer de « ~10 min » à « Prête » d'un coup, 10 min avant
+  // l'échéance annoncée (relevé relecteur 13.08).
+  const finMax =
+    fulfillmentType === "pickup" ? eta.kitchenMinutes : eta.maxMinutes;
   const remaining = Math.max(0, finMax - elapsedMin);
 
   // Dérivation temporelle.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { settleForOrder, SOLID_STATUSES } from "@/lib/loyalty/settle";
 import { intrantsPourCommande } from "@/lib/eta/server";
+import { ACTIVE_WINDOW_MIN } from "@/lib/eta/constants";
 
 // Empêche Next.js de cacher cet endpoint — on veut toujours la valeur DB
 // fraîche (surtout pour le polling timeline depuis /confirmation).
@@ -67,16 +68,27 @@ export async function GET(
   // brute, un champ calculé serveur n'y existerait jamais). Best-effort :
   // un échec de collecte ne casse jamais le suivi, la phase retombe sur
   // le statut brut.
+  // Économie de poll : au-delà de 2× la fenêtre active, les intrants ne
+  // bougent plus (compteurs à zéro, phase terminale dérivée depuis
+  // longtemps) — on épargne 4-5 requêtes toutes les 15 s par onglet
+  // laissé ouvert. Le SSR de la page les fournit déjà au chargement, et
+  // le client garde les siens quand le poll renvoie null (garde par
+  // contenu).
+  const ageMin =
+    (Date.now() - new Date(order.created_at as string).getTime()) / 60_000;
   let etaIntrants = null;
-  try {
-    etaIntrants = await intrantsPourCommande(sb, {
-      id: order.id as string,
-      created_at: order.created_at as string,
-      fulfillment_type: order.fulfillment_type as "pickup" | "delivery",
-      delivery_zone_id: order.delivery_zone_id as string | null,
-    });
-  } catch (err) {
-    console.warn("[timeline-api] intrants ETA indisponibles", err);
+  if (ageMin <= ACTIVE_WINDOW_MIN * 2) {
+    try {
+      etaIntrants = await intrantsPourCommande(sb, {
+        id: order.id as string,
+        created_at: order.created_at as string,
+        status: order.status as string,
+        fulfillment_type: order.fulfillment_type as "pickup" | "delivery",
+        delivery_zone_id: order.delivery_zone_id as string | null,
+      });
+    } catch (err) {
+      console.warn("[timeline-api] intrants ETA indisponibles", err);
+    }
   }
 
   // On renvoie à la fois order (avec items imbriqués) et items en top-level

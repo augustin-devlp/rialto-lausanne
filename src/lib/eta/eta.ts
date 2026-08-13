@@ -26,6 +26,8 @@ import {
   RANGE_SPREAD_MIN,
   ROUND_TO_MIN,
   DISPLAY_CAP_MIN,
+  DISPLAY_OVER_CAP_THRESHOLD_MIN,
+  DEFAULT_ZONE_MINUTES,
   NEAR_WINDOW_MIN,
 } from "./constants";
 
@@ -53,11 +55,14 @@ export type EtaRange = {
 };
 
 function estRush(now: Date): boolean {
+  // hourCycle h23 : hour12:false peut rendre « 24 » à minuit selon la
+  // version d'ICU — sans effet sur les fenêtres actuelles, mais toute
+  // fenêtre future touchant minuit casserait (relevé relecteur 13.08).
   const h = parseInt(
     now.toLocaleString("en-US", {
       timeZone: "Europe/Zurich",
       hour: "2-digit",
-      hour12: false,
+      hourCycle: "h23",
     }),
     10,
   );
@@ -88,7 +93,11 @@ export function computeEtaRange(input: EtaInput): EtaRange {
 
   const travel =
     input.fulfillmentType === "delivery"
-      ? Math.max(0, (input.zoneMinutes ?? 30) - TRAVEL_OVERLAP_DEDUCTION_MIN)
+      ? Math.max(
+          0,
+          (input.zoneMinutes ?? DEFAULT_ZONE_MINUTES) -
+            TRAVEL_OVERLAP_DEDUCTION_MIN,
+        )
       : 0;
 
   const courier =
@@ -113,11 +122,14 @@ export function computeEtaRange(input: EtaInput): EtaRange {
 
 /**
  * Libellé d'une fourchette AVANT acceptation / au checkout :
- * « 35–45 min » ou « moins d'1h ». Jamais de minute précise.
+ * « 35–45 min », « moins d'1h », ou « plus d'1h » quand le maximum
+ * calculé dépasse largement l'heure — « moins d'1h » MENTIRAIT pour un
+ * total à 100 min (relevé relecteur 13.08 ; seuil dans constants.ts, à
+ * valider avec Augustin). Jamais de minute précise.
  */
 export function formatEtaRange(range: EtaRange): string {
+  if (range.maxMinutes > DISPLAY_OVER_CAP_THRESHOLD_MIN) return "plus d'1h";
   if (range.capped) return "moins d'1h";
-  if (range.minMinutes === range.maxMinutes) return `~${range.minMinutes} min`;
   return `${range.minMinutes}–${range.maxMinutes} min`;
 }
 

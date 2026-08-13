@@ -31,6 +31,7 @@ async function loadOrder(orderNumber: string) {
     etaIntrants = await intrantsPourCommande(sb, {
       id: order.id as string,
       created_at: order.created_at as string,
+      status: order.status as string,
       fulfillment_type: order.fulfillment_type as "pickup" | "delivery",
       delivery_zone_id: (order as { delivery_zone_id?: string | null })
         .delivery_zone_id,

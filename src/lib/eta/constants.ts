@@ -77,3 +77,17 @@ export const IN_COURSE_AFTER_MIN = 30;
 export const CONFIRMED_PHASE_MIN = 2;
 /** Tick de recalcul de la phase côté client (ms). */
 export const PHASE_TICK_MS = 30_000;
+
+/** Défauts de repli si une colonne restaurant/zone manque (relecture 13.08 :
+ * ils étaient écrits en dur à 3 endroits — le recalibrage les aurait ratés). */
+export const DEFAULT_DELIVERY_PREP_MIN = 30;
+export const DEFAULT_PICKUP_PREP_MIN = 15;
+export const DEFAULT_ZONE_MINUTES = 30;
+
+/**
+ * Au-delà de ce maximum calculé, « moins d'1h » MENTIRAIT (le moteur peut
+ * sortir 100+ min en rush chargé) : on bascule sur « plus d'1h ». Décision
+ * d'affichage à valider avec Augustin — l'esprit du plafond est la
+ * prudence, pas le mensonge (relevé relecteur 13.08).
+ */
+export const DISPLAY_OVER_CAP_THRESHOLD_MIN = 75;

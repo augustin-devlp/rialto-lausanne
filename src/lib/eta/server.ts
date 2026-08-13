@@ -15,7 +15,13 @@
  */
 
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
-import { ACTIVE_WINDOW_MIN, IN_COURSE_AFTER_MIN } from "./constants";
+import {
+  ACTIVE_WINDOW_MIN,
+  IN_COURSE_AFTER_MIN,
+  DEFAULT_DELIVERY_PREP_MIN,
+  DEFAULT_PICKUP_PREP_MIN,
+  DEFAULT_ZONE_MINUTES,
+} from "./constants";
 
 export type EtaIntrants = {
   /** ISO — MIN(changed_at) new→accepted du trigger ; null si jamais acceptée. */
@@ -43,8 +49,8 @@ async function basePrep(
     delivery_prep_time_minutes: number | null;
   } | null;
   return fulfillment === "pickup"
-    ? Number(row?.pickup_prep_time_minutes ?? 15)
-    : Number(row?.delivery_prep_time_minutes ?? 30);
+    ? Number(row?.pickup_prep_time_minutes ?? DEFAULT_PICKUP_PREP_MIN)
+    : Number(row?.delivery_prep_time_minutes ?? DEFAULT_DELIVERY_PREP_MIN);
 }
 
 async function compteursActifs(
@@ -72,7 +78,10 @@ async function compteursActifs(
   }
   const { count: file } = await fileQuery;
 
-  const { count: enCourse } = await sb
+  // ⚠️ Même auto-exclusion que la file : sans elle, une commande de plus
+  // de 30 min se comptait ELLE-MÊME comme « livreur en course » et
+  // gonflait son propre ETA de +24 min (bloquant relecteur 13.08).
+  let enCourseQuery = sb
     .from("orders")
     .select("id", { count: "exact", head: true })
     .eq("restaurant_id", RESTAURANT_ID)
@@ -80,6 +89,10 @@ async function compteursActifs(
     .eq("fulfillment_type", "delivery")
     .gte("created_at", borneFenetre)
     .lt("created_at", borneEnCourse);
+  if (opts.exclureOrderId) {
+    enCourseQuery = enCourseQuery.neq("id", opts.exclureOrderId);
+  }
+  const { count: enCourse } = await enCourseQuery;
 
   return { queue_ahead: file ?? 0, in_course: enCourse ?? 0 };
 }
@@ -90,6 +103,7 @@ export async function intrantsPourCommande(
   order: {
     id: string;
     created_at: string;
+    status: string;
     fulfillment_type: "pickup" | "delivery";
     delivery_zone_id?: string | null;
   },
@@ -124,9 +138,15 @@ export async function intrantsPourCommande(
         : null;
   }
 
+  // Repli d'assurance : si le trigger order_status_history venait à être
+  // désactivé (aucune ligne new→accepted alors que le statut est avancé),
+  // created_at fait ancre — le suivi DÉGRADE au lieu de geler.
+  const acceptedAt =
+    (acceptation.data as { changed_at: string } | null)?.changed_at ?? null;
+  const statutAvance = order.status !== "new" && order.status !== "cancelled";
+
   return {
-    accepted_at:
-      (acceptation.data as { changed_at: string } | null)?.changed_at ?? null,
+    accepted_at: acceptedAt ?? (statutAvance ? order.created_at : null),
     queue_ahead: compteurs.queue_ahead,
     in_course: compteurs.in_course,
     zone_minutes: zoneMinutes,
@@ -158,7 +178,7 @@ export async function intrantsPourZone(
     accepted_at: null,
     queue_ahead: compteurs.queue_ahead,
     in_course: compteurs.in_course,
-    zone_minutes: Number(zone.estimated_delivery_minutes ?? 30),
+    zone_minutes: Number(zone.estimated_delivery_minutes ?? DEFAULT_ZONE_MINUTES),
     prep_base_minutes: prep,
     fulfillment_type: "delivery",
   };

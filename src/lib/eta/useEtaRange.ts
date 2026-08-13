@@ -27,6 +27,9 @@ export function useEtaRange(
       setRange(null);
       return;
     }
+    // Reset au changement de CP : sans lui, la fourchette de l'ANCIENNE
+    // zone resterait affichée le temps du fetch (relevé relecteur 13.08).
+    setRange(null);
     let annule = false;
     (async () => {
       try {

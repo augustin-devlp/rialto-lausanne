@@ -236,17 +236,18 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         });
       }
       if (newStatus === statusSeen && (newOrder as OrderData).eta_intrants) {
-        // Statut inchangé mais intrants ETA présents : les prendre si le
-        // SSR les avait ratés (sinon la phase resterait figée sur le
-        // statut brut jusqu'au prochain changement). Pas de re-render si
-        // déjà en place.
+        // Statut inchangé mais intrants ETA présents : garde sur le
+        // CONTENU (l'ancre accepted_at), jamais sur la présence de
+        // l'objet — le Realtime pousse la ligne brute SANS intrants, et
+        // un garde par présence figeait l'accepted_at:null du SSR à vie
+        // (bloquant relecteur 13.08 : stepper gelé sur « Confirmée »).
+        // accepted_at est stable une fois écrit → pas de boucle possible.
+        const next = (newOrder as OrderData).eta_intrants!;
         setOrder((prev) =>
-          prev.eta_intrants
+          prev.eta_intrants &&
+          prev.eta_intrants.accepted_at === next.accepted_at
             ? prev
-            : ({
-                ...prev,
-                eta_intrants: (newOrder as OrderData).eta_intrants,
-              } as OrderData),
+            : ({ ...prev, eta_intrants: next } as OrderData),
         );
       }
       if (newStatus === "completed" || newStatus === "cancelled") {
@@ -267,10 +268,19 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         realtimeChannel = null;
       }
     };
+    // Exposé pour l'arrêt sur phase DÉRIVÉE terminale : Rialto ne clôture
+    // jamais ses commandes en base (statuts accepted à vie), donc sans
+    // cet arrêt une page laissée ouverte pollerait pour toujours — et
+    // chaque poll paie désormais la collecte d'intrants (relevé relecteur
+    // 13.08).
+    stopPollingRef.current = stop;
 
     // ─── 1. Fetch HTTP : tick de polling OU refresh manuel
     const fetchStatus = async (source: "poll" | "focus") => {
       if (stopped) return;
+      // Onglet caché : ne pas dépenser un aller-retour toutes les 15 s —
+      // le refetch sur visibilitychange rattrape au retour au premier plan.
+      if (source === "poll" && document.visibilityState === "hidden") return;
       try {
         const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
         if (!res.ok) {
@@ -335,6 +345,10 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
+  // Poignée d'arrêt du polling, posée par l'effet des 3 canaux et tirée
+  // par l'effet de phase terminale ci-dessous.
+  const stopPollingRef = useRef<(() => void) | null>(null);
+
   // ─── Moteur de statuts : phase dérivée + tick 30 s ────────────────────
   // Le tick force un re-render : derivePhase est rejouée avec un `now`
   // frais — la timeline avance TOUTE SEULE, sans écriture ni polling
@@ -354,7 +368,13 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         zoneMinutes: intrants.zone_minutes,
         queueAhead: intrants.queue_ahead,
         inCourse: intrants.in_course,
-        now: new Date(),
+        // ANCRÉ sur l'acceptation, pas sur maintenant : un ETA recalculé
+        // avec l'heure courante fait SAUTER le rush à 12h/19h pile — le
+        // stepper reculait de « En livraison » à « En préparation » sous
+        // les yeux du client (bloquant relecteur 13.08). Le rush qui
+        // compte est celui du moment où la cuisine a pris la commande ;
+        // l'ETA devient monotone. Le checkout, lui, vit au présent.
+        now: intrants.accepted_at ? new Date(intrants.accepted_at) : new Date(),
       })
     : null;
   const phase = derivePhase({
@@ -376,6 +396,15 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         : eta
           ? `${formatEtaRange(eta)} après confirmation`
           : null;
+
+  // Phase dérivée TERMINALE (« Livrée »/« Prête ») : plus rien à attendre
+  // de la base — on coupe polling + realtime (le statut DB, lui, ne
+  // deviendra jamais terminal : Rialto ne clôture pas ses commandes).
+  useEffect(() => {
+    if (phase.key === "delivered" || phase.key === "ready") {
+      stopPollingRef.current?.();
+    }
+  }, [phase.key]);
 
   const firstName = order.customer_name.split(" ")[0] ?? "";
   const isCancelled = order.status === "cancelled";
@@ -597,7 +626,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                 <span className="font-semibold text-ink">
                   {order.order_number}
                 </span>{" "}
-                est enregistrée. Vous recevrez un SMS à chaque étape.
+                est enregistrée. Suivez sa progression en direct ci-dessous.
               </>
             )}
           </p>
@@ -613,7 +642,8 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             </h2>
             {etaLabel && !isCancelled && (
               <p className="mb-4 rounded-xl bg-cream p-3 text-sm text-ink">
-                🕒 {fulfillment === "pickup" ? "Prête dans" : "Livraison estimée"}{" "}
+                <span aria-hidden="true">🕒</span>{" "}
+                {fulfillment === "pickup" ? "Prête dans" : "Livraison estimée"}{" "}
                 <strong>{etaLabel}</strong>
               </p>
             )}

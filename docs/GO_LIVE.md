@@ -64,6 +64,29 @@
       livreur, rush, plafond « moins d'1h ») — les ajuster sur les
       données réelles des premières semaines.
 
+## Échéances vivantes (état au 13.08 soir)
+
+- [x] Attribution J+1 : 1/1 commandes depuis TR1b attribuées — CLOS.
+- [ ] **Cron anniversaire : verdict le 14.08 ~11h35 CH** — DOB test
+      seedée au 14.08, CRON_SECRET confirmée posée par Augustin. Attendu :
+      code −20 % + SMS +33…599 + ligne sms_logs. Si silence → diagnostic
+      (la secret étant posée, la cause est ailleurs).
+- [ ] **Roue e2e : samedi 16.08** (week-end only) — claim dégradé + spin
+      + validation checkout, en autonomie (GO Augustin 13.08).
+- [ ] **Fenêtre Studio moteur de statuts** : à faire par Augustin d'ici
+      le gel (aucune trace en base au 13.08 — dernière commande = 042 du
+      03.08).
+- [ ] **Bascule domaine : décision week-end 15-16, Mehmet lundi 17** —
+      dossier complet dans docs/BASCULE_DOMAINE.md. ⚠️ rialto-lausanne.ch
+      est DÉTENU par Just Eat (DNS takeaway.com, sert leur page de
+      commande) — reco : domaine alternatif immédiat + rétrocession en
+      parallèle.
+- [x] Balayage serveur du 13.08 20h55 : 12 pages 200, auth 401 partout
+      (dashboard ×3 + cron), endpoints publics OK (tranche 40 servie,
+      seuil livraison OFF, ETA avec rush +10 constaté en direct à 20h53,
+      404 cachés), sw.js stampé dernier commit + GET_VERSION. La matrice
+      INTERACTIVE complète se rejoue sur le domaine final (ci-dessous).
+
 ## QA finale (répéter la matrice des lots sur le domaine final)
 
 - [ ] Bascule domaine rialto-lausanne.ch : NEXT_PUBLIC_SITE_URL, domaines

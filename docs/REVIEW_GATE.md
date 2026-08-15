@@ -22,23 +22,53 @@
 
 ## Le flux (mode api)
 
-1. Post-commande : carte « Votre avis compte » sur /confirmation → page
+1. Post-commande : carte « Votre avis compte » sur /confirmation (visible
+   une fois la commande LIVRÉE/PRÊTE — phase dérivée, pas avant) → page
    roue. État B de la roue : lien DIRECT vers le formulaire d'avis de la
    fiche (`search.google.com/local/writereview?placeid=…`).
 2. Le client saisit **son nom Google** → `POST /api/rialto/loyalty/review-request`.
-3. Vérification : `matchReview` (nom normalisé strict + avis publié APRÈS
-   la déclaration, tolérance 1 h en amont). Match → claim
-   `google_review_claims` (`is_degraded_mode=false`) → **la roue se
-   débloque par le flux existant, spin/route.ts inchangé**.
+   Le POST prend un **snapshot `seen_review_ids`** (avis déjà publics à cet
+   instant) : parade au vol d'avis — le nom affiché sur un avis public
+   n'est un secret pour personne, un tiers ne peut pas déclarer le nom
+   d'un avis déjà paru pour capter le tour.
+3. Vérification : `matchReview` (nom normalisé strict — accents, casse,
+   ı turc — + avis publié APRÈS la déclaration ; tolérance 1 h en amont
+   avec snapshot, 10 min sans). Match → claim `google_review_claims`
+   (`is_degraded_mode=false`) → **la roue se débloque par le flux
+   existant, spin/route.ts inchangé**.
 4. Pas encore publié → « en cours de publication » : re-checks
    automatiques (UI 90 s + retour au premier plan ; serveur throttlé à
-   2 min — settle-on-read, pas de cron) + lien de retour au formulaire.
-5. « Mon avis n'apparaît pas » → `manual_pending` → file au dashboard
-   (`GET /api/dashboard/reviews`, `POST /api/dashboard/reviews/approve`).
-6. **1 avis = 1 roue max** : contrainte UNIQUE existante de
-   `google_review_claims` (business_id, author, review_time) — un avis
-   déjà consommé re-matché part en 23505, traité sans claim.
+   2 min par update conditionnel — settle-on-read, pas de cron) + lien de
+   retour au formulaire. Caches serveur : jeton OAuth 55 min, liste
+   d'avis 60 s — N clients en attente ≈ 1 appel Google/min.
+5. « Mon avis n'apparaît pas » → `manual_pending` → écran dashboard
+   **/dashboard/avis** (routes `GET /api/dashboard/reviews`,
+   `POST /api/dashboard/reviews/approve`). L'approve refuse (409
+   `claim_deja_actif`) si le client détient déjà un claim valide.
+6. **1 avis = 1 roue max** : contrainte UNIQUE de `google_review_claims`
+   (business_id, author, review_time) — **VÉRIFIÉE en base le 14.08**
+   (pg_constraint). Un avis déjà consommé re-matché part en 23505 → la
+   requête bascule en `manual_pending` (le restaurateur tranche, les
+   re-checks s'arrêtent — c'est aussi l'issue pour la victime d'un vol).
 7. Requête expirée après 7 jours de re-checks infructueux.
+8. Renouvellement : `verified`/`manual_approved` ne bloque une nouvelle
+   déclaration QUE tant que le claim lié est valide — claim expiré =
+   re-déclaration possible. ⚠️ Limite structurelle : Google n'autorise
+   qu'**UN avis par personne et par fiche, à vie** (createTime ne bouge
+   jamais) — un client fidèle ne peut pas produire un « nouvel avis » à
+   chaque cycle. Décision produit en attente (cf. rapport 15.08).
+
+## Divergence des deux variables de mode
+
+`REVIEW_GATE_MODE` (serveur) et `NEXT_PUBLIC_REVIEW_GATE_MODE` (UI,
+**inlinée au build**) doivent être identiques. Si elles divergent :
+- serveur `api` / UI `declarative` → l'UI montre l'ancien modal 60 s,
+  la vérification réelle n'est jamais sollicitée ;
+- serveur `declarative` / UI `api` → ReviewGateApi reçoit des 503
+  `mode_declaratif_actif`.
+Diagnostic : le GET/POST review-request renvoie `mode` dans chaque
+payload — comparer avec ce que l'UI croit. Toute bascule = poser LES
+DEUX + **redeploy** (la NEXT_PUBLIC ne change pas sans rebuild).
 
 ## Migration RV1 — EN NAVETTE
 
@@ -67,5 +97,11 @@ navette caisse. Tant qu'elle n'est pas exécutée, les routes répondent
 3. Redeploy. QA : mock d'abord (`mode=mock` + `MOCK_REVIEWS_JSON`) si on
    veut répéter le flux, puis un avis réel de test.
 
-Retour arrière instantané : `REVIEW_GATE_MODE=declarative` (+ public) +
-redeploy — le flux honor-based reprend, rien d'autre ne bouge.
+Retour arrière : `REVIEW_GATE_MODE=declarative` +
+`NEXT_PUBLIC_REVIEW_GATE_MODE=declarative` + **redeploy obligatoire**
+(la NEXT_PUBLIC est inlinée au build — sans redeploy l'UI reste en mode
+api et mange des 503). Le flux honor-based reprend, rien d'autre ne
+bouge. Sort des requêtes `pending` en cours : elles cessent d'être
+re-checkées (les routes répondent 503) et expireront d'elles-mêmes à
+J+7 ; les claims déjà créés restent valides — aucun client ne perd un
+tour déjà débloqué.

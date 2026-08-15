@@ -166,6 +166,20 @@ export default function AccueilClient() {
           </div>
           <Arrow />
         </Link>
+        <Link
+          href="/dashboard/avis"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Avis Google
+            </div>
+            <div className="text-xs text-mute">
+              Demandes « mon avis n&apos;apparaît pas » à valider
+            </div>
+          </div>
+          <Arrow />
+        </Link>
       </div>
     </div>
   );

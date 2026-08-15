@@ -708,8 +708,12 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             {/* Gate avis (14.08.2026) : entrée post-commande du flux —
                 on demande UN avis (jamais « positif »), la roue est une
                 CHANCE de gagner (garde-fous décision Augustin). Le flux
-                complet (lien Google + vérification) vit sur la page roue. */}
-            {!isCancelled && (
+                complet (lien Google + vérification) vit sur la page roue.
+                Affiché SEULEMENT une fois la commande livrée/prête
+                (relecture 14.08) : demander un avis sur une pizza pas
+                encore reçue serait absurde — et un avis posté AVANT
+                l'expérience est exactement ce qu'on ne veut pas. */}
+            {(phase.key === "delivered" || phase.key === "ready") && (
               <div className="mt-5 rounded-2xl border border-saffron/40 bg-saffron/10 p-4 text-sm">
                 <p className="font-semibold text-ink">
                   <span aria-hidden="true">⭐</span> Votre avis compte

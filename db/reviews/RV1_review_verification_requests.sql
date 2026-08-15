@@ -11,9 +11,10 @@
 --      client (« mon nom Google est X ») en attente de matching contre les
 --      avis réels de la fiche (Business Profile API). AUCUNE table
 --      existante n'est modifiée — google_review_claims reste la source du
---      déblocage roue (un claim = roue débloquée, unique par
---      (business_id, review_author_name, review_time) : « 1 avis = 1 roue
---      max » est DÉJÀ garanti par cette contrainte existante).
+--      déblocage roue. La contrainte UNIQUE des claims (business_id,
+--      review_author_name, review_time) a été VÉRIFIÉE en base le
+--      14.08.2026 (pg_constraint) : « 1 avis = 1 roue max » est garanti
+--      pour les claims API.
 --   2. Statuts : 'pending' (déclaré, pas encore matché), 'verified'
 --      (matché par l'API → claim créé), 'manual_pending' (le client a
 --      cliqué « mon avis n'apparaît pas »), 'manual_approved' (validé au
@@ -23,8 +24,10 @@
 --   4. AUCUN trigger, AUCUNE RLS ajoutée (table servie exclusivement par
 --      les routes serveur via service role — pattern des tables loyalty).
 --
--- VERROUS / COÛT : CREATE TABLE — aucun verrou sur des tables existantes.
--- (SET lock_timeout par hygiène, obligatoire seulement pour orders.)
+-- VERROUS / COÛT : CREATE TABLE avec FK prend un SHARE ROW EXCLUSIVE
+-- BREF sur chaque table référencée (customers, google_review_claims) —
+-- les écritures y sont bloquées le temps de la commande, borné par le
+-- lock_timeout. (Corrigé en relecture : « aucun verrou » était faux.)
 --
 -- REJOUABLE : oui — IF NOT EXISTS partout.
 --
@@ -36,7 +39,7 @@ SET lock_timeout = '5s';
 
 CREATE TABLE IF NOT EXISTS review_verification_requests (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id uuid NOT NULL REFERENCES customers(id),
+  customer_id uuid NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
   business_id uuid NOT NULL,
   -- Nom Google déclaré par le client, tel que saisi (le matching
   -- normalise casse/accents côté code, on garde l'original).
@@ -46,6 +49,13 @@ CREATE TABLE IF NOT EXISTS review_verification_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   last_checked_at timestamptz,
   check_count integer NOT NULL DEFAULT 0,
+  -- ANTI-VOL D'AVIS (relecture 14.08) : les reviewId DÉJÀ publics au
+  -- moment de la déclaration — jamais matchables. Sans ce snapshot, un
+  -- tiers pouvait déclarer le nom (public) d'un avis fraîchement paru
+  -- dans la fenêtre de tolérance et voler le tour. NULL si le provider
+  -- était injoignable au moment du POST (le matching applique alors une
+  -- tolérance amont réduite).
+  seen_review_ids text[],
   -- Renseignés au match : l'horodatage de l'avis apparié (aussi écrit
   -- dans le claim) et le claim créé.
   matched_review_time timestamptz,
@@ -54,8 +64,13 @@ CREATE TABLE IF NOT EXISTS review_verification_requests (
 
 CREATE INDEX IF NOT EXISTS idx_review_requests_customer
   ON review_verification_requests (customer_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_review_requests_actionables
-  ON review_verification_requests (status)
+-- Dashboard : la file trie par date, le filtre statut est optionnel.
+CREATE INDEX IF NOT EXISTS idx_review_requests_dashboard
+  ON review_verification_requests (status, created_at DESC);
+-- UNE requête vivante par client (deux POST simultanés = 23505, traité
+-- côté route en renvoyant l'existante).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_review_requests_active
+  ON review_verification_requests (customer_id)
   WHERE status IN ('pending','manual_pending');
 
 COMMENT ON TABLE review_verification_requests IS

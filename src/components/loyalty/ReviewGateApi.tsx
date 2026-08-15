@@ -48,7 +48,12 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
   const applique = useCallback(
     (req: RequestState) => {
       setRequest(req);
-      if (req?.status === "verified" && !verifiedNotifie.current) {
+      // manual_approved débloque la roue exactement comme verified — le
+      // parent doit rafraîchir dans les deux cas (relecture 14.08).
+      if (
+        (req?.status === "verified" || req?.status === "manual_approved") &&
+        !verifiedNotifie.current
+      ) {
         verifiedNotifie.current = true;
         onVerified();
       }
@@ -74,7 +79,15 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
     void recharge();
   }, [recharge]);
   useEffect(() => {
-    if (request?.status !== "pending") return;
+    // manual_pending aussi : la validation dashboard doit apparaître sans
+    // rechargement manuel (le GET est bon marché — aucun appel Google
+    // tant que le statut n'est pas pending).
+    if (
+      request?.status !== "pending" &&
+      request?.status !== "manual_pending"
+    ) {
+      return;
+    }
     const id = window.setInterval(() => void recharge(), RECHECK_UI_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") void recharge();

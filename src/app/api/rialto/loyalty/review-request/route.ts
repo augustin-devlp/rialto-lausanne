@@ -38,8 +38,12 @@ type RequeteRow = {
   created_at: string;
   last_checked_at: string | null;
   check_count: number;
+  seen_review_ids: string[] | null;
   claim_id: string | null;
 };
+
+const REQUETE_COLS =
+  "id, customer_id, google_name, status, created_at, last_checked_at, check_count, seen_review_ids, claim_id";
 
 function frequencyToMs(f?: string | null): number {
   switch (f) {
@@ -74,9 +78,7 @@ async function derniereRequete(
 ): Promise<{ row: RequeteRow | null; absent: boolean }> {
   const { data, error } = await sb
     .from("review_verification_requests")
-    .select(
-      "id, customer_id, google_name, status, created_at, last_checked_at, check_count, claim_id",
-    )
+    .select(REQUETE_COLS)
     .eq("customer_id", customerId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -111,14 +113,26 @@ async function tenteVerification(
     return (data as RequeteRow) ?? { ...requete, status: "expired" };
   }
 
-  // Throttle : pas plus d'un appel API toutes les RECHECK_MIN_INTERVAL_MS.
-  if (
-    requete.last_checked_at &&
-    Date.now() - new Date(requete.last_checked_at).getTime() <
-      RECHECK_MIN_INTERVAL_MS
-  ) {
-    return requete;
+  // Throttle POSÉ AVANT l'appel provider, par update CONDITIONNEL : deux
+  // GET quasi simultanés (interval 90 s + visibilitychange) ne doivent
+  // faire qu'UN appel Google — le perdant du conditionnel s'arrête là
+  // (relecture 14.08 : le throttle après-coup laissait passer les deux).
+  const seuilThrottle = new Date(
+    Date.now() - RECHECK_MIN_INTERVAL_MS,
+  ).toISOString();
+  let porte = sb
+    .from("review_verification_requests")
+    .update({
+      last_checked_at: new Date().toISOString(),
+      check_count: requete.check_count + 1,
+    })
+    .eq("id", requete.id)
+    .eq("status", "pending");
+  if (requete.last_checked_at) {
+    porte = porte.lt("last_checked_at", seuilThrottle);
   }
+  const { data: verrou } = await porte.select("id").maybeSingle();
+  if (!verrou) return requete; // throttlé (ou statut changé sous nos pieds)
 
   const provider = reviewProvider();
   if (!provider) return requete;
@@ -126,20 +140,16 @@ async function tenteVerification(
   let match = null;
   try {
     const avis = await provider.listRecentReviews();
-    match = matchReview(avis, requete.google_name, requete.created_at);
+    match = matchReview(
+      avis,
+      requete.google_name,
+      requete.created_at,
+      requete.seen_review_ids,
+    );
   } catch (err) {
     console.warn("[review-gate] provider en échec, re-check plus tard", err);
-    return requete;
+    return { ...requete, check_count: requete.check_count + 1 };
   }
-
-  // Trace du check, match ou pas.
-  await sb
-    .from("review_verification_requests")
-    .update({
-      last_checked_at: new Date().toISOString(),
-      check_count: requete.check_count + 1,
-    })
-    .eq("id", requete.id);
 
   if (!match) return { ...requete, check_count: requete.check_count + 1 };
 
@@ -172,14 +182,26 @@ async function tenteVerification(
 
   if (claimErr) {
     if (claimErr.code === "23505") {
-      // Cet avis a DÉJÀ débloqué une roue (« 1 avis = 1 roue max ») —
-      // on ne vérifie pas, la voie manuelle reste ouverte.
+      // Cet avis a DÉJÀ débloqué une roue (« 1 avis = 1 roue max »).
+      // Re-checker en boucle re-sélectionnerait le MÊME avis jusqu'à
+      // expiration en brûlant du quota (relecture 14.08) : on route vers
+      // la voie MANUELLE — le restaurateur tranche, les checks
+      // s'arrêtent. C'est aussi l'issue de la victime d'un vol d'avis.
       console.warn(
-        "[review-gate] avis déjà consommé par un claim",
+        "[review-gate] avis déjà consommé → voie manuelle",
         requete.id,
         match.id,
       );
-      return { ...requete, check_count: requete.check_count + 1 };
+      const { data: manuel } = await sb
+        .from("review_verification_requests")
+        .update({ status: "manual_pending" })
+        .eq("id", requete.id)
+        .eq("status", "pending")
+        .select(REQUETE_COLS)
+        .maybeSingle();
+      return (
+        (manuel as RequeteRow) ?? { ...requete, status: "manual_pending" }
+      );
     }
     console.error("[review-gate] insert claim échoué", claimErr);
     return { ...requete, check_count: requete.check_count + 1 };
@@ -204,9 +226,18 @@ async function tenteVerification(
 }
 
 function publie(requete: RequeteRow | null) {
-  if (!requete) return NextResponse.json({ ok: true, request: null });
+  // `mode` dans chaque réponse : si les env serveur et UI divergent un
+  // jour, le diagnostic se lit dans le payload au lieu d'un 503 muet.
+  if (!requete) {
+    return NextResponse.json({
+      ok: true,
+      mode: reviewGateMode(),
+      request: null,
+    });
+  }
   return NextResponse.json({
     ok: true,
+    mode: reviewGateMode(),
     request: {
       id: requete.id,
       status: requete.status,
@@ -281,13 +312,48 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Une requête vivante à la fois : pending/manual → renvoyée telle
-    // quelle ; verified → déjà débloqué. Un nouveau nom remplace une
-    // requête expirée uniquement.
-    if (row && ["pending", "manual_pending", "verified"].includes(row.status)) {
+    // Une requête VIVANTE à la fois : pending/manual_pending → renvoyée.
+    if (row && ["pending", "manual_pending"].includes(row.status)) {
       return publie(
         row.status === "pending" ? await tenteVerification(sb, row) : row,
       );
+    }
+
+    // verified/manual_approved : bloquant SEULEMENT tant que le claim lié
+    // est valide — claim expiré (le client retombe en état B au cycle de
+    // roue suivant) = NOUVELLE déclaration possible. Le blocage à vie
+    // était un cul-de-sac irrécupérable (bloquant relecteur 14.08), et
+    // asymétrique : la voie manuelle se renouvelait, la voie API non.
+    if (
+      row &&
+      ["verified", "manual_approved"].includes(row.status) &&
+      row.claim_id
+    ) {
+      const { data: claim } = await sb
+        .from("google_review_claims")
+        .select("expires_at")
+        .eq("id", row.claim_id)
+        .maybeSingle();
+      if (
+        claim &&
+        new Date(claim.expires_at as string).getTime() > Date.now()
+      ) {
+        return publie(row);
+      }
+    }
+
+    // ANTI-VOL (relecture 14.08) : snapshot des reviewId DÉJÀ publics au
+    // moment de la déclaration — jamais matchables ensuite (le nom d'un
+    // avis public n'est un secret pour personne). Best-effort : provider
+    // injoignable → null → le matching applique la tolérance réduite.
+    let seen: string[] | null = null;
+    const provider = reviewProvider();
+    if (provider) {
+      try {
+        seen = (await provider.listRecentReviews()).map((r) => r.id);
+      } catch {
+        seen = null;
+      }
     }
 
     const { data: cree, error } = await sb
@@ -296,13 +362,18 @@ export async function POST(req: NextRequest) {
         customer_id: customerId,
         business_id: BUSINESS_ID,
         google_name: googleName,
+        seen_review_ids: seen,
       })
-      .select(
-        "id, customer_id, google_name, status, created_at, last_checked_at, check_count, claim_id",
-      )
+      .select(REQUETE_COLS)
       .single();
     if (error) {
       if (tableAbsente(error)) return indisponible("rv1_non_executee");
+      if (error.code === "23505") {
+        // Course de deux POST simultanés : l'index unique partiel (RV1) a
+        // tranché — on renvoie la requête gagnante.
+        const { row: existante } = await derniereRequete(sb, customerId);
+        return publie(existante);
+      }
       throw error;
     }
 

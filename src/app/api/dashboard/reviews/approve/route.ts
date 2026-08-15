@@ -61,18 +61,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // GARDE anti-double-déblocage (relecture 14.08) : un client qui détient
+  // déjà un claim VALIDE ne peut pas cumuler un second tour via la voie
+  // manuelle — le bouton Valider ne doit pas contourner « 1 avis = 1 roue ».
+  const { data: claimActif } = await sb
+    .from("google_review_claims")
+    .select("id, expires_at")
+    .eq("customer_id", requete.customer_id as string)
+    .eq("business_id", BUSINESS_ID)
+    .gt("expires_at", new Date().toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (claimActif) {
+    return NextResponse.json(
+      { ok: false, error: "claim_deja_actif" },
+      { status: 409 },
+    );
+  }
+
   const { data: wheel } = await sb
     .from("spin_wheels")
     .select("frequency, frequency_days")
     .eq("id", SPIN_WHEEL_ID)
     .maybeSingle();
+  // Aligné sur frequencyToMs de review-request ('once' = plafond 365 j).
   const jours = wheel?.frequency_days
     ? Number(wheel.frequency_days)
     : wheel?.frequency === "daily"
       ? 1
       : wheel?.frequency === "weekly"
         ? 7
-        : 30;
+        : wheel?.frequency === "once"
+          ? 365
+          : 30;
   const expiresAt = new Date(
     Date.now() + Math.min(jours, 365) * 24 * 60 * 60 * 1000,
   ).toISOString();

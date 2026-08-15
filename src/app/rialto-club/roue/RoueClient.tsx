@@ -11,7 +11,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import ReviewGateModal from "@/components/ReviewGateModal";
 import ReviewGateApi from "@/components/loyalty/ReviewGateApi";
@@ -69,7 +69,7 @@ export default function RoueClient() {
   } | null>(null);
   const [spinError, setSpinError] = useState<string | null>(null);
 
-  const fetchAvailability = async (custId: string) => {
+  const fetchAvailability = useCallback(async (custId: string) => {
     setLoading(true);
     try {
       const url = new URL("/api/spin/availability", window.location.origin);
@@ -93,7 +93,19 @@ export default function RoueClient() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Garde anti-boucle du gate avis (relecture 14.08) : le refresh
+  // d'availability démonte ReviewGateApi (spinner plein écran) et détruit
+  // son useRef interne — la garde doit vivre ICI, chez le parent qui
+  // survit. Sans elle : verified → refresh → remontage → re-GET →
+  // re-notification → refresh… à l'infini si l'état reste B.
+  const gateDejaRafraichi = useRef(false);
+  const onGateVerified = useCallback(() => {
+    if (gateDejaRafraichi.current || !customerId) return;
+    gateDejaRafraichi.current = true;
+    void fetchAvailability(customerId);
+  }, [customerId, fetchAvailability]);
 
   useEffect(() => {
     const session = readCustomerSession();
@@ -311,7 +323,7 @@ export default function RoueClient() {
             <ReviewGateApi
               customerId={customerId}
               placeId={RIALTO_PLACE_ID}
-              onVerified={() => void fetchAvailability(customerId)}
+              onVerified={onGateVerified}
             />
           ) : (
             <button

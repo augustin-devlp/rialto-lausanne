@@ -11,7 +11,7 @@
  *
  * BASCULE JOUR J (une fois l'accès Google obtenu) : poser les 4 env GBP_*
  * + REVIEW_GATE_MODE=api + NEXT_PUBLIC_REVIEW_GATE_MODE=api + exécuter la
- * migration RV1 (navette) si pas déjà fait + redeploy. RIEN d'autre —
+ * migration RV1b (navette) si pas déjà fait + redeploy. RIEN d'autre —
  * cf. docs/REVIEW_GATE.md.
  */
 

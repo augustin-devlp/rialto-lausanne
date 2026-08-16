@@ -8,7 +8,7 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/dashboard/reviews — file de validation du gate avis (RV1).
+ * GET /api/dashboard/reviews — file de validation du gate avis (RV1b).
  * Liste les requêtes à traiter : manual_pending (le client a signalé
  * « mon avis n'apparaît pas ») en tête, puis pending (suivi), puis les
  * 20 dernières traitées (contexte).

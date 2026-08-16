@@ -23,8 +23,12 @@ import type { PublishedReview } from "./provider";
  * Tolérance : avis posté un peu AVANT la déclaration, accepté quand même
  * (le client poste PUIS déclare). ⚠️ Cette tolérance n'est sûre QUE
  * combinée au snapshot seen_review_ids (anti-vol : un avis déjà public à
- * la déclaration n'est jamais matchable). Sans snapshot (provider
- * injoignable au POST), on retombe sur la tolérance RÉDUITE ci-dessous.
+ * la déclaration n'est jamais matchable). Conséquence assumée (navette
+ * 15.08) : le snapshot NEUTRALISE la tolérance pour tout avis déjà
+ * VISIBLE de l'API au POST — elle ne sert en pratique que les avis
+ * postés juste avant la déclaration mais pas encore listés par Google
+ * (latence de publication). Sans snapshot (provider injoignable au
+ * POST), on retombe sur la tolérance RÉDUITE ci-dessous.
  */
 export const MATCH_BEFORE_TOLERANCE_MS = 60 * 60 * 1000; // 1 h
 /** Tolérance amont de REPLI quand aucun snapshot n'a pu être pris. */

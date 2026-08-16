@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Écran Avis Google — file de validation du gate avis roue (RV1).
+ * Écran Avis Google — file de validation du gate avis roue (RV1b).
  *
  * « À valider » = les clients qui ont cliqué « mon avis n'apparaît pas »
  * (manual_pending). Le bouton Valider crée le claim → la roue se
@@ -33,6 +33,7 @@ const STATUT_LABEL: Record<string, string> = {
   verified: "Vérifié (API)",
   manual_approved: "Validé à la main",
   expired: "Expirée",
+  rejected: "Refusée",
 };
 
 function statutChip(s: string): string {
@@ -115,6 +116,11 @@ export default function AvisClient() {
         setMessage("Ce client a déjà un tour de roue actif — rien à faire.");
       } else if (body?.error === "deja_traitee") {
         setMessage("Cette demande a déjà été traitée.");
+      } else if (body?.error === "claim_cree_maj_ko") {
+        // Re-cliquer échouerait en 409 claim_deja_actif : ne pas y inviter.
+        setMessage(
+          "Le tour a bien été débloqué, mais la demande n'a pas pu être classée. Signalez-le à Servato.",
+        );
       } else {
         setMessage("⚠️ Validation impossible. Réessayez.");
       }

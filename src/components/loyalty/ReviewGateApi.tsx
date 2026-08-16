@@ -90,10 +90,14 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
   // à refléter sans rechargement — GET sans appel Google), et
   // verified/manual_approved SANS claim actif (renouvellement en cours
   // côté serveur — le GET peut appeler Google, throttlé à 2 min).
+  // claim_actif !== true (et pas === false) : un payload verified SANS la
+  // clé (ex. sortie anticipée de flag_manual) doit rester en mode
+  // « re-vérification » avec polling — sinon écran de succès figé sans
+  // claim réel (relecture 17.08).
   const renouvellementEnCours =
     (request?.status === "verified" ||
       request?.status === "manual_approved") &&
-    request.claim_actif === false;
+    request.claim_actif !== true;
   useEffect(() => {
     if (
       request?.status !== "pending" &&

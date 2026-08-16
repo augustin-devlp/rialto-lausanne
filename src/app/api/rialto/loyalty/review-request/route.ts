@@ -33,7 +33,7 @@ export const dynamic = "force-dynamic";
  * le gate repart de zéro.
  *
  * En mode 'declarative' (ACTIF aujourd'hui) : 503 — le flux honor-based
- * verify-review-degraded reste la voie. Table RV1 absente (navette en
+ * verify-review-degraded reste la voie. Table RV1b absente (navette en
  * cours) : 503 aussi. GARDE-FOUS : on demande UN avis, jamais un avis
  * positif ; « chance de gagner » côté UI.
  */
@@ -94,7 +94,7 @@ function indisponible(raison: string) {
   );
 }
 
-/** 42P01 = table absente (migration RV1 en navette, pas encore exécutée). */
+/** 42P01 = table absente (migration RV1b en navette, pas encore exécutée). */
 function tableAbsente(err: { code?: string } | null): boolean {
   return err?.code === "42P01";
 }
@@ -155,9 +155,12 @@ async function tenteVerification(
     })
     .eq("id", requete.id)
     .eq("status", "pending");
-  if (requete.last_checked_at) {
-    porte = porte.lt("last_checked_at", seuilThrottle);
-  }
+  // NULL = vrai CAS (.is) et non prédicat omis : sinon deux premiers
+  // checks simultanés — ou un check concurrent d'un approve dashboard —
+  // passent tous les deux la porte (relecture 17.08).
+  porte = requete.last_checked_at
+    ? porte.lt("last_checked_at", seuilThrottle)
+    : porte.is("last_checked_at", null);
   const { data: verrou } = await porte.select("id").maybeSingle();
   if (!verrou) return requete; // throttlé (ou statut changé sous nos pieds)
 
@@ -199,11 +202,69 @@ async function tenteVerification(
 
   if (claimErr) {
     if (claimErr.code === "23505") {
-      // Cet avis a DÉJÀ débloqué une roue (« 1 avis = 1 roue max »).
-      // Re-checker en boucle re-sélectionnerait le MÊME avis jusqu'à
-      // expiration en brûlant du quota (relecture 14.08) : on route vers
-      // la voie MANUELLE — le restaurateur tranche, les checks
-      // s'arrêtent. C'est aussi l'issue de la victime d'un vol d'avis.
+      // REJEU DU MÊME CLIENT d'abord (navette 15.08, point a) : crash
+      // entre l'insert du claim et l'update de la requête → au re-check,
+      // le même avis re-matche et retombe en 23505 alors que le claim
+      // orphelin NOUS appartient. Le router en voie manuelle produirait
+      // un double claim après expiration (manual_pending → approve).
+      // Réparation : verified directement, adossé au claim existant.
+      // (Idéal à terme : RPC transactionnelle claim+update.)
+      const { data: orphelin, error: orphErr } = await sb
+        .from("google_review_claims")
+        .select("id, customer_id, expires_at")
+        .eq("business_id", BUSINESS_ID)
+        .eq("review_author_name", match.authorName)
+        .eq("review_time", match.publishedAt)
+        .maybeSingle();
+      if (orphErr) {
+        // Erreur transitoire ≠ « claim d'un autre » : basculer en voie
+        // manuelle ici serait un aller sans retour. Re-check plus tard.
+        console.warn(
+          "[review-gate] lecture claim orphelin en échec, re-check plus tard",
+          orphErr,
+        );
+        return { ...requete, check_count: requete.check_count + 1 };
+      }
+      if (orphelin && orphelin.customer_id === requete.customer_id) {
+        const { data: repare } = await sb
+          .from("review_verification_requests")
+          .update({
+            status: "verified",
+            matched_review_time: match.publishedAt,
+            claim_id: orphelin.id as string,
+          })
+          .eq("id", requete.id)
+          .eq("status", "pending")
+          .select(REQUETE_COLS)
+          .maybeSingle();
+        if (!repare) {
+          // La requête a changé sous nos pieds (flag_manual pendant
+          // l'appel provider) : l'état DB réel prime, ne rien fabriquer.
+          return { ...requete, check_count: requete.check_count + 1 };
+        }
+        console.log("[review-gate] ✅ rejeu réparé (claim orphelin)", {
+          requete: requete.id,
+          claim: orphelin.id,
+        });
+        if (
+          new Date(orphelin.expires_at as string).getTime() <= Date.now()
+        ) {
+          // Claim orphelin DÉJÀ expiré (fenêtre déclarative prolongée) :
+          // la réparation DB est posée (ancrage + claim), mais on ne
+          // répond PAS verified — le caller forcerait claim_actif=true à
+          // tort. Le prochain GET passe par tenteRevalidation et
+          // renouvelle proprement.
+          return { ...requete, check_count: requete.check_count + 1 };
+        }
+        return repare as RequeteRow;
+      }
+
+      // Sinon : cet avis a DÉJÀ débloqué la roue d'un AUTRE client
+      // (« 1 avis = 1 roue max »). Re-checker en boucle re-sélectionnerait
+      // le MÊME avis jusqu'à expiration en brûlant du quota (relecture
+      // 14.08) : on route vers la voie MANUELLE — le restaurateur
+      // tranche, les checks s'arrêtent. C'est aussi l'issue de la
+      // victime d'un vol d'avis.
       console.warn(
         "[review-gate] avis déjà consommé → voie manuelle",
         requete.id,
@@ -224,6 +285,14 @@ async function tenteVerification(
     return { ...requete, check_count: requete.check_count + 1 };
   }
 
+  // Garde de statut (relecture 17.08) : la fenêtre non protégée court
+  // sur tout l'appel provider (jusqu'à 10 s). manual_pending est INCLUS
+  // volontairement : si le client a cliqué « mon avis n'apparaît pas »
+  // pendant l'appel mais que l'API a TROUVÉ l'avis, la trouvaille gagne
+  // (la ligne sort de la file dashboard). En revanche un approve déjà
+  // passé (manual_approved) ne doit JAMAIS être écrasé — sinon son CAS
+  // est contourné et la file ment. 0 ligne → l'état DB prime ; le claim
+  // créé sera réconcilié par la branche rejeu 23505 au check suivant.
   const { data: verifie } = await sb
     .from("review_verification_requests")
     .update({
@@ -232,14 +301,18 @@ async function tenteVerification(
       claim_id: claim.id as string,
     })
     .eq("id", requete.id)
-    .select("*")
+    .in("status", ["pending", "manual_pending"])
+    .select(REQUETE_COLS)
     .maybeSingle();
+  if (!verifie) {
+    return { ...requete, check_count: requete.check_count + 1 };
+  }
 
   console.log("[review-gate] ✅ avis vérifié via API", {
     requete: requete.id,
     claim: claim.id,
   });
-  return (verifie as RequeteRow) ?? { ...requete, status: "verified" };
+  return verifie as RequeteRow;
 }
 
 type Revalidation = { requete: RequeteRow; claimActif: boolean };
@@ -327,9 +400,12 @@ async function tenteRevalidation(
     })
     .eq("id", requete.id)
     .eq("status", "verified");
-  if (requete.last_checked_at) {
-    porte = porte.lt("last_checked_at", seuilThrottle);
-  }
+  // NULL = vrai CAS (.is) et non prédicat omis : sinon deux premiers
+  // checks simultanés — ou un check concurrent d'un approve dashboard —
+  // passent tous les deux la porte (relecture 17.08).
+  porte = requete.last_checked_at
+    ? porte.lt("last_checked_at", seuilThrottle)
+    : porte.is("last_checked_at", null);
   const { data: verrou } = await porte.select("id").maybeSingle();
   if (!verrou) return { requete, claimActif: false }; // throttlé
 
@@ -566,7 +642,7 @@ export async function POST(req: NextRequest) {
     if (error) {
       if (tableAbsente(error)) return indisponible("rv1_non_executee");
       if (error.code === "23505") {
-        // Course de deux POST simultanés : l'index unique partiel (RV1) a
+        // Course de deux POST simultanés : l'index unique partiel (RV1b) a
         // tranché — on renvoie la requête gagnante.
         const { row: existante } = await derniereRequete(sb, customerId);
         return publie(existante);

@@ -33,7 +33,12 @@
    d'un avis déjà paru pour capter le tour.
 3. Vérification : `matchReview` (nom normalisé strict — accents, casse,
    ı turc — + avis publié APRÈS la déclaration ; tolérance 1 h en amont
-   avec snapshot, 10 min sans). Match → claim `google_review_claims`
+   avec snapshot, 10 min sans). ⚠️ En pratique le snapshot NEUTRALISE la
+   tolérance amont pour tout avis déjà VISIBLE de l'API au moment du
+   POST (il est dans `seen_review_ids` → exclu, même dans l'heure) : la
+   tolérance ne sert que les avis postés juste avant la déclaration mais
+   pas encore listés par Google (latence de publication) — c'est voulu,
+   c'est la parade au vol d'avis. Match → claim `google_review_claims`
    (`is_degraded_mode=false`) → **la roue se débloque par le flux
    existant, spin/route.ts inchangé**.
 4. Pas encore publié → « en cours de publication » : re-checks
@@ -50,7 +55,12 @@
    (pg_constraint). Un avis déjà consommé re-matché part en 23505 → la
    requête bascule en `manual_pending` (le restaurateur tranche, les
    re-checks s'arrêtent — c'est aussi l'issue pour la victime d'un vol).
-7. Requête expirée après 7 jours de re-checks infructueux.
+7. Requête expirée après 7 jours de re-checks infructueux. L'expiration
+   est du settle-on-read : elle n'est CONSTATÉE qu'au GET/POST suivant —
+   elle ne joue donc pas en mode déclaratif (routes en 503, les pending
+   restent dormantes). Et le premier POST après la fenêtre CONSTATE
+   l'expiration (il renvoie la requête `expired`) : c'est la soumission
+   SUIVANTE du formulaire qui crée la nouvelle déclaration.
 8. Renouvellement (**décision Augustin 15.08 — implémenté**) : Google
    n'autorise qu'UN avis par personne et par fiche, à vie — au cycle
    suivant (claim expiré), le gate **RE-VALIDE que l'avis déjà vérifié
@@ -78,7 +88,7 @@
    Le payload GET/POST expose `claim_actif` pour verified/manual_approved
    — l'UI n'annonce « débloqué » que sur `true` ; `false` = écran
    « re-vérification en cours » + re-checks (90 s, throttle serveur
-   2 min). Aucun impact DDL : statuts et colonnes RV1 inchangés (le
+   2 min). Aucun impact DDL : statuts et colonnes RV1b inchangés (le
    statut `expired` couvre aussi « avis supprimé / gate remis à zéro »).
 
 ## Divergence des deux variables de mode
@@ -93,13 +103,16 @@ Diagnostic : le GET/POST review-request renvoie `mode` dans chaque
 payload — comparer avec ce que l'UI croit. Toute bascule = poser LES
 DEUX + **redeploy** (la NEXT_PUBLIC ne change pas sans rebuild).
 
-## Migration RV1 — EN NAVETTE
+## Migration RV1b — EN NAVETTE
 
-`db/reviews/RV1_review_verification_requests.sql` : table des requêtes
-(pending/verified/manual_pending/manual_approved/expired), aucune table
-existante modifiée. À exécuter via apply_migration APRÈS retour de
-navette caisse. Tant qu'elle n'est pas exécutée, les routes répondent
-503 `rv1_non_executee` (et le mode déclaratif ne les appelle pas).
+`db/reviews/RV1b_review_verification_requests.sql` : table des requêtes
+(pending/verified/manual_pending/manual_approved/expired/rejected),
+RLS activée SANS policy (service role only, pattern loyalty), CHECK de
+cohérence claim, aucune table existante modifiée. Révision du RV1
+initial après verdict caisse KO du 15.08 (7 points, dont le bloquant
+RLS). À exécuter via apply_migration APRÈS retour de navette caisse.
+Tant qu'elle n'est pas exécutée, les routes répondent 503
+`rv1_non_executee` (et le mode déclaratif ne les appelle pas).
 
 ## Procédure d'accès Google (en cours, ~1-2 semaines)
 
@@ -113,7 +126,7 @@ navette caisse. Tant qu'elle n'est pas exécutée, les routes répondent
 
 ## Bascule jour J — rien d'autre que ceci
 
-1. Exécuter RV1 (si le retour de navette n'était pas déjà fait).
+1. Exécuter RV1b (si le retour de navette n'était pas déjà fait).
 2. Poser sur Vercel : `GBP_SA_CLIENT_EMAIL`, `GBP_SA_PRIVATE_KEY`,
    `GBP_ACCOUNT_ID`, `GBP_LOCATION_ID`,
    `REVIEW_GATE_MODE=api`, `NEXT_PUBLIC_REVIEW_GATE_MODE=api`.
@@ -125,6 +138,8 @@ Retour arrière : `REVIEW_GATE_MODE=declarative` +
 (la NEXT_PUBLIC est inlinée au build — sans redeploy l'UI reste en mode
 api et mange des 503). Le flux honor-based reprend, rien d'autre ne
 bouge. Sort des requêtes `pending` en cours : elles cessent d'être
-re-checkées (les routes répondent 503) et expireront d'elles-mêmes à
-J+7 ; les claims déjà créés restent valides — aucun client ne perd un
-tour déjà débloqué.
+re-checkées (les routes répondent 503) et restent DORMANTES — l'expiration
+J+7 est du settle-on-read, elle ne se constate qu'à un GET/POST qui
+n'arrive plus en mode déclaratif ; elles s'expireront au premier passage
+si le mode api revient. Les claims déjà créés restent valides — aucun
+client ne perd un tour déjà débloqué.

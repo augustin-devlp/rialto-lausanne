@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/dashboard/reviews/approve { request_id } — validation MANUELLE
- * du gate avis (RV1) : le restaurateur a vu l'avis de ses yeux (ou fait
+ * du gate avis (RV1b) : le restaurateur a vu l'avis de ses yeux (ou fait
  * confiance), la roue se débloque via un claim classique.
  *
  * review_time = maintenant : la contrainte UNIQUE des claims reste saine
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const sb = supabaseService();
   const { data: requete, error } = await sb
     .from("review_verification_requests")
-    .select("id, customer_id, google_name, status")
+    .select("id, customer_id, google_name, status, last_checked_at")
     .eq("id", body.request_id)
     .maybeSingle();
 
@@ -54,7 +54,13 @@ export async function POST(req: NextRequest) {
   if (!requete) {
     return NextResponse.json({ ok: false, error: "introuvable" }, { status: 404 });
   }
-  if (!["manual_pending", "pending", "expired"].includes(requete.status as string)) {
+  // manual_pending UNIQUEMENT (relecture 17.08) : combiné à l'index
+  // unique partiel (une seule ligne pending/manual_pending par client),
+  // le CAS par LIGNE devient un verrou de fait par CLIENT — deux approves
+  // simultanés sur deux vieilles lignes (pending/expired) du même client
+  // créaient deux claims. Aucun appelant n'envoyait ces statuts (l'UI ne
+  // rend Valider que sur manual_pending).
+  if (requete.status !== "manual_pending") {
     return NextResponse.json(
       { ok: false, error: "deja_traitee" },
       { status: 409 },
@@ -75,6 +81,41 @@ export async function POST(req: NextRequest) {
   if (claimActif) {
     return NextResponse.json(
       { ok: false, error: "claim_deja_actif" },
+      { status: 409 },
+    );
+  }
+
+  // SÉRIALISATION (navette 15.08, point b) : prise de main ATOMIQUE sur
+  // la requête AVANT l'insert du claim — le double-clic perd ICI au lieu
+  // de créer un double claim. CAS sur last_checked_at et non passage
+  // direct en manual_approved : le claim n'existe pas encore, la
+  // contrainte chk_review_requests_claim_coherent (RV1b, point 2)
+  // interdit manual_approved sans claim_id. En cas de crash entre le CAS
+  // et l'insert du claim, la requête reste dans son statut → re-validable
+  // au clic suivant. APRÈS l'insert, un échec de l'update final laisse un
+  // claim actif + une ligne manual_pending grisée par claim_actif — d'où
+  // le log de réparation plus bas.
+  const jeton = new Date().toISOString();
+  let cas = sb
+    .from("review_verification_requests")
+    .update({ last_checked_at: jeton })
+    .eq("id", requete.id as string)
+    .eq("status", "manual_pending");
+  cas = requete.last_checked_at
+    ? cas.eq("last_checked_at", requete.last_checked_at as string)
+    : cas.is("last_checked_at", null);
+  const { data: verrou, error: casErr } = await cas
+    .select("id")
+    .maybeSingle();
+  if (casErr) {
+    // Incident DB transitoire ≠ « quelqu'un a gagné la course » : ne pas
+    // répondre 409 deja_traitee (message faux et rassurant à tort).
+    console.error("[dashboard/reviews] CAS échoué", casErr);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
+  if (!verrou) {
+    return NextResponse.json(
+      { ok: false, error: "deja_traitee" },
       { status: 409 },
     );
   }
@@ -117,7 +158,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  await sb
+  const { error: majErr } = await sb
     .from("review_verification_requests")
     .update({
       status: "manual_approved",
@@ -125,6 +166,20 @@ export async function POST(req: NextRequest) {
       claim_id: claim.id as string,
     })
     .eq("id", requete.id);
+  if (majErr) {
+    // Le claim EST créé (la roue du client est réellement débloquée —
+    // spinAvailability ne lit que les claims), mais la ligne reste
+    // manual_pending grisée dans la file. Le claim.id au log est la clé
+    // de réparation manuelle.
+    console.error(
+      "[dashboard/reviews] claim CRÉÉ mais requête non mise à jour — réparation manuelle",
+      { requete: requete.id, claim: claim.id, majErr },
+    );
+    return NextResponse.json(
+      { ok: false, error: "claim_cree_maj_ko" },
+      { status: 500 },
+    );
+  }
 
   console.log("[dashboard/reviews] ✅ validation manuelle", {
     requete: requete.id,

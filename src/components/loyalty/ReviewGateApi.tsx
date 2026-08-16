@@ -28,6 +28,9 @@ type RequestState = {
   status: string;
   google_name: string;
   check_count: number;
+  /** verified/manual_approved uniquement : un claim VALIDE existe-t-il ?
+   * false = claim expiré, renouvellement en cours côté serveur. */
+  claim_actif?: boolean;
 } | null;
 
 type Props = {
@@ -50,8 +53,13 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
       setRequest(req);
       // manual_approved débloque la roue exactement comme verified — le
       // parent doit rafraîchir dans les deux cas (relecture 14.08).
+      // MAIS uniquement si un claim VALIDE existe (claim_actif) : un
+      // statut verified à claim expiré non renouvelé n'est pas un
+      // déblocage — notifier déclencherait un refresh → availability
+      // toujours B → remontage → boucle (relecture 15.08).
       if (
         (req?.status === "verified" || req?.status === "manual_approved") &&
+        req.claim_actif === true &&
         !verifiedNotifie.current
       ) {
         verifiedNotifie.current = true;
@@ -78,13 +86,19 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
   useEffect(() => {
     void recharge();
   }, [recharge]);
+  // Re-checks : pending (matching), manual_pending (validation dashboard
+  // à refléter sans rechargement — GET sans appel Google), et
+  // verified/manual_approved SANS claim actif (renouvellement en cours
+  // côté serveur — le GET peut appeler Google, throttlé à 2 min).
+  const renouvellementEnCours =
+    (request?.status === "verified" ||
+      request?.status === "manual_approved") &&
+    request.claim_actif === false;
   useEffect(() => {
-    // manual_pending aussi : la validation dashboard doit apparaître sans
-    // rechargement manuel (le GET est bon marché — aucun appel Google
-    // tant que le statut n'est pas pending).
     if (
       request?.status !== "pending" &&
-      request?.status !== "manual_pending"
+      request?.status !== "manual_pending" &&
+      !renouvellementEnCours
     ) {
       return;
     }
@@ -97,7 +111,7 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [request?.status, recharge]);
+  }, [request?.status, renouvellementEnCours, recharge]);
 
   async function declare() {
     const n = nom.trim();
@@ -140,6 +154,16 @@ export default function ReviewGateApi({ customerId, placeId, onVerified }: Props
 
   /* ─── Vérifié : le parent recharge la disponibilité de la roue ─── */
   if (request?.status === "verified" || request?.status === "manual_approved") {
+    if (renouvellementEnCours) {
+      // Claim expiré, renouvellement serveur en cours (re-validation de
+      // l'avis) : ne PAS annoncer un déblocage qui n'existe pas encore.
+      return (
+        <div className="mt-6 rounded-2xl border border-border bg-white p-4 text-sm text-ink/80">
+          ⏳ Nous re-vérifions votre avis — cette page se met à jour toute
+          seule d&apos;ici quelques minutes.
+        </div>
+      );
+    }
     return (
       <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
         ✅ Merci pour votre avis ! La roue se débloque…

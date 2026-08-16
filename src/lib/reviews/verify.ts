@@ -36,6 +36,15 @@ export const REQUEST_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
 /** Intervalle minimum entre deux re-checks API (settle-on-read borné). */
 export const RECHECK_MIN_INTERVAL_MS = 2 * 60 * 1000; // 2 min
 
+/**
+ * Tolérance d'horodatage pour la RE-VALIDATION (« l'avis existe-t-il
+ * toujours ? ») : le createTime Google (précision ns) transite par un
+ * timestamptz Postgres (précision µs) — l'égalité stricte peut casser
+ * d'une fraction de seconde à la re-sérialisation. Le nom normalisé doit
+ * matcher AUSSI : la fenêtre ne crée pas d'ambiguïté réelle.
+ */
+export const REVALIDATION_MATCH_SLACK_MS = 2000;
+
 export function normalizeName(raw: string): string {
   return (
     raw

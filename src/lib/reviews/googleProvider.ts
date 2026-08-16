@@ -17,12 +17,20 @@
  * Endpoint : la liste des avis vit encore sur l'API v4
  * (mybusiness.googleapis.com/v4/accounts/{a}/locations/{l}/reviews) —
  * les nouvelles surfaces Business Profile ne couvrent pas les avis à ce
- * jour. Tri par updateTime desc, pageSize 50 : suffisant, on ne matche
- * que des avis récents.
+ * jour. Tri par updateTime desc. Deux lectures aux contrats distincts :
+ *   - listRecentReviews : 1 page de 50 — suffisant UNIQUEMENT pour le
+ *     matching d'avis fraîchement publiés (et le snapshot anti-vol) ;
+ *   - listReviewsCovering(untilMs) : PAGINE jusqu'à preuve de couverture
+ *     (min(updateTime) < untilMs, ou fiche épuisée) — seule lecture
+ *     autorisée à fonder un « avis supprimé » (re-validation).
  */
 
 import { createSign } from "node:crypto";
-import type { PublishedReview, ReviewProvider } from "./provider";
+import type {
+  CoveredReviews,
+  PublishedReview,
+  ReviewProvider,
+} from "./provider";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/business.manage";
@@ -102,19 +110,29 @@ type GbpReview = {
   name?: string;
   reviewer?: { displayName?: string };
   createTime?: string;
+  updateTime?: string;
 };
+
+/** Plafond de pagination de listReviewsCovering (500 avis). Atteint sans
+ * preuve de couverture → complete=false, l'appelant ne conclut RIEN. */
+const COVERING_MAX_PAGES = 10;
+
+function versPublishedReviews(brut: GbpReview[]): PublishedReview[] {
+  return brut
+    .map((r) => ({
+      id: r.reviewId ?? r.name ?? "",
+      authorName: r.reviewer?.displayName ?? "",
+      publishedAt: r.createTime ?? "",
+    }))
+    .filter((r) => r.id && r.authorName && r.publishedAt);
+}
 
 export class GoogleReviewProvider implements ReviewProvider {
   readonly name = "google-business-profile";
 
-  async listRecentReviews(): Promise<PublishedReview[]> {
-    if (
-      reviewsCache &&
-      Date.now() - reviewsCache.fetchedAtMs < REVIEWS_CACHE_MS
-    ) {
-      return reviewsCache.avis;
-    }
-
+  private async fetchPage(
+    pageToken?: string,
+  ): Promise<{ reviews: GbpReview[]; nextPageToken: string | null }> {
     const account = process.env.GBP_ACCOUNT_ID;
     const location = process.env.GBP_LOCATION_ID;
     if (!account || !location) {
@@ -126,7 +144,8 @@ export class GoogleReviewProvider implements ReviewProvider {
     const token = await accessToken();
     const url =
       `https://mybusiness.googleapis.com/v4/accounts/${encodeURIComponent(account)}` +
-      `/locations/${encodeURIComponent(location)}/reviews?pageSize=50&orderBy=updateTime%20desc`;
+      `/locations/${encodeURIComponent(location)}/reviews?pageSize=50&orderBy=updateTime%20desc` +
+      (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : "");
     const res = await fetch(url, {
       headers: { authorization: `Bearer ${token}` },
       cache: "no-store",
@@ -135,16 +154,51 @@ export class GoogleReviewProvider implements ReviewProvider {
     if (!res.ok) {
       throw new Error(`GBP reviews: ${res.status} ${await res.text()}`);
     }
-    const body = (await res.json()) as { reviews?: GbpReview[] };
+    const body = (await res.json()) as {
+      reviews?: GbpReview[];
+      nextPageToken?: string;
+    };
+    return {
+      reviews: body.reviews ?? [],
+      nextPageToken: body.nextPageToken ?? null,
+    };
+  }
 
-    const avis = (body.reviews ?? [])
-      .map((r) => ({
-        id: r.reviewId ?? r.name ?? "",
-        authorName: r.reviewer?.displayName ?? "",
-        publishedAt: r.createTime ?? "",
-      }))
-      .filter((r) => r.id && r.authorName && r.publishedAt);
+  async listRecentReviews(): Promise<PublishedReview[]> {
+    if (
+      reviewsCache &&
+      Date.now() - reviewsCache.fetchedAtMs < REVIEWS_CACHE_MS
+    ) {
+      return reviewsCache.avis;
+    }
+    const { reviews } = await this.fetchPage();
+    const avis = versPublishedReviews(reviews);
     reviewsCache = { avis, fetchedAtMs: Date.now() };
     return avis;
+  }
+
+  async listReviewsCovering(untilMs: number): Promise<CoveredReviews> {
+    // Pas de cache : appelée UNIQUEMENT par la re-validation, déjà
+    // throttlée à 2 min par client côté route — et une conclusion
+    // « supprimé » ne doit jamais reposer sur une photo vieille de 60 s.
+    const cumul: GbpReview[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < COVERING_MAX_PAGES; page++) {
+      const { reviews, nextPageToken } = await this.fetchPage(pageToken);
+      cumul.push(...reviews);
+      // Couverture prouvée : la page contient un updateTime < untilMs —
+      // tout avis créé à untilMs ou après (updateTime >= createTime)
+      // serait déjà apparu dans les pages lues.
+      const plancherAtteint = reviews.some((r) => {
+        const t = new Date(r.updateTime ?? r.createTime ?? "").getTime();
+        return Number.isFinite(t) && t < untilMs;
+      });
+      if (plancherAtteint || !nextPageToken) {
+        return { avis: versPublishedReviews(cumul), complete: true };
+      }
+      pageToken = nextPageToken;
+    }
+    // Plafond atteint sans preuve : l'appelant ne doit RIEN conclure.
+    return { avis: versPublishedReviews(cumul), complete: false };
   }
 }

@@ -10,7 +10,11 @@
  * choisit que si REVIEW_GATE_MODE=mock, posé uniquement en préprod/QA.
  */
 
-import type { PublishedReview, ReviewProvider } from "./provider";
+import type {
+  CoveredReviews,
+  PublishedReview,
+  ReviewProvider,
+} from "./provider";
 
 export class MockReviewProvider implements ReviewProvider {
   readonly name = "mock";
@@ -30,5 +34,10 @@ export class MockReviewProvider implements ReviewProvider {
           typeof r?.publishedAt === "string",
       ),
     );
+  }
+
+  async listReviewsCovering(): Promise<CoveredReviews> {
+    // Les fixtures SONT la fiche entière → couverture toujours complète.
+    return { avis: await this.listRecentReviews(), complete: true };
   }
 }

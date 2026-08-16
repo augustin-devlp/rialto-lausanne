@@ -98,8 +98,9 @@ export default function RoueClient() {
   // Garde anti-boucle du gate avis (relecture 14.08) : le refresh
   // d'availability démonte ReviewGateApi (spinner plein écran) et détruit
   // son useRef interne — la garde doit vivre ICI, chez le parent qui
-  // survit. Sans elle : verified → refresh → remontage → re-GET →
-  // re-notification → refresh… à l'infini si l'état reste B.
+  // survit au remontage. One-shot structurel : l'enfant ne notifie que
+  // sur claim_actif=true (un claim VALIDE existe), donc availability
+  // bascule réellement — un second déclenchement ne serait qu'une boucle.
   const gateDejaRafraichi = useRef(false);
   const onGateVerified = useCallback(() => {
     if (gateDejaRafraichi.current || !customerId) return;

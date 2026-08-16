@@ -51,12 +51,35 @@
    requête bascule en `manual_pending` (le restaurateur tranche, les
    re-checks s'arrêtent — c'est aussi l'issue pour la victime d'un vol).
 7. Requête expirée après 7 jours de re-checks infructueux.
-8. Renouvellement : `verified`/`manual_approved` ne bloque une nouvelle
-   déclaration QUE tant que le claim lié est valide — claim expiré =
-   re-déclaration possible. ⚠️ Limite structurelle : Google n'autorise
-   qu'**UN avis par personne et par fiche, à vie** (createTime ne bouge
-   jamais) — un client fidèle ne peut pas produire un « nouvel avis » à
-   chaque cycle. Décision produit en attente (cf. rapport 15.08).
+8. Renouvellement (**décision Augustin 15.08 — implémenté**) : Google
+   n'autorise qu'UN avis par personne et par fiche, à vie — au cycle
+   suivant (claim expiré), le gate **RE-VALIDE que l'avis déjà vérifié
+   existe toujours** au lieu d'exiger un avis neuf (settle-on-read,
+   ancrage strict nom normalisé + createTime original, tolérance 2 s) :
+   - toujours en ligne → **nouveau claim** (`review_time = now()`,
+     pattern du claim manuel — la contrainte UNIQUE reste saine) ; le
+     `matched_review_time` de la requête n'est **jamais réécrit**, c'est
+     l'ancrage permanent des re-validations futures ;
+   - **suppression PROUVÉE** → la requête passe `expired`, le gate
+     repart de zéro (après suppression, Google autorise un nouvel
+     avis). ⚠️ « Supprimé » est une INFÉRENCE : elle n'est valable que
+     sur `listReviewsCovering` (pagination avec **preuve de
+     couverture** — jusqu'à `min(updateTime) < ancrage` ou fiche
+     épuisée, plafond 10 pages) ET liste non vide. Une absence dans la
+     liste tronquée des 50 récents, une liste vide ou une couverture
+     non prouvée = **non concluant** → aucune écriture, on réessaie
+     (relecture 15.08 : « absence ≠ suppression ») ;
+   - `manual_approved` n'a pas d'ancrage API → pas de renouvellement
+     automatique : re-déclaration ou nouvelle validation manuelle ;
+   - ancrage établi **sans snapshot** (`seen_review_ids` null, provider
+     injoignable à la déclaration) → pas de renouvellement automatique
+     non plus : un avis capté par un tiers dans la tolérance 10 min
+     deviendrait sinon une rente à vie (relecture 15.08).
+   Le payload GET/POST expose `claim_actif` pour verified/manual_approved
+   — l'UI n'annonce « débloqué » que sur `true` ; `false` = écran
+   « re-vérification en cours » + re-checks (90 s, throttle serveur
+   2 min). Aucun impact DDL : statuts et colonnes RV1 inchangés (le
+   statut `expired` couvre aussi « avis supprimé / gate remis à zéro »).
 
 ## Divergence des deux variables de mode
 

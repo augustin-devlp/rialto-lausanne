@@ -38,6 +38,7 @@ import {
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { track } from "@/lib/tracking";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
+import { comptePizzasPanier } from "@/lib/eta/pizzas";
 
 type Props = {
   categories: MenuCategory[];
@@ -61,9 +62,10 @@ export default function MenuClient({ categories, items, options }: Props) {
   );
   const [cart, setCart] = useState<CartItem[]>([]);
   const [address, setAddress] = useState<QualifiedAddress | null>(null);
-  // Fourchette ETA vivante (même moteur que checkout + suivi) — le figé
-  // de zone n'est qu'un repli réseau (moteur de statuts, 08.08.2026).
-  const etaLive = useEtaRange(address?.postal_code);
+  // Fourchette ETA vivante (même moteur que checkout + suivi), alimentée
+  // par le compte de pizzas du panier — le figé de zone n'est qu'un repli
+  // réseau (refonte par ressource, 18.08.2026).
+  const etaLive = useEtaRange(address?.postal_code, comptePizzasPanier(cart));
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(
     new Set(),

@@ -59,7 +59,7 @@ function plancherStatut(
   }
 }
 
-const ORDRE: Record<PhaseKey, number> = {
+export const ORDRE: Record<PhaseKey, number> = {
   waiting: 0,
   confirmed: 1,
   preparing: 2,
@@ -116,11 +116,18 @@ export function derivePhase(input: {
     fulfillmentType === "pickup" ? eta.kitchenMinutes : eta.maxMinutes;
   const remaining = Math.max(0, finMax - elapsedMin);
 
-  // Dérivation temporelle.
+  // Dérivation temporelle. La frontière « En préparation » →
+  // « En livraison » est le DÉPART estimé (max(cuisine, retour livreur),
+  // eta.departMinutes) — pas la fin de cuisine seule : quand le livreur
+  // est en course, la pizza attend sur le comptoir et la commande est
+  // toujours « En préparation » aux yeux du client (relecture 18.08).
   let horloge: PhaseKey;
   if (elapsedMin < CONFIRMED_PHASE_MIN) {
     horloge = "confirmed";
-  } else if (elapsedMin < eta.kitchenMinutes) {
+  } else if (
+    elapsedMin <
+    (fulfillmentType === "pickup" ? eta.kitchenMinutes : eta.departMinutes)
+  ) {
     horloge = "preparing";
   } else if (fulfillmentType === "pickup") {
     horloge = "ready";

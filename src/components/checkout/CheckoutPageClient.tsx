@@ -41,6 +41,7 @@ import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
+import { comptePizzasPanier } from "@/lib/eta/pizzas";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
 import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 import { readAttribution } from "@/lib/attribution";
@@ -211,9 +212,10 @@ export default function CheckoutPageClient({
   // (fdRule null), on affiche le fee de zone : jamais une gratuité
   // inventée qui serait reprise au POST.
   const fdRule = useFreeDeliveryRule();
-  // Moteur de statuts (08.08.2026) : fourchette ETA VIVANTE (même moteur
-  // que la page de suivi). Le figé de zone n'est plus qu'un repli réseau.
-  const etaLive = useEtaRange(address?.postal_code);
+  // Moteur de statuts (refonte par ressource 18.08.2026) : fourchette ETA
+  // VIVANTE (même moteur que la page de suivi), alimentée par le compte de
+  // pizzas du panier. Le figé de zone n'est plus qu'un repli réseau.
+  const etaLive = useEtaRange(address?.postal_code, comptePizzasPanier(cart));
   const deliveryFee = fdRule
     ? effectiveDeliveryFee(subtotal, zoneFee, fdRule)
     : zoneFee;
@@ -412,7 +414,12 @@ export default function CheckoutPageClient({
   async function addUpsellItem(menuItemId: string) {
     try {
       const res = await fetch(`/api/rialto/menu-item/${menuItemId}`);
-      let item: { id: string; name: string; price: number } | null = null;
+      let item: {
+        id: string;
+        name: string;
+        price: number;
+        category?: string | null;
+      } | null = null;
       if (res.ok) {
         item = (await res.json()).item ?? null;
       }
@@ -430,7 +437,9 @@ export default function CheckoutPageClient({
           notes: "",
           unit_price: item.price,
           subtotal: item.price,
-          category: null,
+          // Catégorie désormais renvoyée par l'API menu-item (compte de
+          // pizzas ETA + item_category tracking, refonte 18.08).
+          category: item.category ?? null,
         },
       ]);
       setCart(next);

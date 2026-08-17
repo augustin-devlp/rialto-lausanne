@@ -42,10 +42,20 @@ export async function GET(
 
   // Verify menu items still exist and get their current price
   const ids = items.map((i) => i.menu_item_id).filter(Boolean) as string[];
-  const { data: menuItems } = await admin
+  // category : nécessaire au compte de pizzas du moteur ETA (refonte
+  // 18.08 — une re-commande sans catégories passait pour « zéro pizza »
+  // et sous-promettait de 20+ min).
+  const { data: menuItems, error: erreurMenu } = await admin
     .from("menu_items")
-    .select("id, name, price, is_available")
+    .select("id, name, price, is_available, menu_categories ( name )")
     .in("id", ids);
+  if (erreurMenu) {
+    // Sans cette garde, un échec de l'embed classait TOUS les articles
+    // « indisponibles » et le client lisait un message métier FAUX
+    // (« aucun des plats n'est plus disponible ») — relecture 18.08.
+    console.error("[reorder] lecture menu en échec", erreurMenu);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
 
   const availableMap = new Map(
     (menuItems ?? []).map((m) => [m.id as string, m]),
@@ -61,6 +71,7 @@ export async function GET(
     notes: string;
     unit_price: number;
     subtotal: number;
+    category: string | null;
   };
 
   const cartItems: CartItemDTO[] = [];
@@ -90,6 +101,14 @@ export async function GET(
       .map((o) => `${o.group}:${o.name}`)
       .sort()
       .join("|")}::${it.notes ?? ""}`;
+    const categorieRel = (
+      menuItem as unknown as {
+        menu_categories?: { name?: string | null } | { name?: string | null }[];
+      }
+    ).menu_categories;
+    const categorie = Array.isArray(categorieRel)
+      ? (categorieRel[0]?.name ?? null)
+      : (categorieRel?.name ?? null);
     cartItems.push({
       key,
       menu_item_id: it.menu_item_id as string,
@@ -100,6 +119,7 @@ export async function GET(
       notes: (it.notes as string) ?? "",
       unit_price: unitPrice,
       subtotal: unitPrice * Number(it.quantity ?? 1),
+      category: categorie,
     });
   }
 

@@ -68,9 +68,12 @@
       tick 30 s, zéro écriture. Vérifier aussi la fourchette live du
       checkout (« 35–45 min ») et le repli figé (« ~40 min ») hors ligne.
 - [ ] Recalibrage septembre : toutes les constantes du moteur vivent dans
-      `src/lib/eta/constants.ts` (file +4/cmd cap 20, aller-retour
-      livreur, rush, plafond « moins d'1h ») — les ajuster sur les
-      données réelles des premières semaines.
+      `src/lib/eta/constants.ts` — modèle PAR RESSOURCE (18.08 : paliers
+      pizzas, extraction trajet/zone −25, prior rush pondérée, retour
+      livreur par zone de course, chevauchement max()). Les ajuster sur
+      la vérité terrain du TAP CLIENT (« commande arrivée ? ») — sans ces
+      données, aucun recalibrage fiable. Réponses du restaurateur aux 5
+      questions de calibration à reporter dans les constantes.
 
 ## Échéances vivantes (état au 13.08 soir)
 

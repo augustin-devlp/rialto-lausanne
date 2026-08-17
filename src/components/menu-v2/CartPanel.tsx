@@ -85,8 +85,6 @@ export default function CartPanel({
       const item = body.item;
       if (!item) return;
       // Helper unique Lot D : merge + écriture + add_to_cart tracké.
-      // Catégorie inconnue ici (l'API menu-item ne renvoie pas le nom) →
-      // l'événement part sans item_category, accepté.
       const next = addLinesToCart([
         {
           key: cartLineKey(item.id, [], ""),
@@ -98,7 +96,9 @@ export default function CartPanel({
           notes: "",
           unit_price: Number(item.price),
           subtotal: Number(item.price),
-          category: null,
+          // Catégorie renvoyée par l'API menu-item depuis la refonte
+          // 18.08 (compte de pizzas ETA + item_category tracking).
+          category: (item.category as string | null) ?? null,
         },
       ]);
       setCart(next);

@@ -18,7 +18,12 @@ import { writeCustomerSession } from "@/lib/customerSession";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
 import StampRow from "@/components/loyalty/StampRow";
 import { computeEtaRange, formatEtaRange, formatEtaRemaining } from "@/lib/eta/eta";
-import { derivePhase, type PhaseKey } from "@/lib/eta/phase";
+import {
+  derivePhase,
+  ORDRE,
+  type DerivedPhase,
+  type PhaseKey,
+} from "@/lib/eta/phase";
 import { PHASE_TICK_MS } from "@/lib/eta/constants";
 
 type OrderStatus =
@@ -36,10 +41,12 @@ type OrderStatus =
  */
 type EtaIntrants = {
   accepted_at: string | null;
-  queue_ahead: number;
-  in_course: number;
+  pizzas_commande: number;
+  pizzas_en_cuisine_devant: number;
+  retour_livreur_minutes: number;
+  poids_prior: number;
+  latence: "rapide" | "lente" | null;
   zone_minutes: number | null;
-  prep_base_minutes: number;
 };
 
 type OrderData = {
@@ -232,6 +239,13 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             ...prev,
             ...newOrder,
             items: mergedItems,
+            // Même philosophie que les items : un payload sans intrants
+            // (Realtime, ou collecte en échec côté poll) ne doit pas
+            // écraser les intrants connus par null (relecture 18.08 —
+            // le stepper retombait sur « Confirmée » sans compte à
+            // rebours le temps d'un poll).
+            eta_intrants:
+              (newOrder as OrderData).eta_intrants ?? prev.eta_intrants,
           } as OrderData;
         });
       }
@@ -250,9 +264,20 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             : ({ ...prev, eta_intrants: next } as OrderData),
         );
       }
-      if (newStatus === "completed" || newStatus === "cancelled") {
+      if (newStatus === "completed") {
         console.log(`[timeline] terminal status ${newStatus} — stopping`);
         stop();
+      }
+      if (newStatus === "cancelled") {
+        // Le détour caisse cancelled→accepted EXISTE (R-2026-043) : on
+        // coupe le polling (coût) mais on GARDE le canal realtime (coût
+        // nul) — sans lui, une ré-acceptation laissait le client sur
+        // « Annulée » à vie (relecture 18.08).
+        console.log("[timeline] cancelled — poll off, realtime conservé");
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
       }
     };
 
@@ -364,10 +389,12 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   const eta = intrants
     ? computeEtaRange({
         fulfillmentType: fulfillment,
-        prepBaseMinutes: intrants.prep_base_minutes,
+        pizzasCommande: intrants.pizzas_commande,
+        pizzasEnCuisineDevant: intrants.pizzas_en_cuisine_devant,
         zoneMinutes: intrants.zone_minutes,
-        queueAhead: intrants.queue_ahead,
-        inCourse: intrants.in_course,
+        retourLivreurMinutes: intrants.retour_livreur_minutes,
+        poidsPrior: intrants.poids_prior,
+        latence: intrants.latence,
         // ANCRÉ sur l'acceptation, pas sur maintenant : un ETA recalculé
         // avec l'heure courante fait SAUTER le rush à 12h/19h pile — le
         // stepper reculait de « En livraison » à « En préparation » sous
@@ -377,24 +404,57 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         now: intrants.accepted_at ? new Date(intrants.accepted_at) : new Date(),
       })
     : null;
-  const phase = derivePhase({
+  const phaseBrute = derivePhase({
     status: order.status,
     fulfillmentType: fulfillment,
     acceptedAt: intrants?.accepted_at ?? null,
     eta,
     now: new Date(),
   });
+  // CLIQUET D'AFFICHAGE (contre-passe 18.08) : le filet universel de
+  // monotonie. L'ancrage serveur rend les intrants quasi déterministes,
+  // mais des résidus subsistent (statut d'une autre commande muté entre
+  // deux polls, flux récent, repli d'ancre) — quel que soit le serveur,
+  // la phase AFFICHÉE n'a pas le droit de reculer ni le restant de
+  // remonter. Exception : « Annulée » passe toujours (vraie annulation).
+  const cliquet = useRef<{ ordre: number; phase: DerivedPhase } | null>(null);
+  let phase = phaseBrute;
+  if (phaseBrute.key === "cancelled") {
+    cliquet.current = null;
+  } else {
+    const precedent = cliquet.current;
+    if (precedent && ORDRE[phaseBrute.key] < precedent.ordre) {
+      phase = precedent.phase; // recul interdit — on garde l'avancée
+    } else {
+      cliquet.current = { ordre: ORDRE[phase.key], phase };
+    }
+  }
+  // Restant : jamais plus haut que le minimum déjà montré (plateau puis
+  // reprise si l'estimation serveur saute vers le haut).
+  const remainingPlancher = useRef<number>(Infinity);
+  let remainingAffiche = phase.remainingMinutes;
+  if (remainingAffiche != null) {
+    remainingAffiche = Math.min(remainingAffiche, remainingPlancher.current);
+    remainingPlancher.current = remainingAffiche;
+  }
   const steps = fulfillment === "pickup" ? STEPS_PICKUP : STEPS_DELIVERY;
   const currentStep = phase.stepIndex;
   // Ligne d'estimation : fourchette prudente avant/pendant, resserrée à
-  // l'approche, rien une fois livrée/prête ou annulée.
+  // l'approche, rien une fois livrée/prête ou annulée. Pré-acceptation
+  // pickup : formatEtaRemaining(cuisine) — la MÊME table que le suivi
+  // post-acceptation (le libellé livraison bandait une fourchette de
+  // trajet qui n'existe pas en retrait, relecture 18.08).
   const etaLabel =
     phase.key === "delivered" || phase.key === "ready" || phase.key === "cancelled"
       ? null
-      : phase.remainingMinutes != null
-        ? formatEtaRemaining(phase.remainingMinutes)
+      : remainingAffiche != null
+        ? formatEtaRemaining(remainingAffiche)
         : eta
-          ? `${formatEtaRange(eta)} après confirmation`
+          ? `${
+              fulfillment === "pickup"
+                ? formatEtaRemaining(eta.kitchenMinutes)
+                : formatEtaRange(eta)
+            } après confirmation`
           : null;
 
   // Phase dérivée TERMINALE (« Livrée »/« Prête ») : plus rien à attendre
@@ -643,7 +703,11 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             {etaLabel && !isCancelled && (
               <p className="mb-4 rounded-xl bg-cream p-3 text-sm text-ink">
                 <span aria-hidden="true">🕒</span>{" "}
-                {fulfillment === "pickup" ? "Prête dans" : "Livraison estimée"}{" "}
+                {fulfillment === "pickup"
+                  ? etaLabel.startsWith("d'une")
+                    ? "Prête" // « Prête d'une minute à l'autre » — pas « dans »
+                    : "Prête dans"
+                  : "Livraison estimée"}{" "}
                 <strong>{etaLabel}</strong>
               </p>
             )}

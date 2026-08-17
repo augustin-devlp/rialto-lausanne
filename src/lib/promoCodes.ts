@@ -227,10 +227,16 @@ export function computeDiscount(
     };
   }
   // free_item : ne réduit pas le total (l'article offert est ajouté séparément)
+  // Les labels issus de la roue contiennent souvent déjà « offert »
+  // (« Dessert offert ») : ne pas doubler le suffixe (QA e2e 17.08 :
+  // « Dessert offert offert » affiché au checkout).
+  const label = row.free_item_label?.trim();
   return {
     discount_amount: 0,
-    message: row.free_item_label
-      ? `${row.free_item_label} offert`
+    message: label
+      ? /offert/i.test(label)
+        ? label
+        : `${label} offert`
       : "Article offert",
   };
 }

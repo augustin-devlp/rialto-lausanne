@@ -7,6 +7,7 @@ import {
 } from "@/lib/promoCodes";
 import { renderTemplate, TEMPLATE_META } from "@/lib/smsTemplates";
 import { sendSms } from "@/lib/brevo";
+import { logSms } from "@/lib/smsLogging";
 import { computeSpinAvailability } from "@/lib/spinAvailability";
 
 export const dynamic = "force-dynamic";
@@ -325,6 +326,7 @@ export async function POST(req: NextRequest) {
       });
 
       // Cascade sender : Rialto → Stampify si FR
+      let senderUtilise = "Rialto";
       try {
         await sendSms(phone, content, "Rialto");
         console.log("[spin] SMS wheel_prize_code sent (Rialto)", {
@@ -336,12 +338,35 @@ export async function POST(req: NextRequest) {
         if (msg.toLowerCase().includes("sender") || msg.includes("400")) {
           console.warn("[spin] Rialto sender refusé, retry Stampify", msg);
           await sendSms(phone, content, "Stampify");
+          senderUtilise = "Stampify";
         } else {
           throw err;
         }
       }
+      // Journalisation maison (pattern birthday) : ce chemin n'écrivait
+      // JAMAIS sms_logs — la QA e2e du 17.08 ne pouvait pas prouver
+      // l'envoi autrement qu'aux logs Vercel.
+      await logSms({
+        restaurant_id: RESTAURANT_ID,
+        customer_id: customerId,
+        phone,
+        template_key: "wheel_prize_code",
+        sender_used: senderUtilise,
+        content,
+        status: "sent",
+      });
     } catch (err) {
       console.error("[spin] SMS send failed", err);
+      await logSms({
+        restaurant_id: RESTAURANT_ID,
+        customer_id: customerId,
+        phone,
+        template_key: "wheel_prize_code",
+        sender_used: "Rialto",
+        content: "",
+        status: "failed",
+        error_message: err instanceof Error ? err.message : String(err),
+      });
     }
   })();
 

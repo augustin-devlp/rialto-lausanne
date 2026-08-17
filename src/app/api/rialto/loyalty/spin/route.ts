@@ -23,6 +23,8 @@ type Segment = {
   discount_type?: PromoDiscountType;
   discount_value?: number;
   free_item_label?: string;
+  /** Libellé du gain (config dashboard) — VIDE sur les cases perdantes. */
+  reward?: string;
   /** `true` pour les segments "Perdu / Dommage" — aucun code n'est généré. */
   is_loss?: boolean;
 };
@@ -30,11 +32,20 @@ type Segment = {
 /** Détecte si un segment est un "perdu" — heuristique sur le label. */
 function isLosingSegment(seg: Segment): boolean {
   if (seg.is_loss === true) return true;
-  const lbl = (seg.label || "").toLowerCase();
+  // Un reward déclaré explicitement VIDE = case perdante (config réelle
+  // Rialto : les segments « Réessayer » ont reward: ""). Piège e2e du
+  // 17.08 : « Réessayer » passait l'heuristique label → code free_item
+  // absurde libellé « Réessayer ».
+  if (typeof seg.reward === "string" && seg.reward.trim() === "") return true;
+  const lbl = (seg.label || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
   return (
     lbl.includes("perdu") ||
     lbl.includes("dommage") ||
     lbl.includes("retente") ||
+    lbl.includes("reessa") ||
     lbl === "rien"
   );
 }
@@ -283,8 +294,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Envoi SMS (template wheel_prize_code, non-bloquant)
-  void (async () => {
+  // Envoi SMS (template wheel_prize_code). ATTENDU avant le return :
+  // en serverless, un fire-and-forget lancé après la réponse est gelé
+  // avec la lambda — aucun SMS de roue n'était jamais parti (constat
+  // e2e 17.08, sms_logs vide). L'échec reste non-bloquant (try/catch) :
+  // la réponse part avec le code même si le SMS échoue.
+  await (async () => {
     try {
       const { data: tmpl } = await admin
         .from("sms_templates")

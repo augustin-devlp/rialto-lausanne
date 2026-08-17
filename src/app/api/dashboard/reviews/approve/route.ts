@@ -158,14 +158,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  const { error: majErr } = await sb
+  // Garde de statut + jeton (réserve caisse n°3, 17.08) : croisé avec la
+  // voie API, un update par id seul pouvait écraser un verified
+  // fraîchement gagné — et détruire l'ancrage matched_review_time.
+  const { data: classee, error: majErr } = await sb
     .from("review_verification_requests")
     .update({
       status: "manual_approved",
       matched_review_time: maintenant,
       claim_id: claim.id as string,
     })
-    .eq("id", requete.id);
+    .eq("id", requete.id)
+    .eq("status", "manual_pending")
+    .eq("last_checked_at", jeton)
+    .select("id")
+    .maybeSingle();
   if (majErr) {
     // Le claim EST créé (la roue du client est réellement débloquée —
     // spinAvailability ne lit que les claims), mais la ligne reste
@@ -179,6 +186,18 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "claim_cree_maj_ko" },
       { status: 500 },
     );
+  }
+  if (!classee) {
+    // 0 ligne sans erreur : la voie API a verrouillé la requête pendant
+    // l'approve (verified frais, ancrage posé) — ne JAMAIS l'écraser. Le
+    // client est réellement débloqué (par l'API) ; le claim manuel créé
+    // reste un doublon inoffensif (le déblocage teste l'existence), on
+    // le loggue pour le ménage.
+    console.warn(
+      "[dashboard/reviews] requête vérifiée par l'API pendant l'approve — claim manuel en doublon",
+      { requete: requete.id, claim: claim.id },
+    );
+    return NextResponse.json({ ok: true, note: "verifie_par_api" });
   }
 
   console.log("[dashboard/reviews] ✅ validation manuelle", {

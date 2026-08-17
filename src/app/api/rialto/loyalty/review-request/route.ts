@@ -356,11 +356,21 @@ async function tenteRevalidation(
   requete: RequeteRow,
 ): Promise<Revalidation> {
   if (requete.claim_id) {
-    const { data: claim } = await sb
+    const { data: claim, error: claimLectureErr } = await sb
       .from("google_review_claims")
       .select("expires_at")
       .eq("id", requete.claim_id)
       .maybeSingle();
+    if (claimLectureErr) {
+      // Erreur transitoire ≠ claim absent (réserve caisse n°2, 17.08) :
+      // conclure « expiré » ici mènerait à une écriture destructive
+      // pendant que le claim est peut-être ACTIF. Non concluant → rien.
+      console.warn(
+        "[review-gate] lecture claim en échec (re-validation)",
+        claimLectureErr,
+      );
+      return { requete, claimActif: false };
+    }
     if (
       claim &&
       new Date(claim.expires_at as string).getTime() > Date.now()
@@ -596,11 +606,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Une requête VIVANTE à la fois : pending/manual_pending → renvoyée.
-    if (row && ["pending", "manual_pending"].includes(row.status)) {
-      return publie(
-        row.status === "pending" ? await tenteVerification(sb, row) : row,
-      );
+    // Une requête VIVANTE à la fois : manual_pending → renvoyée.
+    if (row?.status === "manual_pending") return publie(row);
+    if (row?.status === "pending") {
+      const apres = await tenteVerification(sb, row);
+      // Settle 'expired' au POST (réserve caisse n°1, 17.08) : le client
+      // vient de soumettre un nom — la NOUVELLE déclaration part dans la
+      // MÊME réponse (le bloc d'insert est en aval). Sans ça : premier
+      // POST post-expiration muet, le client devait re-soumettre.
+      if (apres.status !== "expired") {
+        return publie(apres, apres.status === "verified" ? true : undefined);
+      }
     }
 
     // verified/manual_approved : claim valide → bloquant ; claim expiré

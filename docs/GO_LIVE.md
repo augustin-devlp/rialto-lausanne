@@ -15,10 +15,18 @@
 
 ## Tests en attente de leur créneau
 
-- [ ] **Roue e2e** : disponible SAMEDI/DIMANCHE uniquement — spin réel →
-      code `spin_wheel` en base → SMS `wheel_prize_code` reçu → code
-      validé au checkout. (Premier créneau : samedi 08.08 ; un claim
-      d'avis expiré devra être recréé le jour J.)
+- [x] **Roue e2e** : ✅ FAIT 17.08 (lundi ajouté temporairement puis
+      retiré, `allowed_weekdays` de retour à `[6,7]`) — gate B → claim
+      dégradé → spin gagnant « Dessert offert » → SMS `wheel_prize_code`
+      REÇU (vouvoyé) → code validé au checkout → spin perdant sans code.
+      2 bugs trouvés et fixés : case perdante « Réessayer » générait un
+      code (7c742cd) ; SMS fire-and-forget jamais parti en serverless
+      (7c742cd) + journalisation `sms_logs` posée (f274619).
+      ⚠️ Les JOURS de la roue (`spin_wheels.allowed_weekdays`, ISO
+      1=lundi…7=dimanche) sont un réglage **BASE-ONLY : aucun écran
+      dashboard ne l'écrit** — toute modification passe par un UPDATE
+      en base (c'est pourquoi l'« ajout du lundi » via l'UI du 17.08
+      n'avait pas pris : l'écran n'existe pas).
 - [x] **Push** : ✅ FAIT 04.08 — 1 abonnement actif en base, envoi
       composer reçu sur le téléphone d'Augustin, ligne `push_logs`
       (recipients 1, sent 1, failed 0).
@@ -71,8 +79,8 @@
       seedée au 14.08, CRON_SECRET confirmée posée par Augustin. Attendu :
       code −20 % + SMS +33…599 + ligne sms_logs. Si silence → diagnostic
       (la secret étant posée, la cause est ailleurs).
-- [ ] **Roue e2e : samedi 16.08** (week-end only) — claim dégradé + spin
-      + validation checkout, en autonomie (GO Augustin 13.08).
+- [x] **Roue e2e : ✅ FAIT lundi 17.08** (créneau week-end manqué,
+      rattrapé par ajout temporaire du lundi — détail section « Tests »).
 - [ ] **Fenêtre Studio moteur de statuts** : à faire par Augustin d'ici
       le gel (aucune trace en base au 13.08 — dernière commande = 042 du
       03.08).

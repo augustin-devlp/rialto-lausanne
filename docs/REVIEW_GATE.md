@@ -58,9 +58,9 @@
 7. Requête expirée après 7 jours de re-checks infructueux. L'expiration
    est du settle-on-read : elle n'est CONSTATÉE qu'au GET/POST suivant —
    elle ne joue donc pas en mode déclaratif (routes en 503, les pending
-   restent dormantes). Et le premier POST après la fenêtre CONSTATE
-   l'expiration (il renvoie la requête `expired`) : c'est la soumission
-   SUIVANTE du formulaire qui crée la nouvelle déclaration.
+   restent dormantes). Un POST qui constate l'expiration enchaîne la
+   NOUVELLE déclaration dans la même réponse (réserve caisse n°1 levée
+   le 17.08 — plus de premier POST muet).
 8. Renouvellement (**décision Augustin 15.08 — implémenté**) : Google
    n'autorise qu'UN avis par personne et par fiche, à vie — au cycle
    suivant (claim expiré), le gate **RE-VALIDE que l'avis déjà vérifié
@@ -113,6 +113,16 @@ initial après verdict caisse KO du 15.08 (7 points, dont le bloquant
 RLS). À exécuter via apply_migration APRÈS retour de navette caisse.
 Tant qu'elle n'est pas exécutée, les routes répondent 503
 `rv1_non_executee` (et le mode déclaratif ne les appelle pas).
+
+## Backlog post-gel (réserves caisse non bloquantes, 17.08)
+
+- Soupape du `verified` perpétuellement non concluant (couverture jamais
+  prouvée → re-checks sans fin, UI « re-vérification » à demeure).
+- TOCTOU de `flag_manual` (lit puis écrit sans garde de version).
+- Nuance doc : l'ancrage `matched_review_time` d'un `manual_approved`
+  est un horodatage humain, pas un createTime Google.
+- RPC transactionnelle claim+update (ferme les doublons résiduels des
+  fenêtres crash — aujourd'hui logués et inoffensifs).
 
 ## Procédure d'accès Google (en cours, ~1-2 semaines)
 

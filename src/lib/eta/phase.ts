@@ -72,15 +72,29 @@ export const ORDRE: Record<PhaseKey, number> = {
 export function derivePhase(input: {
   status: string;
   fulfillmentType: "pickup" | "delivery";
-  /** ISO — MIN(changed_at) new→accepted du trigger ; null si jamais acceptée. */
+  /** ISO — DERNIÈRE transition →accepted du trigger ; null si jamais acceptée. */
   acceptedAt: string | null;
   eta: EtaRange | null;
   now: Date;
+  /** 3e intrant (TAP client, 18.08) : le client a confirmé la remise —
+   * plancher « Livrée »/« Prête », FORWARD-ONLY (un plancher n'est
+   * jamais moins avancé que l'horloge, la monotonie tient). */
+  confirmedDelivered?: boolean;
 }): DerivedPhase {
   const { status, fulfillmentType, acceptedAt, eta, now } = input;
 
   if (status === "cancelled") {
     return { key: "cancelled", stepIndex: -1, remainingMinutes: null };
+  }
+  // Plancher TAP appliqué AVANT la sortie anticipée (relecture 18.08) :
+  // le client a confirmé la remise — l'état physique prime, même si les
+  // intrants ETA manquent (SSR dégradé). Forward-only partout.
+  if (input.confirmedDelivered) {
+    return finalise(
+      fulfillmentType === "delivery" ? "delivered" : "ready",
+      fulfillmentType,
+      null,
+    );
   }
   if (status === "new" || !acceptedAt || !eta) {
     // Pas (encore) acceptée, ou intrants pas encore chargés (SSR initial
@@ -137,7 +151,8 @@ export function derivePhase(input: {
     horloge = "delivered";
   }
 
-  // Plancher du statut réel : le plus avancé des deux gagne.
+  // Plancher du statut réel : le plus avancé des deux gagne (le plancher
+  // TAP est déjà traité en tête de fonction).
   const plancher = plancherStatut(status, fulfillmentType);
   const key =
     plancher && ORDRE[plancher] > ORDRE[horloge] ? plancher : horloge;

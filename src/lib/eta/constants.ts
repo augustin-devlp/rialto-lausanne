@@ -146,6 +146,18 @@ export const CONFIRMED_PHASE_MIN = 2;
 /** Tick de recalcul de la phase côté client (ms). */
 export const PHASE_TICK_MS = 30_000;
 
+/**
+ * TAP CLIENT (vérité terrain, GO 18.08) — bornes du geste « commande
+ * arrivée ? » : en dessous de MIN, un tap n'est pas plausible (rien ne
+ * peut être livré) ; au-delà de MAX, il n'a plus de valeur de
+ * calibration (et un vieux lien de suivi ne doit pas écrire des vérités
+ * fantaisistes). SOURCE UNIQUE serveur/client : la route refuse ET
+ * l'UI masque le bouton sur les mêmes bornes — un CTA affiché que le
+ * serveur refuserait est un bouton mort (relecture 18.08).
+ */
+export const TAP_AGE_MIN_MIN = 5;
+export const TAP_AGE_MAX_H = 6;
+
 /** Replis si une donnée manque. */
 export const DEFAULT_ZONE_MINUTES = 30;
 /** Pizzas supposées au checkout quand le panier n'est pas transmis. */

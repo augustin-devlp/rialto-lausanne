@@ -24,7 +24,11 @@ import {
   type DerivedPhase,
   type PhaseKey,
 } from "@/lib/eta/phase";
-import { PHASE_TICK_MS } from "@/lib/eta/constants";
+import {
+  PHASE_TICK_MS,
+  TAP_AGE_MIN_MIN,
+  TAP_AGE_MAX_H,
+} from "@/lib/eta/constants";
 
 type OrderStatus =
   | "new"
@@ -297,8 +301,18 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     // jamais ses commandes en base (statuts accepted à vie), donc sans
     // cet arrêt une page laissée ouverte pollerait pour toujours — et
     // chaque poll paie désormais la collecte d'intrants (relevé relecteur
-    // 13.08).
-    stopPollingRef.current = stop;
+    // 13.08). ⚠️ POIGNÉE POLLING SEUL (relecture 18.08) : le canal
+    // realtime reste ouvert (coût nul) — le tap client force la phase
+    // terminale bien plus tôt que l'horloge, et couper le canal aurait
+    // rendu invisible une annulation/ré-acceptation postérieure (la
+    // garde R-2026-043). Le stop() COMPLET reste réservé au démontage
+    // et au statut DB réellement terminal (completed).
+    stopPollingRef.current = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
 
     // ─── 1. Fetch HTTP : tick de polling OU refresh manuel
     const fetchStatus = async (source: "poll" | "focus") => {
@@ -404,12 +418,108 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         now: intrants.accepted_at ? new Date(intrants.accepted_at) : new Date(),
       })
     : null;
+  // TAP client (GO 18.08) : mémoire locale par commande, à QUATRE états
+  // (relecture 18.08) — null = pas encore lu (rien ne s'affiche : pas de
+  // flash SSR), "non" = pas tapé, "pending" = tapé pendant la fenêtre
+  // navette TAP1 (le serveur a répondu 503 tap1_non_executee : le geste
+  // est honoré à l'écran ET REJOUÉ à chaque montage jusqu'à ce que la
+  // colonne existe — sans ce rejeu, toute la vérité terrain de la
+  // fenêtre navette était perdue en silence), "fait" = enregistré.
+  // Une fois TAP1 exécutée, la colonne sera ajoutée aux selects
+  // (cross-device). Pas d'annulation du tap : le libellé du bouton EST
+  // la confirmation ; un tap de mégarde reste du bruit borné, assumé.
+  const [tapEtat, setTapEtat] = useState<
+    null | "non" | "pending" | "fait"
+  >(null);
+  const [tapEnvoi, setTapEnvoi] = useState(false);
+  const [tapErreur, setTapErreur] = useState<string | null>(null);
+  const tapEffectue = tapEtat === "pending" || tapEtat === "fait";
+  const cleTap = `RIALTO:TAP:${order.id}`;
+
+  const posteTap = useCallback(async (): Promise<
+    "fait" | "pending" | "erreur"
+  > => {
+    const res = await fetch(`/api/orders/${order.id}/confirm-delivered`, {
+      method: "POST",
+    });
+    if (res.ok) return "fait";
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    // Le corps fait foi : un 503 plateforme (Vercel) n'est PAS la
+    // fenêtre navette (relecture 18.08).
+    if (res.status === 503 && body?.error === "tap1_non_executee") {
+      return "pending";
+    }
+    if (body?.error === "commande_annulee") {
+      setTapErreur("Cette commande a été annulée.");
+    } else if (body?.error === "trop_tard") {
+      setTapErreur("Ce lien de suivi n'est plus actif.");
+    } else if (body?.error !== "pas_encore_confirmee") {
+      setTapErreur("Réessayez dans un instant.");
+    }
+    return "erreur";
+  }, [order.id]);
+
+  useEffect(() => {
+    let etat: "non" | "pending" | "fait" = "non";
+    try {
+      const v = window.localStorage.getItem(cleTap);
+      if (v === "1") etat = "fait";
+      else if (v === "pending") etat = "pending";
+    } catch {
+      /* stockage indisponible : bouton réaffiché, idempotence serveur */
+    }
+    setTapEtat(etat);
+    if (etat !== "pending") return;
+    // REJEU du tap en attente de navette — jusqu'à l'enregistrement réel.
+    void posteTap().then((r) => {
+      if (r === "fait") {
+        setTapEtat("fait");
+        try {
+          window.localStorage.setItem(cleTap, "1");
+        } catch {}
+      }
+    });
+  }, [cleTap, posteTap]);
+
+  async function confirmeArrivee() {
+    if (tapEnvoi) return;
+    setTapEnvoi(true);
+    setTapErreur(null);
+    try {
+      const r = await posteTap();
+      if (r === "fait" || r === "pending") {
+        setTapEtat(r === "fait" ? "fait" : "pending");
+        try {
+          window.localStorage.setItem(cleTap, r === "fait" ? "1" : "pending");
+        } catch {}
+      }
+    } catch {
+      setTapErreur("Problème de connexion. Réessayez.");
+    } finally {
+      setTapEnvoi(false);
+    }
+  }
+
+  // Fenêtre d'affichage du tap : les MÊMES bornes que le serveur
+  // (constants.ts) — un CTA que le serveur refuserait est un bouton mort.
+  const ageMinutes =
+    (Date.now() - new Date(order.created_at).getTime()) / 60_000;
+  const tapDansLaFenetre =
+    Number.isFinite(ageMinutes) &&
+    ageMinutes >= TAP_AGE_MIN_MIN &&
+    ageMinutes <= TAP_AGE_MAX_H * 60;
+
   const phaseBrute = derivePhase({
     status: order.status,
     fulfillmentType: fulfillment,
     acceptedAt: intrants?.accepted_at ?? null,
     eta,
     now: new Date(),
+    // 3e intrant forward-only : le tap avance la phase (« Livrée » /
+    // « Prête »), jamais l'inverse — le CTA avis suit dans le même geste.
+    confirmedDelivered: tapEffectue,
   });
   // CLIQUET D'AFFICHAGE (contre-passe 18.08) : le filet universel de
   // monotonie. L'ancrage serveur rend les intrants quasi déterministes,
@@ -457,9 +567,9 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             } après confirmation`
           : null;
 
-  // Phase dérivée TERMINALE (« Livrée »/« Prête ») : plus rien à attendre
-  // de la base — on coupe polling + realtime (le statut DB, lui, ne
-  // deviendra jamais terminal : Rialto ne clôture pas ses commandes).
+  // Phase dérivée TERMINALE (« Livrée »/« Prête ») : on coupe le POLLING
+  // (le statut DB ne deviendra jamais terminal : Rialto ne clôture pas
+  // ses commandes) mais le canal realtime reste ouvert — cf. la poignée.
   useEffect(() => {
     if (phase.key === "delivered" || phase.key === "ready") {
       stopPollingRef.current?.();
@@ -769,15 +879,59 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
               })}
             </ol>
 
+            {/* TAP CLIENT (chantier recalibrage, GO 18.08) : vérité
+                terrain d'un seul geste — calibration + clôture + moment
+                naturel de la demande d'avis. Affiché dès « En livraison »
+                (pas seulement après « Livrée ») : sinon on ne capture
+                jamais les livraisons EN AVANCE et le calibrage est biaisé
+                vers le lent par construction (correction 4 du GO). */}
+            {tapEtat === "non" &&
+              tapDansLaFenetre &&
+              (fulfillment === "delivery"
+                ? phase.key === "delivering" || phase.key === "delivered"
+                : phase.key === "ready") && (
+                <div className="mt-5 rounded-2xl border border-border bg-white p-4 text-sm">
+                  <p className="font-semibold text-ink">
+                    <span aria-hidden="true">📦</span>{" "}
+                    {fulfillment === "delivery"
+                      ? "Votre commande est arrivée ?"
+                      : "Commande bien récupérée ?"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void confirmeArrivee()}
+                    disabled={tapEnvoi}
+                    className="btn-primary mt-3 w-full justify-center disabled:opacity-50"
+                  >
+                    {tapEnvoi
+                      ? "…"
+                      : fulfillment === "delivery"
+                        ? "Oui, bien reçue !"
+                        : "Oui, récupérée !"}
+                  </button>
+                  {tapErreur && (
+                    <p className="mt-2 text-xs text-rialto">⚠️ {tapErreur}</p>
+                  )}
+                </div>
+              )}
+            {tapEffectue && (
+              <p className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <span aria-hidden="true">✅</span> Merci ! Bon appétit.
+              </p>
+            )}
+
             {/* Gate avis (14.08.2026) : entrée post-commande du flux —
                 on demande UN avis (jamais « positif »), la roue est une
-                CHANCE de gagner (garde-fous décision Augustin). Le flux
-                complet (lien Google + vérification) vit sur la page roue.
-                Affiché SEULEMENT une fois la commande livrée/prête
-                (relecture 14.08) : demander un avis sur une pizza pas
-                encore reçue serait absurde — et un avis posté AVANT
-                l'expérience est exactement ce qu'on ne veut pas. */}
-            {(phase.key === "delivered" || phase.key === "ready") && (
+                CHANCE de gagner (garde-fous décision Augustin). LIVRAISON :
+                affiché une fois « Livrée » — le tap y mène naturellement
+                (confirmer la remise fait passer la phase, le CTA apparaît
+                dans le même geste). RETRAIT : « Prête » précède le
+                passage au comptoir — le CTA n'apparaît qu'APRÈS le tap
+                « bien récupérée » (relecture 18.08 : sinon on demandait
+                un avis avant la remise, le travers du 14.08). */}
+            {(fulfillment === "delivery"
+              ? phase.key === "delivered" || phase.key === "ready"
+              : tapEffectue) && (
               <div className="mt-5 rounded-2xl border border-saffron/40 bg-saffron/10 p-4 text-sm">
                 <p className="font-semibold text-ink">
                   <span aria-hidden="true">⭐</span> Votre avis compte

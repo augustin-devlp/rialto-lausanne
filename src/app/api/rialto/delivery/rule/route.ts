@@ -40,7 +40,7 @@ export async function GET() {
     // TARIFAIRE. Avec le profil de loyalty, un toggle ON→OFF au dashboard
     // laissait jusqu'à ~6-7 min d'écran « Offerte » pendant que le serveur
     // facturait (relevé relecteur 28.07.2026). Fenêtre bornée ici à ~60 s
-    // CDN — et le toast « nouvelle version » ne couvre PAS ce cas (aucun
+    // CDN — et le cycle de mise à jour SW ne couvre PAS ce cas (aucun
     // déploiement n'a lieu quand une ligne de restaurants change).
     {
       headers: {

@@ -104,8 +104,22 @@
       figer AVANT le premier franc de pub).
 - [ ] Meta Events Manager : « Track events automatically without code »
       désactivé (bruit SubscribedButtonClick).
-- [ ] PWA : le toast « Nouvelle version » apparaît sur les appareils
-      installés après le premier déploiement post-gel.
+- [ ] PWA : mise à jour SILENCIEUSE (refonte 17.08 — plus de toast) :
+      après le premier déploiement post-gel, vérifier sur un appareil
+      installé que l'app se met à jour toute seule À LA PREMIÈRE
+      NAVIGATION. Mécanique : à l'arrivée de la page, GEL transparent
+      (pointeur + clavier bloqués) → SKIP_WAITING → reload dès
+      l'activation (~100-600 ms) ; le gel tient aussi pendant le fetch
+      réseau du reload. Si l'activation dépasse 1,5 s : dégel, on
+      renonce — un rechargement de rattrapage peut alors survenir à la
+      navigation SUIVANTE (ce n'est PAS un bug). Jamais de gel ni de
+      reload à l'arrivée sur /confirmation, ni tant qu'un purchase
+      attend le consentement cookies. Test du cas dangereux (DevTools
+      réseau Slow 3G, worker en attente) : arriver au checkout, tenter
+      de choisir TWINT et soumettre pendant le gel → les taps sont
+      absorbés, AUCUNE commande ne part dans le vide ; après la mise à
+      jour, le panier et le prefill sont intacts, une seule soumission
+      possible.
 - [ ] Emails Brevo : reçu réel sur domaine final (piège Authorised IPs).
 - [ ] Import base clients Mehmet : consentement SMS d'abord — sinon ne
       pas importer.

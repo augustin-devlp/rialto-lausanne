@@ -51,7 +51,11 @@ type Status = "pending" | "granted" | "denied";
 
 let status: Status = "pending";
 let injected = false;
-const queue: Array<() => void> = [];
+// conversion=true marque les événements IRREMPLAÇABLES (purchase) : la
+// file est en mémoire pure, un rechargement la détruit — PwaRegister
+// consulte conversionEnAttente() pour ne jamais recharger tant qu'une
+// conversion attend le consentement (refonte SW silencieuse 17.08).
+const queue: Array<{ fire: () => void; conversion: boolean }> = [];
 
 /* ─── Types minimaux des globals injectés ──────────────────────────────── */
 declare global {
@@ -162,9 +166,22 @@ export function grantTracking(): void {
 
   // Rejoue les événements funnel accumulés avant le choix.
   while (queue.length > 0) {
-    const fire = queue.shift();
-    fire?.();
+    const entree = queue.shift();
+    entree?.fire();
   }
+}
+
+/**
+ * Une CONVERSION (purchase) attend le consentement dans la file MÉMOIRE.
+ * Consommé par PwaRegister : aucun rechargement de mise à jour SW tant
+ * que c'est vrai — la file ne survit pas à un reload et le purchase ne
+ * se rejoue jamais. Conséquence assumée : un client qui commande sans
+ * jamais trancher le bandeau cookies garde l'ancienne version pour le
+ * reste de sa session (on préfère perdre la mise à jour que la
+ * conversion).
+ */
+export function hasPendingConversion(): boolean {
+  return status === "pending" && queue.some((e) => e.conversion);
 }
 
 export function denyTracking(): void {
@@ -195,15 +212,25 @@ export function suspendTracking(): void {
 
 /* ─── Émission ─────────────────────────────────────────────────────────── */
 
-function emit(fire: () => void, queueable: boolean): void {
+function emit(
+  fire: () => void,
+  queueable: boolean,
+  conversion = false,
+): void {
   if (typeof window === "undefined") return;
   if (status === "granted") {
     fire();
     return;
   }
   if (status === "pending" && queueable) {
-    if (queue.length >= QUEUE_MAX) queue.shift();
-    queue.push(fire);
+    if (queue.length >= QUEUE_MAX) {
+      // Ne jamais évincer une conversion au profit d'un événement banal.
+      const indexBanal = queue.findIndex((e) => !e.conversion);
+      if (indexBanal >= 0) queue.splice(indexBanal, 1);
+      else if (!conversion) return; // file pleine de conversions : jeté
+      else queue.shift();
+    }
+    queue.push({ fire, conversion });
   }
   // 'denied' (ou pageview en attente) : jeté, zéro appel réseau.
 }
@@ -318,6 +345,6 @@ export const track = {
         },
         { eventID: payload.orderNumber },
       );
-    }, true);
+    }, true, true);
   },
 };

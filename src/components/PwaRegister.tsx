@@ -1,145 +1,216 @@
 "use client";
 
 /**
- * PwaRegister — Phase 11 C5, + toast « nouvelle version » (29.07.2026).
+ * PwaRegister — enregistrement SW + invite d'installation + MISE À JOUR
+ * SILENCIEUSE (refonte 17.08.2026, décision Augustin : plus de toast).
  *
- * Enregistre le service worker côté client + écoute l'événement
- * beforeinstallprompt pour proposer le bouton "Installer Rialto" quand
- * le navigateur le permet (Android Chrome, desktop Chrome). iOS Safari
- * ne déclenche pas cet événement — on gère ça via le hint "Ajouter à
- * l'écran d'accueil" existant sur /c/[shortCode].
+ * CYCLE DE MISE À JOUR : chaque déploiement estampille sw.js
+ * (scripts/stamp-sw.mjs — échec de build si le motif disparaît) → le
+ * navigateur installe le nouveau worker qui reste EN ATTENTE (pas de
+ * skipWaiting à l'install : l'activation immédiate faisait tourner le
+ * NOUVEAU worker sous l'ANCIENNE page — skew écran/encaissement de
+ * R-2026-039). À chaque CHANGEMENT DE PAGE (usePathname), s'il existe un
+ * worker en attente : GEL de la page → SKIP_WAITING → reload dès
+ * controllerchange.
  *
- * TOAST « NOUVELLE VERSION » : chaque déploiement estampille sw.js
- * (scripts/stamp-sw.mjs) → le navigateur installe le nouveau worker qui
- * reste EN ATTENTE (le skipWaiting automatique a été retiré — il faisait
- * tourner le nouveau worker sous l'ancienne page : skew écran/encaissement
- * de R-2026-039). La page affiche alors le toast ; au clic, on envoie
- * SKIP_WAITING au worker en attente, `controllerchange` confirme la
- * bascule, et on recharge. Une session PWA longue re-vérifie les mises à
- * jour toutes les heures ET à chaque retour au premier plan.
+ * LE GEL EST LA GARDE, et il est IMPÉRATIF (3e contre-passe 17.08) : un
+ * voile DOM posé en synchrone (pointeur bloqué par l'overlay, clavier
+ * par un listener capture) dans la MÊME tâche que le SKIP_WAITING —
+ * `reg.waiting` est lu en synchrone sur la Registration mémorisée
+ * (objet live), aucun hop async avant le gel. Fenêtre résiduelle : le
+ * délai entre le commit de la page et l'exécution de l'effet React
+ * (~une frame) — humainement inutilisable. Le gel couvre AUSSI le fetch
+ * network-first du document déclenché par reload(). Bornes :
+ *   - activation > ANNULATION_RECHARGE_MS → dégel, renoncement, le
+ *     worker est marqué « déjà tenté » : les navigations suivantes ne
+ *     re-gèlent plus pour lui (retentative PASSIVE sans gel — s'il
+ *     s'active enfin, le rattrapage réalignera) ;
+ *   - reload() sans remplacement du document sous GEL_MAX_MS (réseau
+ *     qui pend) → dégel filet + rattrapage réarmé ;
+ *   - restauration bfcache (retour après un reload avorté) → pageshow
+ *     persisted → désarmement complet ;
+ *   - au-delà de GEL_INDICATEUR_MS, un badge discret « Mise à jour… »
+ *     apparaît (jamais sur le cas nominal ~100-600 ms) + annonce
+ *     lecteur d'écran dès le gel (WCAG AA).
+ *
+ * AUCUN RELOAD, nulle part, si : le pathname d'arrivée est
+ * /confirmation/* (purchase tiré ou en file mémoire — vérifié AUSSI au
+ * point de reload dans surBascule, car back/forward n'émet aucun
+ * événement pointeur/clavier) ; une conversion attend le consentement
+ * (hasPendingConversion — la file ne survit pas à un reload) ; une
+ * opération critique est en vol (operationCritiqueEnCours — le POST
+ * /api/orders est AWAITÉ : un reload le trancherait côté client alors
+ * que le serveur crée la commande → panier intact → commande en
+ * double ; l'idempotence serveur, proposée en navette, reste le vrai
+ * verrou de fond).
+ *
+ * MULTI-ONGLETS : un controllerchange NON demandé (l'activation vient
+ * d'un autre onglet — comptoir /scan et /dashboard côte à côte) arme le
+ * rattrapage si un controller existait déjà (avaitController, initialisé
+ * en SYNCHRONE avant le listener) : l'onglet passif se réaligne à sa
+ * propre navigation suivante.
+ *
+ * CAS LIMITES ASSUMÉS (nommés) : utilisateur qui ne navigue jamais =
+ * ancienne version jusqu'à sa prochaine navigation (décision Augustin
+ * 17.08 — le serveur re-valide tout au POST) ; client qui commande sans
+ * trancher le bandeau cookies = ancienne version le reste de la session
+ * (on préfère perdre la mise à jour que le purchase) ; double
+ * page_view/appel upsell possibles au reload d'arrivée, un jour de
+ * déploiement.
+ *
+ * PROTECTIONS ANTI-FRONT-GELÉ CONSERVÉES : CACHE_VERSION estampillée au
+ * build, purge des caches à l'activation (sw.js), re-vérification
+ * horaire + retour au premier plan (reg.update), course register/load
+ * arbitrée par readyState. L'amortisseur « version déclinée » du toast
+ * est REMPLACÉ par le marqueur « worker déjà tenté » (même rôle : pas de
+ * friction répétée pour un même déploiement).
  */
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { hasPendingConversion } from "@/lib/tracking";
+import { operationCritiqueEnCours } from "@/lib/operationCritique";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-/** localStorage : version déclinée via « Plus tard » (amortisseur 04.08). */
-const DECLINED_VERSION_KEY = "rialto_sw_version_declinee";
-
-/**
- * Demande sa CACHE_VERSION à un worker (MessageChannel). null si le worker
- * ne répond pas (ancien sw.js sans GET_VERSION) — fail-open : sans
- * version, on affiche le toast (jamais de front gelé par silence).
- */
-function demandeVersion(worker: ServiceWorker): Promise<string | null> {
-  return new Promise((resolve) => {
-    const canal = new MessageChannel();
-    const timer = window.setTimeout(() => resolve(null), 1500);
-    canal.port1.onmessage = (e: MessageEvent) => {
-      window.clearTimeout(timer);
-      resolve(
-        typeof e.data?.version === "string" ? (e.data.version as string) : null,
-      );
-    };
-    try {
-      worker.postMessage({ type: "GET_VERSION" }, [canal.port2]);
-    } catch {
-      window.clearTimeout(timer);
-      resolve(null);
-    }
-  });
-}
+/** Renoncement (et dégel) si l'activation ne s'est pas signalée dans ce
+ * délai — l'activation nominale prend ~100-600 ms. */
+const ANNULATION_RECHARGE_MS = 1500;
+/** Filet : si reload() n'a pas remplacé le document dans ce délai
+ * (réseau qui pend), on dégèle et on rend la main. */
+const GEL_MAX_MS = 8000;
+/** Au-delà, le gel devient perceptible : on l'annonce visuellement. */
+const GEL_INDICATEUR_MS = 600;
 
 export default function PwaRegister() {
   const [installEvt, setInstallEvt] = useState<BeforeInstallPromptEvent | null>(null);
   const [hidden, setHidden] = useState(true);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(
-    null,
-  );
-  // Version du worker affiché par le toast — écrite en localStorage au
-  // clic « Plus tard » pour ne plus re-prompter CETTE version (les
-  // démarrages à froid PWA re-détectaient le même worker à chaque
-  // réouverture — observation Augustin 04.08).
-  const versionEnAttente = useRef<string | null>(null);
-  // Vrai uniquement après le clic « Recharger » : controllerchange se
-  // déclenche AUSSI au tout premier claim() d'un profil vierge — sans ce
-  // garde, la première visite rechargerait en boucle.
+  const pathname = usePathname();
+
+  // Vrai uniquement entre notre SKIP_WAITING et le controllerchange qui
+  // le confirme : controllerchange se déclenche AUSSI au tout premier
+  // claim() d'un profil vierge — sans ce garde, la première visite
+  // rechargerait en boucle.
   const rechargeDemande = useRef(false);
+  const annulationRecharge = useRef<number | null>(null);
+  // Controller AVANT notre SKIP_WAITING : au timeout, s'il a changé,
+  // l'activation a eu lieu sans reload → rattrapage ; sinon rien.
+  const controllerAvant = useRef<ServiceWorker | null>(null);
+  // Une activation a eu lieu SANS reload : la prochaine navigation
+  // recharge pour réaligner page et worker.
+  const rattrapageReload = useRef(false);
+  // Un controller existait avant l'événement : distingue le claim de
+  // première visite d'une activation de mise à jour (multi-onglets).
+  const avaitController = useRef(false);
+  // Registration mémorisée (objet LIVE : .waiting est relu frais à
+  // chaque accès) — permet la lecture SYNCHRONE dans l'effet de
+  // navigation, sans hop async avant le gel.
+  const regRef = useRef<ServiceWorkerRegistration | null>(null);
+  // Worker dont l'activation a déjà dépassé le délai : plus jamais de
+  // gel pour lui (retentative passive uniquement) — remplace
+  // l'amortisseur « version déclinée » de l'ancien toast.
+  const workerDejaTente = useRef<ServiceWorker | null>(null);
+  // null = premier rendu (pas une navigation).
+  const dernierPathname = useRef<string | null>(null);
+
+  // ── Gel impératif (DOM direct : synchrone, pas d'attente de render) ──
+  const voileEl = useRef<HTMLDivElement | null>(null);
+  const voileTimers = useRef<number[]>([]);
+  const bloqueClavier = useRef<((e: KeyboardEvent) => void) | null>(null);
+
+  const degele = () => {
+    voileTimers.current.forEach((t) => window.clearTimeout(t));
+    voileTimers.current = [];
+    if (bloqueClavier.current) {
+      window.removeEventListener("keydown", bloqueClavier.current, {
+        capture: true,
+      });
+      bloqueClavier.current = null;
+    }
+    voileEl.current?.remove();
+    voileEl.current = null;
+  };
+
+  const gele = () => {
+    if (voileEl.current) return;
+    const voile = document.createElement("div");
+    voile.style.cssText =
+      "position:fixed;inset:0;z-index:9999;background:transparent;cursor:wait";
+    // Annonce lecteur d'écran immédiate (invisible) — le voile rend la
+    // page inerte, il faut le dire (WCAG AA).
+    const statut = document.createElement("div");
+    statut.setAttribute("role", "status");
+    statut.setAttribute("aria-live", "polite");
+    statut.style.cssText =
+      "position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)";
+    statut.textContent = "Mise à jour de l'application en cours…";
+    voile.appendChild(statut);
+    document.body.appendChild(voile);
+    voileEl.current = voile;
+    const bloque = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("keydown", bloque, { capture: true });
+    bloqueClavier.current = bloque;
+    // Indicateur visuel DIFFÉRÉ : jamais affiché sur le cas nominal
+    // (~100-600 ms) — au-delà, « rien ne répond » sans signal serait lu
+    // comme un plantage, surtout sur mobile (cursor-wait y est inerte).
+    voileTimers.current.push(
+      window.setTimeout(() => {
+        if (!voileEl.current) return;
+        const badge = document.createElement("div");
+        badge.style.cssText =
+          "position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.85);color:#fff;padding:6px 14px;border-radius:9999px;font:500 13px system-ui;z-index:10000";
+        badge.textContent = "Mise à jour…";
+        voileEl.current.appendChild(badge);
+      }, GEL_INDICATEUR_MS),
+    );
+  };
+
+  const desarmeCycle = () => {
+    rechargeDemande.current = false;
+    if (annulationRecharge.current !== null) {
+      window.clearTimeout(annulationRecharge.current);
+      annulationRecharge.current = null;
+    }
+    degele();
+  };
+
+  /** reload() PAGE GELÉE, avec filet : si le document n'est pas remplacé
+   * (réseau qui pend, reload avorté), dégel et rattrapage réarmé. */
+  const rechargeGelee = () => {
+    gele();
+    voileTimers.current.push(
+      window.setTimeout(() => {
+        degele();
+        rattrapageReload.current = true;
+      }, GEL_MAX_MS),
+    );
+    window.location.reload();
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Ids/handlers gardés pour le cleanup : le composant vit dans le
-    // layout et ne démonte jamais en prod, mais StrictMode double-monte en
-    // dev (2 intervalles, 2 controllerchange → double reload au clic) et
-    // un futur déplacement du composant ne doit pas créer de fuite.
+    let annule = false;
     let intervalId: number | null = null;
     let onVisibilite: (() => void) | null = null;
-
-    // Entonnoir unique de détection : interroge la version du worker et
-    // ne montre PAS le toast si elle a déjà été déclinée (« Plus tard »).
-    // Version inconnue (ancien sw.js, timeout) → fail-open : toast montré.
-    const signaleWorker = (worker: ServiceWorker) => {
-      void demandeVersion(worker).then((version) => {
-        try {
-          if (
-            version &&
-            window.localStorage.getItem(DECLINED_VERSION_KEY) === version
-          ) {
-            return; // cette version précise a été déclinée — silence
-          }
-        } catch {
-          /* localStorage indisponible : on montre */
-        }
-        versionEnAttente.current = version;
-        setWaitingWorker(worker);
-      });
-    };
-
-    const surGuetteur = (nouveau: ServiceWorker) => {
-      nouveau.addEventListener("statechange", () => {
-        // « installed » avec un controller = une MISE À JOUR en attente
-        // (sans controller, c'est la première installation : rien à
-        // annoncer).
-        if (
-          nouveau.state === "installed" &&
-          navigator.serviceWorker.controller
-        ) {
-          signaleWorker(nouveau);
-        }
-      });
-    };
-
-    const surveille = (reg: ServiceWorkerRegistration) => {
-      // Un worker déjà en attente (déploiement passé pendant que l'onglet
-      // était fermé) : toast immédiat.
-      if (reg.waiting && navigator.serviceWorker.controller) {
-        signaleWorker(reg.waiting);
-      }
-      // Un worker déjà EN COURS d'installation (page ouverte pile pendant
-      // un déploiement) : updatefound a déjà tiré, il faut s'accrocher
-      // directement à son statechange — sinon il atteint « waiting » sans
-      // toast jusqu'à la vérification suivante.
-      if (reg.installing) {
-        surGuetteur(reg.installing);
-      }
-      reg.addEventListener("updatefound", () => {
-        if (reg.installing) surGuetteur(reg.installing);
-      });
-    };
 
     const surChargement = () => {
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })
         .then((reg) => {
+          if (annule) return;
           console.log("[pwa] SW registered", reg.scope);
-          surveille(reg);
+          regRef.current = reg;
           // Sessions PWA longues : re-vérification horaire + au retour au
-          // premier plan (l'app installée peut rester ouverte des jours —
-          // le check du register() initial ne suffit pas).
+          // premier plan. Le worker détecté atterrit en « waiting » et
+          // sera activé à la prochaine navigation — aucune écoute
+          // updatefound nécessaire.
           const verifie = () => reg.update().catch(() => {});
           intervalId = window.setInterval(verifie, 60 * 60 * 1000);
           onVisibilite = () => {
@@ -153,17 +224,49 @@ export default function PwaRegister() {
     };
 
     const surBascule = () => {
-      if (rechargeDemande.current) {
-        window.location.reload();
+      if (!rechargeDemande.current) {
+        // Activation NON demandée par cet onglet : premier claim d'un
+        // profil vierge (avaitController false → rien à faire) ou mise à
+        // jour activée par un AUTRE onglet → réalignement à sa prochaine
+        // navigation.
+        if (avaitController.current) rattrapageReload.current = true;
+        avaitController.current = true;
+        return;
       }
+      avaitController.current = true;
+      rechargeDemande.current = false;
+      if (annulationRecharge.current !== null) {
+        window.clearTimeout(annulationRecharge.current);
+        annulationRecharge.current = null;
+      }
+      // Gardes AU POINT DE RELOAD : back/forward peut avoir ramené sur
+      // /confirmation sans événement pointeur/clavier, et un POST parti
+      // de la page PRÉCÉDENTE peut encore être en vol.
+      if (
+        window.location.pathname.startsWith("/confirmation/") ||
+        operationCritiqueEnCours() ||
+        hasPendingConversion()
+      ) {
+        degele();
+        rattrapageReload.current = true;
+        return;
+      }
+      rechargeGelee();
+    };
+
+    const surPageShow = (e: PageTransitionEvent) => {
+      // Restauration bfcache après un reload avorté : l'état revient tel
+      // quel (voile posé, aucun timer vivant) — tout désarmer.
+      if (e.persisted) desarmeCycle();
     };
 
     if ("serviceWorker" in navigator) {
+      // Initialisation SYNCHRONE, avant le listener : un controllerchange
+      // multi-onglets précoce ne doit pas passer pour un premier claim.
+      avaitController.current = navigator.serviceWorker.controller !== null;
       // ⚠️ Sur un shell servi par le SW, la page est instantanée et `load`
-      // a souvent DÉJÀ tiré avant que cet effet ne s'attache — le listener
-      // ne se déclenchait jamais : pas d'enregistrement, pas de détection
-      // de mise à jour, pas de toast (constaté en QA prod 31.07.2026 :
-      // worker en attente présent, toast absent). readyState arbitre.
+      // a souvent DÉJÀ tiré avant que cet effet ne s'attache (constaté en
+      // QA prod 31.07.2026). readyState arbitre.
       if (document.readyState === "complete") {
         surChargement();
       } else {
@@ -173,6 +276,7 @@ export default function PwaRegister() {
         "controllerchange",
         surBascule,
       );
+      window.addEventListener("pageshow", surPageShow);
     }
 
     // Install prompt
@@ -186,6 +290,7 @@ export default function PwaRegister() {
     window.addEventListener("beforeinstallprompt", handler);
 
     return () => {
+      annule = true;
       window.removeEventListener("beforeinstallprompt", handler);
       if ("serviceWorker" in navigator) {
         window.removeEventListener("load", surChargement);
@@ -193,49 +298,95 @@ export default function PwaRegister() {
           "controllerchange",
           surBascule,
         );
+        window.removeEventListener("pageshow", surPageShow);
       }
       if (intervalId !== null) window.clearInterval(intervalId);
       if (onVisibilite) {
         document.removeEventListener("visibilitychange", onVisibilite);
       }
+      desarmeCycle();
     };
   }, []);
 
-  function handleRecharge() {
-    // Relire la registration au clic : le worker affiché peut être devenu
-    // « redundant » si un déploiement a chassé l'autre pendant la session —
-    // un postMessage dans le vide donnerait un bouton mort sans retour.
-    navigator.serviceWorker.getRegistration().then((reg) => {
-      const w = reg?.waiting;
-      if (w) {
-        rechargeDemande.current = true;
-        w.postMessage({ type: "SKIP_WAITING" });
-      } else {
-        // Plus de worker en attente (déjà activé ailleurs ?) : on retire
-        // le toast plutôt que de laisser un bouton inerte.
-        setWaitingWorker(null);
-      }
-    });
-  }
-
-  function handlePlusTard() {
-    // Amortisseur (04.08.2026) : mémorise LA version déclinée — plus de
-    // re-prompt pour ce déploiement précis aux démarrages à froid PWA.
-    // Toute version NOUVELLE prompte toujours : la protection
-    // anti-front-gelé tient. Version inconnue (ancien SW) → rien n'est
-    // persisté, fermeture de session seulement, comme avant.
-    if (versionEnAttente.current) {
-      try {
-        window.localStorage.setItem(
-          DECLINED_VERSION_KEY,
-          versionEnAttente.current,
-        );
-      } catch {
-        /* stockage indisponible : fermeture de session seulement */
-      }
+  // MISE À JOUR SILENCIEUSE : à chaque navigation (changement de
+  // pathname), activer l'éventuel worker en attente — lecture SYNCHRONE
+  // de regRef.current.waiting (objet live), gel posé dans la même tâche.
+  useEffect(() => {
+    if (dernierPathname.current === null) {
+      dernierPathname.current = pathname;
+      return; // premier rendu = chargement, pas une navigation
     }
-    setWaitingWorker(null);
-  }
+    if (dernierPathname.current === pathname) return;
+    dernierPathname.current = pathname;
+
+    if (!("serviceWorker" in navigator)) return;
+
+    // Toute navigation ABANDONNE le cycle précédent (navigation rapide
+    // A→B→C : le cycle de B est désarmé — si son activation aboutit
+    // quand même, surBascule la verra « non demandée » et armera le
+    // rattrapage).
+    desarmeCycle();
+
+    // JAMAIS de gel/activation/rattrapage à l'arrivée sur /confirmation.
+    // Un rattrapage armé reste armé pour la navigation suivante.
+    if (pathname.startsWith("/confirmation/")) return;
+
+    // Jamais de reload tant qu'une conversion attend le consentement ou
+    // qu'une opération critique (POST commande) est en vol.
+    if (hasPendingConversion() || operationCritiqueEnCours()) return;
+
+    // Rattrapage d'un cycle précédent : le worker est déjà actif sous la
+    // vieille page — CETTE navigation est le moment sûr pour réaligner.
+    if (rattrapageReload.current) {
+      rattrapageReload.current = false;
+      rechargeGelee();
+      return;
+    }
+
+    const w = regRef.current?.waiting ?? null;
+    // Sans controller, on n'est pas dans un cycle de MISE À JOUR
+    // (première installation) : rien à activer.
+    if (!w || !navigator.serviceWorker.controller) return;
+
+    if (w === workerDejaTente.current) {
+      // Ce worker a déjà dépassé le délai d'activation : retentative
+      // PASSIVE (sans gel, sans reload demandé) — s'il s'active enfin,
+      // surBascule (« non demandé ») armera le rattrapage. Pas de
+      // friction répétée pour un même déploiement.
+      try {
+        w.postMessage({ type: "SKIP_WAITING" });
+      } catch {
+        /* worker devenu redundant : rien */
+      }
+      return;
+    }
+
+    rechargeDemande.current = true;
+    controllerAvant.current = navigator.serviceWorker.controller;
+    // GEL SYNCHRONE avant le SKIP_WAITING : aucune interaction possible
+    // entre l'armement et le remplacement du document (fenêtre
+    // résiduelle : ~une frame entre le commit de la page et cet effet).
+    gele();
+    annulationRecharge.current = window.setTimeout(() => {
+      // Activation anormalement lente : dégel, renoncement, et ce worker
+      // ne re-gèlera plus (workerDejaTente). Rattrapage UNIQUEMENT si le
+      // controller a changé (activation réelle sans reload).
+      rechargeDemande.current = false;
+      annulationRecharge.current = null;
+      degele();
+      workerDejaTente.current = w;
+      if (navigator.serviceWorker.controller !== controllerAvant.current) {
+        rattrapageReload.current = true;
+      }
+    }, ANNULATION_RECHARGE_MS);
+    try {
+      w.postMessage({ type: "SKIP_WAITING" });
+    } catch {
+      // Worker devenu redundant (déploiement chassé par un autre) :
+      // rollback complet, la navigation suivante repartira du frais.
+      desarmeCycle();
+    }
+  }, [pathname]);
 
   async function handleInstall() {
     if (!installEvt) return;
@@ -253,49 +404,6 @@ export default function PwaRegister() {
     try {
       window.localStorage.setItem("RIALTO:PWA:dismissed", "1");
     } catch {}
-  }
-
-  // Le toast de mise à jour PRIME sur l'invite d'installation : c'est lui
-  // qui protège la cohérence écran/encaissement.
-  // bottom-24 en mobile : la barre CTA du checkout est fixed bottom-0
-  // (~80 px, z-40) — un toast à bottom-4 masquerait le bouton « Confirmer »
-  // (bloquant relecteur 31.07.2026). Et « Plus tard » garantit qu'aucune
-  // saisie en cours n'est JAMAIS prise en otage par un rechargement.
-  if (waitingWorker) {
-    return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="fixed bottom-24 left-4 right-4 z-[95] mx-auto max-w-md rounded-2xl border-2 border-rialto bg-white p-4 shadow-pop md:bottom-6 animate-fade-up"
-      >
-        <div className="flex items-start gap-3">
-          <div className="shrink-0 text-2xl">🔄</div>
-          <div className="flex-1">
-            <div className="font-display font-bold">
-              Nouvelle version disponible
-            </div>
-            <p className="mt-0.5 text-xs text-mute">
-              Rechargez pour utiliser la dernière version de l&apos;app.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handlePlusTard}
-            className="shrink-0 text-mute hover:text-ink"
-            aria-label="Plus tard"
-          >
-            ✕
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={handleRecharge}
-          className="btn-primary mt-3 w-full justify-center"
-        >
-          Recharger
-        </button>
-      </div>
-    );
   }
 
   if (hidden || !installEvt) return null;

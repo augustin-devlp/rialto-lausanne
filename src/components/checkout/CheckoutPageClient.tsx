@@ -33,6 +33,10 @@ import {
   type QualifiedAddress,
 } from "@/lib/clientStore";
 import { track } from "@/lib/tracking";
+import {
+  debuteOperationCritique,
+  termineOperationCritique,
+} from "@/lib/operationCritique";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
@@ -526,6 +530,12 @@ export default function CheckoutPageClient({
         pickupISO = d.toISOString();
       }
 
+      // Opération critique : signale le POST en vol à PwaRegister — la
+      // mise à jour SW silencieuse ne doit JAMAIS recharger pendant que
+      // la commande part (reload = fetch tranché côté client, commande
+      // créée côté serveur, panier intact → commande en double).
+      debuteOperationCritique();
+
       // Persist prefill silencieusement avant POST
       writePrefill({
         housingType: housingType ?? undefined,
@@ -604,7 +614,10 @@ export default function CheckoutPageClient({
       // tracking ne doit JAMAIS sauter clearCart + redirection (panier
       // intact → resoumission → commande en double).
       // La redirection est une navigation SPA : pas de déchargement, les
-      // beacons partent.
+      // beacons partent. ⚠️ Tenu par PwaRegister : la mise à jour SW
+      // silencieuse n'active/ne recharge JAMAIS à l'arrivée sur
+      // /confirmation (exclusion explicite) — sans elle, le reload
+      // détruirait ce purchase (relecture 17.08).
       try {
         track.purchase({
           orderNumber: body.order.order_number as string,
@@ -626,6 +639,8 @@ export default function CheckoutPageClient({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
       setLoading(false);
+    } finally {
+      termineOperationCritique();
     }
   }
 

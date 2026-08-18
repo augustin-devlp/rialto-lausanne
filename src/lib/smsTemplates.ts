@@ -1,23 +1,29 @@
 /**
  * ⚠️ AVANT de brancher/modifier un SMS : lire docs/SMS_TEMPLATES.md —
  * la table de référence des 18 templates (statut, appelant, interdits).
- * 11 sur 18 sont orphelins (birthday_wish ACTIF depuis le 03.08.2026 via
- * src/lib/birthday.ts) et order_cancelled est INTERDIT (19.07.2026).
+ * 10 sur 18 sont orphelins (birthday_wish ACTIF depuis le 03.08.2026 via
+ * src/lib/birthday.ts ; lottery_winner BRANCHÉ le 19.08.2026 via le
+ * tirage mensuel) et order_cancelled est INTERDIT (19.07.2026).
  *
  * Version CŒUR-ONLY découplée de loyalty-cards/src/lib/smsTemplates.ts.
  *
  * Ne porte que ce dont le cœur fidélité a besoin :
  *   - renderTemplate() (remplacement {{var}}, inconnues → '', compression
  *     des espaces doubles, trim) — VERBATIM.
- *   - les entrées loyalty_card_created (Lot 3), wheel_prize_code (Lot 5) et
- *     referral_success (Lot 7) de TEMPLATE_META.
+ *   - les 5 entrées de TEMPLATE_META : loyalty_card_created (Lot 3),
+ *     wheel_prize_code (Lot 5), lottery_winner (lot G 19.08),
+ *     referral_success (Lot 7), referral_claim_reward (cron parrainage).
  *
  * N'embarque PAS buildContext, ni les 18 autres templates, ni l'import
  * orderFormat.
  */
 
 export const TEMPLATE_META: Record<
-  "loyalty_card_created" | "wheel_prize_code" | "referral_success" | "referral_claim_reward",
+  | "loyalty_card_created"
+  | "wheel_prize_code"
+  | "lottery_winner"
+  | "referral_success"
+  | "referral_claim_reward",
   { title: string; description: string; defaultContent: string }
 > = {
   loyalty_card_created: {
@@ -34,12 +40,27 @@ export const TEMPLATE_META: Record<
     defaultContent:
       "Bravo {{customer_name}} ! Vous avez gagne {{reward_label}} sur votre prochaine commande. Code : {{code}}. Valable 30 jours. Rialto.",
   },
+  lottery_winner: {
+    title: "Gagnant de la loterie mensuelle",
+    description:
+      "Envoyé au gagnant du tirage mensuel (unification roue 19.08 : le gain est un code promo checkout). Variables : {{customer_name}}, {{reward_label}}, {{code}}.",
+    // ⚠️ « 30 jours » DOIT rester aligné sur lottery/draw/route.ts
+    // (valid_days: 30). La version EN BASE fait foi (seedée, vouvoyée
+    // 19.08 — l'ancien seed tutoyait, contraire à la règle de marque).
+    defaultContent:
+      "Felicitations {{customer_name}} ! Vous avez gagne {{reward_label}} a la loterie Rialto. Code : {{code}}. A utiliser sur votre prochaine commande en ligne (30 jours).",
+  },
   referral_claim_reward: {
     title: "Bienvenue filleul (parrainage)",
     description:
       "Envoyé au filleul quand sa 1re commande valide le parrainage. Variables : {{customer_name}}, {{code}}.",
+    // ⚠️ SANS URL : « rialto-lausanne.ch » (fallback historique) est un
+    // domaine DÉTENU PAR JUST EAT (cf. docs/BASCULE_DOMAINE.md) — chaque
+    // SMS filleul envoyait le client chez la plateforme. L'URL du domaine
+    // final sera ajoutée au template EN BASE à la bascule (jour J).
+    // Tiret simple, pas de cadratin : hors GSM-7 = SMS facturé ×3.
     defaultContent:
-      "Bienvenue chez Rialto {{customer_name}} ! Votre code de bienvenue : {{code}} — une Pizza Marguerite offerte sur votre prochaine commande, valable 60 jours. rialto-lausanne.ch",
+      "Bienvenue chez Rialto {{customer_name}} ! Votre code de bienvenue : {{code}} - une Pizza Marguerite offerte sur votre prochaine commande, valable 60 jours.",
   },
   referral_success: {
     title: "Parrainage réussi",

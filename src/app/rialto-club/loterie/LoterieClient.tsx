@@ -276,16 +276,27 @@ export default function LotterieClient() {
               </div>
               {data.ticket.claim_token && (
                 <div className="mt-4 rounded-xl bg-cream p-3 text-xs">
-                  <div className="font-semibold text-ink">Code de retrait</div>
+                  <div className="font-semibold text-ink">
+                    {/^RIA-/.test(data.ticket.claim_token)
+                      ? "Votre code cadeau"
+                      : "Code de retrait"}
+                  </div>
                   <div className="tabular mt-1 font-mono text-base text-rialto">
                     {data.ticket.claim_token}
                   </div>
                 </div>
               )}
             </div>
+            {/* Unification 19.08 : les codes RIA-XXXXX sont des codes promo
+                checkout ; les anciens tokens (RIALTO-WIN-…) restent des
+                codes de retrait comptoir — deux instructions distinctes,
+                jamais les deux (relecture : le SMS et cet écran doivent
+                donner la MÊME consigne). */}
             <p className="mt-5 text-sm text-white/90">
-              Présentez votre ticket (ou ce code) au restaurant pour réclamer
-              votre lot.
+              {data.ticket.claim_token &&
+              /^RIA-/.test(data.ticket.claim_token)
+                ? "Utilisez ce code sur votre prochaine commande en ligne (valable 30 jours) — votre lot sera joint à la commande."
+                : "Présentez votre ticket (ou ce code) au restaurant pour réclamer votre lot."}
             </p>
             {claimed && (
               <div className="mt-4 rounded-xl bg-emerald-500/30 py-2 text-sm font-semibold">

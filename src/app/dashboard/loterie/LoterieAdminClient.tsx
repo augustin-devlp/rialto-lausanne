@@ -76,7 +76,12 @@ export default function LoterieAdminClient() {
       const res = await fetch("/api/dashboard/lottery/draw", {
         method: "POST",
       });
-      const body = (await res.json()) as { ok: boolean; error?: string };
+      const body = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        promo_genere?: boolean;
+        sms_envoye?: boolean;
+      };
       if (!body.ok) {
         setActionMsg(
           body.error === "deja_tire_ce_mois"
@@ -86,6 +91,16 @@ export default function LoterieAdminClient() {
               : body.error === "migration_pending"
                 ? "La migration lottery_draws n'est pas encore exécutée (navette en cours)."
                 : "Tirage impossible. Réessayez.",
+        );
+      } else if (body.promo_genere === false) {
+        // Chemin dégradé (relecture 19.08) : sans ce message, la carte
+        // laisserait croire qu'un SMS est parti — l'opérateur doit agir.
+        setActionMsg(
+          "⚠️ Tirage effectué, mais le code promo n'a pas pu être généré : le gagnant a un code de retrait comptoir et AUCUN SMS n'est parti — prévenez-le par téléphone.",
+        );
+      } else if (body.sms_envoye === false) {
+        setActionMsg(
+          "⚠️ Tirage effectué et code promo généré, mais le SMS n'est pas parti — prévenez le gagnant par téléphone (son code est affiché ci-dessous).",
         );
       }
       setConfirming(false);
@@ -329,7 +344,9 @@ function WinnerCard({
       {w.claim_token && (
         <div className="mt-3 rounded-xl border border-dashed border-ink/30 bg-white p-3 text-center">
           <div className="text-[10px] uppercase tracking-wider text-mute">
-            Code de retrait (le client le voit sur sa page loterie)
+            {/^RIA-/.test(w.claim_token)
+              ? "Code promo du gagnant — visible sur sa page loterie, applicable à sa prochaine commande en ligne (30 jours)"
+              : "Code de retrait comptoir (secours — pas un code promo, aucun SMS envoyé)"}
           </div>
           <div className="font-display text-xl font-bold tracking-wider text-rialto">
             {w.claim_token}

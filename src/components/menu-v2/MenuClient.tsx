@@ -581,6 +581,20 @@ export default function MenuClient({ categories, items, options }: Props) {
           />
         </div>
       </div>
+
+      {/* Mention légale allergènes (denrées alimentaires CH, audit 19.08) —
+          complète le filtre par allergène : l'info de référence reste le
+          restaurant. */}
+      {/* pb-28 mobile : la barre panier fixe (CartPanel, ~70 px) recouvrait
+          la mention en bas de page dès qu'un article était au panier —
+          précisément le parcours de commande (relecture 19.08). */}
+      <p className="container-hero pb-28 pt-2 text-center text-xs text-mute lg:pb-8">
+        Informations sur les allergènes disponibles sur demande —{" "}
+        <a href={`tel:${RIALTO_INFO.phoneTel}`} className="underline">
+          {RIALTO_INFO.phoneDisplay}
+        </a>
+        .
+      </p>
     </main>
   );
 }

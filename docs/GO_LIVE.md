@@ -20,9 +20,8 @@
       ABSOLU → livraison gratuite sur 100 % des commandes livrées ; si
       l'offset a été changé au dashboard entre-temps, même le rollback
       data de ZL1 ne rattrape pas.
-      📌 Dette DDL (prochaine navette) : `COMMENT ON COLUMN
-      restaurants.free_delivery_threshold` (sémantique recyclée
-      seuil→offset, col_description NULL = piège business_id).
+      📌 Dette DDL : ✅ portée par la **navette HY1** (bloc 2,
+      db/orders/HY1_hygiene_orders.sql) — en review caisse depuis le 19.08.
 - [ ] Fidélité : barème confirmé (tranche 40 CHF actée le 24.07).
 
 ## Tests en attente de leur créneau
@@ -70,6 +69,85 @@
       propriétaire du repo ; re-inventaire à zéro en preuve.
       ⚠️ `push_subscriptions` : l'abonnement d'Augustin peut rester
       (pilotage réel du composer).
+
+## Audit de publication (7 points, 19.08 — lot G clôture)
+
+1. [ ] **AUTH EMAIL (OBLIGATOIRE à la bascule domaine)** : authentifier le
+       domaine final chez Brevo — SPF + DKIM + DMARC (Brevo → Senders &
+       Domains → Authenticate, poser les 3 enregistrements DNS chez le
+       registrar, attendre la validation verte) AVANT d'envoyer le premier
+       reçu depuis le domaine. Sans ça, les reçus des vrais clients
+       partent en spam dès le jour 1 (problème constaté en juillet, jamais
+       tracé jusqu'ici). S'ajoute au piège « Authorised IPs » déjà noté.
+2. [x] **ALLERGÈNES** ✅ 19.08 : mention légale (« Informations sur les
+       allergènes disponibles sur demande — 021 312 64 60 ») posée au menu
+       (pied de page) ET au checkout (sous le total). Complète le filtre
+       par allergène déjà présent au menu.
+3. [ ] **MONITORING** : route de santé ✅ `/api/health` créée 19.08 (teste
+       runtime + env + lecture Supabase ; 200 `{"ok":true}` / 503).
+       Reste (action Augustin, ~5 min) : créer un monitor gratuit
+       (UptimeRobot ou équivalent) → type **HTTP(s) simple** sur
+       `https://<domaine>/api/health` (le 503 non-2xx suffit à déclencher
+       l'alerte), cadence 5 min, alerte email augustindom999@gmail.com.
+       ⚠️ Si monitor de type « Keyword » : keyword EXACT `"ok":true` —
+       jamais « ok » seul, présent aussi dans le corps du 503
+       (`{"ok":false}`) : le monitor resterait vert base morte
+       (relecture 19.08). À re-pointer sur le domaine final à la bascule.
+4. [ ] **BACKUP** : vérifier le plan du projet Supabase `ymnhfdkyqbhucxdrnyzq`
+       (dashboard → Settings → Billing) : plan **Free = AUCUN backup
+       automatique** ; plan Pro = daily backups conservés 7 jours.
+       Étape PRÉ-GO-LIVE obligatoire : **export complet** (Dashboard →
+       Database → Backups → download, ou `supabase db dump`) archivé hors
+       Supabase, re-daté à chaque jalon (gel, jour J).
+       Restauration (5 lignes) : 1) créer un projet Supabase vierge ;
+       2) `psql $DB_URL < dump.sql` (ou Studio → SQL editor par morceaux) ;
+       3) reposer les clés dans les env Vercel (URL + service key) ;
+       4) redéployer ; 5) vérifier /api/health + une commande de test.
+5. [ ] **BASCULE 301 + SEARCH CONSOLE** : le runbook BASCULE_DOMAINE.md
+       couvre la redirection du `.vercel.app` vers le domaine final
+       (étape 8 — Vercel redirige automatiquement les anciens domaines du
+       projet en 308) ; AJOUTÉ 19.08 : enregistrer le domaine final dans
+       **Google Search Console** (propriété Domaine, validation DNS),
+       soumettre le sitemap, et vérifier après la bascule qu'aucune
+       indexation ne reste sur vercel.app (`site:rialto-lausanne.vercel.app`).
+6. [x] **IMPRESSUM** ✅ 19.08 : /mentions-legales porte l'identité de
+       l'exploitant (Pizzeria Rialto + adresse + téléphone) ; résidu
+       « Stampify (stampify.ch) » remplacé par « Servato » ; date de mise
+       à jour rafraîchie. ⚠️ Reste au jour J : remplacer
+       « rialto-lausanne.vercel.app » (codé dans la page) par le domaine
+       final.
+7. [x] **PAIEMENT — DÉCISION ÉCRITE** ✅ 19.08 : la v1 se règle
+       **exclusivement à la remise** — espèces ou TWINT au livreur
+       (livraison), espèces/TWINT/carte au comptoir (retrait). AUCUN
+       paiement en ligne : choix délibéré (zéro PSP, zéro PCI, friction
+       moindre au lancement, encaissement direct restaurateur), PAS un
+       trou fonctionnel. Réévaluation possible post-v1 sur la base des
+       refus constatés (« je voulais payer par carte en ligne »).
+
+## ☑️ Checklist JOUR J (ordre d'exécution, figée 19.08)
+
+1. [ ] **Grand ménage des données de test** (section dédiée ci-dessus :
+       inventaire chiffré présenté AVANT, GO explicite, purge en une fois
+       dans l'ordre FK, re-inventaire en preuve).
+2. [ ] **`restaurants.receipt_email` → l'email du restaurateur** (valeur
+       de test actuelle à remplacer — les reçus partent en copie interne).
+3. [ ] **Auth email Brevo sur le domaine final** (point 1 de l'audit) —
+       AVANT le premier reçu réel.
+4. [ ] **Bascule domaine** (runbook BASCULE_DOMAINE.md) : DNS, env
+       NEXT_PUBLIC_SITE_URL, beacons Meta/GA4, redirection .vercel.app,
+       Search Console + sitemap (point 5 de l'audit).
+5. [ ] **URL du domaine final dans les SMS** : compléter les templates en
+       base qui doivent porter le lien (`referral_claim_reward` seedé SANS
+       URL — l'ancien fallback pointait rialto-lausanne.ch = Just Eat).
+6. [ ] **Impressum** : domaine final dans /mentions-legales (point 6).
+7. [ ] **`lotteries.is_active` → true** + PREUVE : la première vraie
+       commande crée une ligne `lottery_participants` du mois courant.
+8. [ ] **UTM réels + ID Google Ads** : convention `utm_source` figée AVANT
+       le premier franc de pub ; ID de conversion Google Ads posé dans les
+       env ; purchase de contrôle dans Events Manager/GA4 temps réel.
+9. [ ] **Bascule du lien « Commander » de la fiche Google** (étape 9 du
+       runbook domaine — dernier geste, quand tout le reste est vert).
+10. [ ] **Monitor uptime re-pointé** sur le domaine final (point 3).
 
 ## Moteur de statuts (livré 08.08 — QA fenêtre Studio)
 
@@ -150,17 +228,45 @@
 
 ## Question produit ouverte (avant le gel)
 
+- [ ] **Code filleul = −100 % SANS plafond (surfacé par la relecture
+      19.08, préexistant)** : le SMS `referral_claim_reward` promet « une
+      Pizza Marguerite offerte », mais le code généré par le cron
+      parrainage est `percent 100` sans plafond ni minimum — appliqué au
+      checkout, il offre TOUTE la commande (un panier famille à 80 CHF
+      part gratuit). À trancher par Augustin avant le go-live : soit
+      choix assumé (documenter), soit passer le code en `free_item`
+      « Pizza Marguerite » (aligné sur la promesse du SMS — même
+      mécanique que roue/loterie, le lot arrive en note de commande).
 - [x] ✅ TRANCHÉ 04.08 : FideliteSection re-routé sur la nouvelle page
       `/rialto-club/fidelite` (nav non-connectés « Ma carte fidélité ») ;
       les 4 autres orphelins (AvisSection, ContactSection, LegalSection,
       FloatingCallButton) SUPPRIMÉS — chacun couvert par un équivalent v2
       vivant.
 
+## Hors gel — dépend du restaurateur / du terrain (ne rien coder, suivre)
+
+- **Bascule domaine** : choix + achat par Mehmet (dossier
+  BASCULE_DOMAINE.md) — déclenche les points 1/4/5/6 du jour J.
+- **Credentials Google Business Profile** : flip du gate avis du mode
+  déclaratif au mode vérifié (~1-2 sem. annoncées).
+- **Import base clients Mehmet** : consentement SMS d'abord, sinon rien.
+- **Calibrage ETA** : réponses aux 5 questions + NOMBRE DE LIVREURS
+  (critique — DRIVERS=1 assumé) + confirmation 1010/1011 en anneau A.
+- **Compteur de taps client au premier vrai service** : des livraisons
+  réelles avec 0 tap = le geste n'est pas trouvé (placement/formulation à
+  revoir) et le recalibrage ETA n'aura pas sa vérité terrain.
+  (`SELECT count(*) FROM orders WHERE customer_confirmed_delivered_at IS NOT NULL`)
+
 ## Hors périmètre G (backlog v1.1, ne pas ouvrir pendant le gel)
 
 - Milestone fidélité (« plus que X CHF pour un tampon ») — re-généraliser
   milestones.ts (replié le 03.08).
-- `referral_claim_reward` absent de la base (fallback code en dur).
+- ~~`referral_claim_reward` absent de la base~~ → seed porté par la
+  navette HY1 (bloc 4), 19.08. Fallback code corrigé (URL Just Eat
+  retirée) en attendant l'exécution.
+- Purge automatique des click IDs d'attribution (HY1 pose la politique
+  24 mois + le DML rejouable ; l'automatisation — greffe au cron
+  quotidien — attendra la v1.1, première échéance réelle mi-2028).
 - i18n : chaînes FR de `dictionaries.ts` tutoyées mais MORTES (aucun
   consommateur) — à vouvoyer le jour où l'i18n est câblée.
 - Branche VIP anniversaire (`birthday_wish_vip`) — attend des paliers

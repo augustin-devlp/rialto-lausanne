@@ -3,8 +3,9 @@
 > **Source de vérité pour tout lot qui veut « brancher un SMS ».**
 > État constaté et audité le 22.07.2026 (base `ymnhfdkyqbhucxdrnyzq`,
 > table `sms_templates`, restaurant `046d930d-…`). 18 templates seedés en
-> base + 1 clé active servie depuis le code. **11 sur 18 sont orphelins**
-> (birthday_wish est ACTIF depuis le 03.08.2026) :
+> base + 1 clé active servie depuis le code. **10 sur 18 sont orphelins**
+> (birthday_wish ACTIF depuis le 03.08.2026 ; lottery_winner BRANCHÉ le
+> 19.08.2026 par l'unification loterie→code promo) :
 > sans cette table, un futur lot ne peut pas savoir lesquels sont interdits,
 > lesquels attendent leur moteur, et lesquels mentent encore.
 >
@@ -31,7 +32,7 @@
 | `reward_unlocked` | `src/app/api/scan/credit/route.ts:106` (scan comptoir, carte complète) | Vouvoyé le 22.07. Template DB uniquement, pas de fallback code. |
 | `wheel_prize_code` | `src/app/api/rialto/loyalty/spin/route.ts:288` (gain à la roue) | ⚠️ COUPLAGE : « Valable 30 jours » répète `valid_days: 30` de la route (commentaire posé à côté). Changer la durée = corriger les deux. |
 | `referral_success` | `src/app/api/cron/reward-referrals/route.ts:201` (SMS parrain) | ⚠️ Corrigé le 22.07 : annonçait « 30 jours » pour des codes générés à **60** (`route.ts:151`). La version EN BASE fait foi. |
-| `referral_claim_reward` | `src/app/api/cron/reward-referrals/route.ts:248` (SMS filleul) | ⚠️ **ABSENT de la base** : le cron retombe sur le `defaultContent` de `src/lib/smsTemplates.ts` (`loadTemplate`, fallback `TEMPLATE_META`). Éditer un futur seed en base prendrait le pas ; en attendant, la vérité est dans le code. |
+| `referral_claim_reward` | `src/app/api/cron/reward-referrals/route.ts:248` (SMS filleul) | ⚠️ Absent de la base : le CHECK `sms_templates_template_key_check` ne connaît pas la clé (INSERT rejeté 23514, constat 19.08). **Seed porté par la navette HY1 (bloc 4 : CHECK élargi + INSERT)** — d'ici son exécution, le fallback code fait foi. 🔴 Correctif 19.08 : l'URL « rialto-lausanne.ch » du fallback RETIRÉE (domaine détenu par Just Eat — chaque SMS filleul envoyait le client chez la plateforme) ; l'URL du domaine final s'ajoutera au template en base au jour J. |
 
 ## Les 2 INACTIFS PAR DÉCISION — statuts de commande
 
@@ -53,7 +54,7 @@ d'archive. Les rebrancher exigerait une nouvelle décision explicite.
 | `birthday_offer` | Orphelin-prêt | Vouvoyé le 03.08. Cite « 30 jours » sans générateur : à valider au branchement. |
 | `birthday_wish_vip` | Orphelin-prêt | Vouvoyé le 03.08. Attend des paliers dans `vip_tiers` (table VIDE — personne ne peut être VIP, branche volontairement non codée dans birthday.ts). |
 
-## Les 6 ORPHELINS — loterie & roue (hors v1 par décision)
+## ORPHELINS loterie & roue — 5 restants (lottery_winner BRANCHÉ le 19.08, sa ligne reste ici pour l'historique)
 
 | Template | Notes |
 |---|---|
@@ -61,7 +62,7 @@ d'archive. Les rebrancher exigerait une nouvelle décision explicite.
 | `lottery_result_winner` | Idem — le gagnant voit confettis + code sur son écran. |
 | `lottery_result_loser` | Idem. |
 | `lottery_ticket_received` | Idem, et **caduc sous le design 3** : les tickets naissent au tirage, pas à l'inscription. |
-| `lottery_winner` | Idem. Cite « 30 jours » sans générateur actif. |
+| `lottery_winner` | ✅ **BRANCHÉ le 19.08** (unification roue, lot G) : envoyé par `/api/dashboard/lottery/draw` au gagnant du tirage mensuel — le gain est désormais un CODE PROMO checkout (source `lottery`, free_item, 30 jours alignés sur `valid_days: 30`). Contenu en base RÉÉCRIT vouvoyé le 19.08 (l'ancien seed tutoyait). N'est plus orphelin. |
 | `wheel_available_again` | Réactivation roue : marketing possible (conforme doctrine), aucun chantier acté. Tutoie. |
 
 ## Les 2 MORTS

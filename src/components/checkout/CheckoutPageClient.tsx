@@ -1173,6 +1173,15 @@ export default function CheckoutPageClient({
               </div>
             </dl>
 
+            {/* Mention légale allergènes (denrées alimentaires CH, 19.08). */}
+            <p className="mt-3 text-xs text-mute">
+              Informations sur les allergènes disponibles sur demande —{" "}
+              <a href={`tel:${RIALTO_INFO.phoneTel}`} className="underline">
+                {RIALTO_INFO.phoneDisplay}
+              </a>
+              .
+            </p>
+
             {missing > 0 && (
               <div className="mt-4 rounded-xl bg-rialto/10 p-3 text-xs font-medium text-rialto">
                 Ajoutez {formatCHF(missing)} pour atteindre le minimum (

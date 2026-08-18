@@ -217,6 +217,20 @@ export async function POST(req: NextRequest) {
     promoDiscount = validation.discount_amount;
     promoCodeId = validation.code.id;
     promoCodeLabel = validation.code.code;
+    // Un free_item ne remise RIEN (discount 0) : sans trace explicite,
+    // la cuisine ne sait pas qu'un lot est dû — le code serait brûlé et
+    // le lot jamais préparé (relecture 19.08 : reçu, fiche dashboard et
+    // caisse ne lisent ni promo_code_id ni free_item_label). La note de
+    // commande est la seule surface lue PARTOUT.
+    if (
+      validation.code.discount_type === "free_item" &&
+      validation.code.free_item_label
+    ) {
+      const mention = `LOT OFFERT (code ${validation.code.code}) : ${validation.code.free_item_label}`;
+      body.notes = [body.notes?.trim(), mention]
+        .filter(Boolean)
+        .join(" · ");
+    }
   }
 
   const total = Math.max(0, subtotal + deliveryFee - promoDiscount);

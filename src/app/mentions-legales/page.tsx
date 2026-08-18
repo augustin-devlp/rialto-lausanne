@@ -11,7 +11,7 @@ export default function MentionsLegalesPage() {
     <LegalPage
       title="Mentions légales"
       subtitle="Informations réglementaires sur l'éditeur du site et le restaurant Rialto."
-      updatedAt="22 avril 2026"
+      updatedAt="19 août 2026"
     >
       <section>
         <h2>Éditeur du site</h2>
@@ -36,7 +36,7 @@ export default function MentionsLegalesPage() {
         </p>
         <p>
           La plateforme technique de gestion des commandes et de la fidélité
-          est fournie par <strong>Stampify</strong> (<a href="https://stampify.ch" target="_blank" rel="noopener noreferrer">stampify.ch</a>).
+          est fournie par <strong>Servato</strong>.
         </p>
       </section>
 

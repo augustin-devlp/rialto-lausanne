@@ -35,12 +35,13 @@ export const dynamic = "force-dynamic";
  *   Priorité : C > A > PARTICIPE > B > D > E (le gain passe avant tout ;
  *   un participant du mois passe avant une défaite d'un tirage antérieur).
  *
- * ⚠️ Fossé Système A/B hérité (D1) : cet endpoint LIT les tickets du tirage
- * (lottery_entries — système A alimenté par le dashboard Stampify). Les
- * participations du site vont dans lottery_participants (système B, via
- * /api/rialto/loyalty/lottery/enter). Le tirage et la génération des tickets
- * restent côté dashboard Stampify (futur lot) — AUCUN SMS ici (D5).
- * Porté VERBATIM depuis loyalty-cards (moins le CORS).
+ * Fossé Système A/B RÉSORBÉ : cet endpoint LIT les tickets du tirage
+ * (lottery_entries). Les participations du site vont dans
+ * lottery_participants et le TIRAGE vit dans CE repo depuis D2/L1
+ * (/api/dashboard/lottery/draw) — il convertit les participations en
+ * tickets, génère le code promo du gagnant et envoie le SMS
+ * lottery_winner (unification 19.08). Cette route-CI n'envoie toujours
+ * aucun SMS (lecture pure). Porté de loyalty-cards (moins le CORS).
  */
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);

@@ -5,6 +5,7 @@ import {
   isDashboardConfigured,
 } from "@/lib/dashboardAuth";
 import { toFreeDeliveryRule } from "@/lib/delivery/rule";
+import type { ZoneRow } from "@/lib/delivery/anneaux";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,11 @@ export const dynamic = "force-dynamic";
  * zones actives, pour que le dashboard montre l'effet concret de
  * l'offset (remplace l'ancien floor_reference, devenu sans objet : le
  * seuil ne peut plus passer SOUS un minimum de zone par construction).
+ *
+ * GET et PATCH renvoient enfin `zones` : les zones actives complètes
+ * (NPA, localité, frais, minimum) pour la VUE DE CONSULTATION de la
+ * grille (lot vue zones 19.08). Lecture seule — aucune route d'écriture
+ * des zones n'existe et ne doit exister sans navette.
  */
 
 const SELECT_COLS = "free_delivery_threshold, free_delivery_enabled";
@@ -48,25 +54,46 @@ function guard(req: NextRequest): NextResponse | null {
   return null;
 }
 
-/** Profils distincts (min, fee>0) des zones actives, triés — l'aperçu de
- * la grille dérivée. Les zones à frais nul (Chailly) sont exclues : rien
- * à offrir chez elles. */
-async function grilleApercu(
+/** Zones ACTIVES du restaurant, valeurs normalisées en nombres — la
+ * source de la vue de consultation (lot vue zones 19.08 : les valeurs
+ * viennent de la base, jamais de constantes recopiées). null en cas
+ * d'erreur de lecture : le client doit DIRE « grille illisible », pas
+ * afficher « 0 communes desservies ». */
+async function zonesActives(
   sb: ReturnType<typeof supabaseService>,
-): Promise<Array<{ min_order_amount: number }>> {
-  const { data } = await sb
+): Promise<ZoneRow[] | null> {
+  const { data, error } = await sb
     .from("delivery_zones")
-    .select("min_order_amount, delivery_fee")
+    .select("postal_code, city, delivery_fee, min_order_amount")
     .eq("restaurant_id", RESTAURANT_ID)
     .eq("is_active", true);
-  const mins = new Set<number>();
-  for (const z of (data ??
-    []) as Array<{ min_order_amount: unknown; delivery_fee: unknown }>) {
+  if (error || !data) {
+    console.error("[dashboard/livraison/rule] lecture zones échouée", error);
+    return null;
+  }
+  const zones: ZoneRow[] = [];
+  for (const z of data as Array<Record<string, unknown>>) {
     const min = Number(z.min_order_amount);
     const fee = Number(z.delivery_fee);
-    if (Number.isFinite(min) && Number.isFinite(fee) && fee > 0) {
-      mins.add(min);
-    }
+    if (!Number.isFinite(min) || !Number.isFinite(fee)) continue;
+    zones.push({
+      postal_code: String(z.postal_code ?? ""),
+      city: typeof z.city === "string" ? z.city : null,
+      delivery_fee: fee,
+      min_order_amount: min,
+    });
+  }
+  return zones;
+}
+
+/** Profils distincts (min, fee>0) — l'aperçu de la grille dérivée. Les
+ * zones à frais nul (Chailly) sont exclues : rien à offrir chez elles. */
+function grilleApercu(
+  zones: ZoneRow[] | null,
+): Array<{ min_order_amount: number }> {
+  const mins = new Set<number>();
+  for (const z of zones ?? []) {
+    if (z.delivery_fee > 0) mins.add(z.min_order_amount);
   }
   return [...mins].sort((a, b) => a - b).map((m) => ({ min_order_amount: m }));
 }
@@ -90,11 +117,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const zones = await zonesActives(sb);
   return NextResponse.json(
     {
       ok: true,
       rule: toFreeDeliveryRule(data as Record<string, unknown>),
-      grille_apercu: await grilleApercu(sb),
+      grille_apercu: grilleApercu(zones),
+      zones,
     },
     { headers: { "cache-control": "no-store" } },
   );
@@ -144,9 +173,11 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "update_failed" }, { status: 500 });
   }
 
+  const zones = await zonesActives(sb);
   return NextResponse.json({
     ok: true,
     rule: toFreeDeliveryRule(data as Record<string, unknown>),
-    grille_apercu: await grilleApercu(sb),
+    grille_apercu: grilleApercu(zones),
+    zones,
   });
 }

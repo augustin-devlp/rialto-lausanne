@@ -17,23 +17,45 @@
 import { useEffect, useState } from "react";
 import {
   DEFAULT_FREE_DELIVERY_RULE,
+  freeDeliveryThresholdForZone,
   type FreeDeliveryRule,
 } from "@/lib/delivery/rule";
+import { groupeParAnneaux, type ZoneRow } from "@/lib/delivery/anneaux";
 
 type Payload = {
   ok: boolean;
   rule: FreeDeliveryRule;
   grille_apercu: Array<{ min_order_amount: number }>;
+  zones?: ZoneRow[] | null;
+};
+
+/** Pastilles des anneaux (habillage — les valeurs viennent de la base).
+ * Tokens de la charte uniquement (relecture 19.08) : emerald = registre
+ * positif déjà établi au dashboard, saffron et rialto = charte — pas de
+ * teintes Tailwind brutes, et pas de rouge vif qui se lirait comme une
+ * erreur. */
+const COULEUR_ANNEAU: Record<string, string> = {
+  A: "bg-emerald-500",
+  B: "bg-saffron",
+  C: "bg-rialto/50",
+  D: "bg-rialto",
 };
 
 export default function LivraisonReglageClient() {
   const [rule, setRule] = useState<FreeDeliveryRule>(DEFAULT_FREE_DELIVERY_RULE);
+  // La règle ENREGISTRÉE (chargement + PATCH réussi) — la vue de
+  // consultation reflète la réalité en base, jamais la saisie en cours
+  // (contrairement à l'aperçu des réglages, qui est un simulateur).
+  const [savedRule, setSavedRule] = useState<FreeDeliveryRule | null>(null);
   // Saisie gardée en CHAÎNE : vider le champ ne doit pas devenir 0 (même
   // piège que la tranche fidélité).
   const [offsetInput, setOffsetInput] = useState<string>(
     String(DEFAULT_FREE_DELIVERY_RULE.offsetAboveZoneMin),
   );
   const [grille, setGrille] = useState<Array<{ min_order_amount: number }>>([]);
+  // null = lecture des zones échouée (≠ [] : grille réellement vide) —
+  // on le dit, on n'affiche pas « 0 communes desservies ».
+  const [zones, setZones] = useState<ZoneRow[] | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState(false);
@@ -54,8 +76,10 @@ export default function LivraisonReglageClient() {
         const body = (await res.json()) as Payload;
         if (body.ok) {
           setRule(body.rule);
+          setSavedRule(body.rule);
           setOffsetInput(String(body.rule.offsetAboveZoneMin));
           setGrille(body.grille_apercu ?? []);
+          setZones(body.zones ?? null);
         }
       } catch {
         if (!annule) setErreur("Impossible de charger le réglage.");
@@ -104,11 +128,21 @@ export default function LivraisonReglageClient() {
         error?: string;
         rule?: FreeDeliveryRule;
         grille_apercu?: Array<{ min_order_amount: number }>;
+        zones?: ZoneRow[] | null;
       };
       if (body.ok && body.rule) {
         setRule(body.rule);
+        setSavedRule(body.rule);
         setOffsetInput(String(body.rule.offsetAboveZoneMin));
-        if (body.grille_apercu) setGrille(body.grille_apercu);
+        // Merge PROTÉGÉ (relecture 19.08) : si la relecture des zones a
+        // transitoirement échoué côté route (zones:null, grille:[]), on
+        // GARDE l'état valide affiché — les zones n'ont pas pu changer
+        // (aucune route d'écriture hors navette), et l'enregistrement de
+        // la règle, lui, a réussi.
+        if (body.zones != null) {
+          setZones(body.zones);
+          setGrille(body.grille_apercu ?? []);
+        }
         setSucces(true);
       } else if (body.error === "offset_invalide") {
         setErreur("Le montant doit être compris entre 1 et 30 CHF.");
@@ -161,7 +195,8 @@ export default function LivraisonReglageClient() {
             type="checkbox"
             checked={rule.enabled}
             onChange={(e) => setRule({ ...rule, enabled: e.target.checked })}
-            className="h-5 w-5 accent-rialto"
+            disabled={savedRule === null}
+            className="h-5 w-5 accent-rialto disabled:opacity-50"
           />
         </label>
 
@@ -176,7 +211,8 @@ export default function LivraisonReglageClient() {
             max={30}
             value={offsetInput}
             onChange={(e) => setOffsetInput(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-ink"
+            disabled={savedRule === null}
+            className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-ink disabled:opacity-50"
           />
         </label>
 
@@ -192,7 +228,7 @@ export default function LivraisonReglageClient() {
             minimum de chaque zone : avec {fmtCHF(parsedOffset)} CHF, la
             livraison offerte démarre à{" "}
             {grille.length > 0
-              ? `${fmtCHF(grille[0].min_order_amount + parsedOffset)} CHF minimum`
+              ? `${fmtCHF(freeDeliveryThresholdForZone(grille[0].min_order_amount, { enabled: true, offsetAboveZoneMin: parsedOffset }))} CHF minimum`
               : "un montant très élevé"}
             . Si ce chiffre vient de l&apos;ancien réglage (seuil global),
             la valeur prévue est 15.
@@ -210,7 +246,16 @@ export default function LivraisonReglageClient() {
                   <li key={g.min_order_amount}>
                     minimum {fmtCHF(g.min_order_amount)} CHF →{" "}
                     <strong className="text-ink">
-                      offerte dès {fmtCHF(g.min_order_amount + parsedOffset)}{" "}
+                      offerte dès{" "}
+                      {/* SIMULATEUR : suit la saisie, mais par la
+                          dérivation CANONIQUE (jamais min+offset à la
+                          main — relecture 19.08). */}
+                      {fmtCHF(
+                        freeDeliveryThresholdForZone(g.min_order_amount, {
+                          enabled: true,
+                          offsetAboveZoneMin: parsedOffset,
+                        }),
+                      )}{" "}
                       CHF
                     </strong>
                   </li>
@@ -218,7 +263,12 @@ export default function LivraisonReglageClient() {
               </ul>
             </>
           ) : rule.enabled ? (
-            <>La grille s&apos;affichera dès que le montant est valide.</>
+            zones === null ? (
+              <>Aperçu indisponible : la grille des zones n&apos;a pas pu
+              être lue. Rechargez la page.</>
+            ) : (
+              <>La grille s&apos;affichera dès que le montant est valide.</>
+            )
           ) : (
             <>
               Désactivé : les frais de livraison de la zone s&apos;appliquent
@@ -229,12 +279,116 @@ export default function LivraisonReglageClient() {
 
         <button
           onClick={enregistrer}
-          disabled={envoi || !offsetOk}
+          // savedRule === null : le GET initial n'a jamais abouti — le
+          // formulaire porte les valeurs PAR DÉFAUT (enabled:false), un
+          // Enregistrer écraserait la vraie règle en base (couperait la
+          // gratuité active, silencieusement). Relecture 19.08.
+          disabled={envoi || !offsetOk || savedRule === null}
           className="w-full rounded-xl bg-rialto px-4 py-3 font-display font-semibold text-white transition hover:bg-rialto-dark disabled:opacity-50"
         >
           {envoi ? "Enregistrement…" : "Enregistrer"}
         </button>
       </div>
+
+      {/* ─── Vue de CONSULTATION de la grille (lot vue zones 19.08) ─────
+          Lecture seule par principe : la grille se modifie par navette
+          ZLn, jamais depuis un écran (invariant CLAUDE.md). Les seuils
+          affichés = freeDeliveryThresholdForZone sur la règle ENREGISTRÉE
+          (savedRule) — LA dérivation canonique, jamais la saisie en cours.
+          « Communes desservies » : approximation ASSUMÉE (libellé commandé
+          par Augustin 19.08) — le compte est celui des NPA (64), Lausanne
+          y figure plusieurs fois. */}
+      <section className="space-y-3 pt-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-lg font-bold text-ink">
+            Zones desservies
+          </h2>
+          {zones !== null && (
+            <span className="shrink-0 text-sm font-medium text-mute">
+              {zones.length} commune{zones.length > 1 ? "s" : ""} desservie
+              {zones.length > 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {savedRule !== null && !savedRule.enabled && zones !== null && (
+          <div className="rounded-2xl bg-surface p-3 text-sm text-mute">
+            Livraison offerte désactivée : les frais de zone s&apos;appliquent
+            à toutes les commandes, aucun seuil de gratuité n&apos;est actif.
+          </div>
+        )}
+
+        {zones === null ? (
+          <div className="rounded-2xl border border-border bg-white p-4 text-sm text-mute shadow-card">
+            Impossible de charger la grille des zones. Rechargez la page.
+          </div>
+        ) : (
+          groupeParAnneaux(zones, savedRule).map((a) => (
+            <details
+              key={`${a.lettre}-${a.minOrderAmount}`}
+              className="group rounded-2xl border border-border bg-white shadow-card"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                    COULEUR_ANNEAU[a.lettre] ?? "bg-mute"
+                  }`}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-display font-semibold text-ink">
+                    Anneau {a.lettre}
+                    {a.plageKm ? ` · ${a.plageKm}` : ""}
+                  </span>
+                  <span className="block text-xs text-mute">
+                    {a.zones.length} commune{a.zones.length > 1 ? "s" : ""} ·
+                    minimum {fmtCHF(a.minOrderAmount)} CHF
+                    {a.seuilGratuite != null
+                      ? ` · offerte dès ${fmtCHF(a.seuilGratuite)} CHF`
+                      : ""}
+                  </span>
+                </span>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="shrink-0 text-mute transition-transform group-open:rotate-180"
+                  aria-hidden
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <ul className="border-t border-border px-4 py-1.5">
+                {a.zones.map((z) => (
+                  <li
+                    key={z.postal_code}
+                    className="flex items-baseline justify-between gap-3 py-1.5"
+                  >
+                    <span className="min-w-0 text-sm text-ink">
+                      <span className="font-semibold">{z.postal_code}</span>{" "}
+                      {z.city}
+                    </span>
+                    {z.offerteDOffice ? (
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        toujours offerte
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-sm text-mute">
+                        {fmtCHF(z.delivery_fee)} CHF
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ))
+        )}
+      </section>
     </div>
   );
 }

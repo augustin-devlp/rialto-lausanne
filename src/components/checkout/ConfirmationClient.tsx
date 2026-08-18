@@ -13,7 +13,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 import { RIALTO_INFO } from "@/lib/rialto-data";
-import { supabaseBrowser } from "@/lib/supabase";
 import { writeCustomerSession } from "@/lib/customerSession";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
 import StampRow from "@/components/loyalty/StampRow";
@@ -169,26 +168,31 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   const [order, setOrder] = useState<OrderData>(initialOrder);
   const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
 
-  /* ─── Mise à jour du statut en TEMPS RÉEL ─────────────────────────────
+  /* ─── Mise à jour du statut : LE SUIVI EST EN POLLING ─────────────────
    *
-   * On combine 3 mécanismes pour maximiser la fiabilité :
+   * Deux mécanismes (décision Augustin 19.08, post-vérif caisse HY1b) :
    *
-   *   1. Supabase Realtime (websocket postgres_changes) — source primaire,
-   *      push < 1s quand le dashboard Stampify update le statut en DB.
-   *      C'est le pattern qu'utilisait l'ancien StatusTracker.tsx avant
-   *      la refonte et qui fonctionnait parfaitement.
+   *   1. Polling 15 s sur /api/orders/[id] (service_role côté serveur) —
+   *      LA source du suivi : statut, items, intrants ETA, tap
+   *      cross-device. Ralenti à 60 s sur une commande annulée (le
+   *      détour caisse cancelled→accepted R-2026-043 doit rester
+   *      visible), re-accéléré si le statut change.
    *
-   *   2. Polling toutes les 15s — fallback au cas où le websocket
-   *      se déconnecte (mobile 4G bascule Wifi, etc.).
+   *   2. Fetch immédiat à l'arrivée + refetch à chaque retour d'onglet
+   *      (visibilitychange) — couvre le retour après 10 min.
    *
-   *   3. Fetch immédiat à l'arrivée sur la page + refetch à chaque
-   *      focus tab (visibilitychange) — couvre le cas où le user
-   *      revient sur l'onglet après 10 min.
+   * ⚠️ HISTOIRE : un abonnement Supabase Realtime (postgres_changes) a
+   * vécu ici en « source primaire » — il était MUET DEPUIS TOUJOURS
+   * (vérif caisse 19.08 : aucune policy SELECT anon sur orders, RLS
+   * deny-all → le websocket ne recevait rien). Supprimé le 19.08 : du
+   * code qu'on croit actif mais qui ne reçoit rien est pire qu'une
+   * absence — trois docs affirmaient « trois canaux convergents » alors
+   * que le suivi a toujours vécu du polling. NE PAS le réintroduire sans
+   * policy SELECT dédiée (et sans réévaluer l'exposition de la table).
    *
-   * Tous les mécanismes appellent le même handleStatusUpdate qui :
+   * Les deux mécanismes appellent le même handleStatusUpdate qui :
    *   - Met à jour le state local SEULEMENT si le status a changé
    *   - Log ça dans la console avec préfixe [timeline]
-   *   - Met à jour le bandeau debug visible (source = realtime/poll/focus)
    */
   useEffect(() => {
     const orderId = order.id;
@@ -197,16 +201,14 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
     let stopped = false;
     let tickCount = 0;
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    let realtimeChannel: ReturnType<
-      ReturnType<typeof supabaseBrowser>["channel"]
-    > | null = null;
+    let pollLent = false;
     // statusSeen : le dernier status qu'on A VU — source de vérité client-side.
     // Déclaré ici pour être capturé par la closure et non soumis à React state.
     let statusSeen: OrderStatus = initialOrder.status;
 
     const handleStatusUpdate = (
       newOrder: OrderData | Partial<OrderData>,
-      source: "realtime" | "poll" | "focus" | "initial",
+      source: "poll" | "focus" | "initial",
     ) => {
       if (stopped) return;
       const newStatus = newOrder.status as OrderStatus | undefined;
@@ -226,14 +228,21 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
           `[timeline] ✅ status CHANGED from ${statusSeen} to ${newStatus} via ${source}`,
         );
         statusSeen = newStatus;
+        // Sortie du régime lent (ré-acceptation après annulation,
+        // R-2026-043) : le statut bouge à nouveau → cadence normale.
+        if (pollLent && newStatus !== "cancelled" && newStatus !== "completed") {
+          if (intervalId) clearInterval(intervalId);
+          intervalId = setInterval(() => void fetchStatus("poll"), 15_000);
+          pollLent = false;
+          console.log("[timeline] poll re-accéléré à 15 s");
+        }
         // Phase 9 FIX 3 : TOUJOURS merger avec prev pour préserver
-        // les items (le payload Realtime postgres_changes ne contient
-        // que les colonnes de la table orders, SANS les order_items
-        // qui sont dans une table séparée). Si on remplace l'order
-        // complet, `order.items` devient undefined et le JSX crashe.
-        //
-        // Pour les poll HTTP, `newOrder.items` EST inclus (endpoint
-        // /api/orders/[id] imbrique items). On l'utilise si dispo.
+        // les items — garde par CONTENU conservée après la suppression
+        // du realtime (19.08) : elle protège aussi d'un payload poll
+        // partiel. Si on remplaçait l'order complet sans items,
+        // `order.items` deviendrait undefined et le JSX crasherait.
+        // Le poll HTTP inclut `newOrder.items` (endpoint /api/orders/[id]
+        // imbrique items) : on l'utilise si dispo.
         setOrder((prev) => {
           const hasItems =
             "items" in newOrder &&
@@ -246,7 +255,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
             ...newOrder,
             items: mergedItems,
             // Même philosophie que les items : un payload sans intrants
-            // (Realtime, ou collecte en échec côté poll) ne doit pas
+            // (collecte en échec côté poll) ne doit pas
             // écraser les intrants connus par null (relecture 18.08 —
             // le stepper retombait sur « Confirmée » sans compte à
             // rebours le temps d'un poll).
@@ -256,9 +265,10 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         });
       }
       if (newStatus === statusSeen) {
-        // TAP cross-device : l'UPDATE realtime du tap porte la colonne
-        // (ligne brute) sans changement de statut — merge dédié, garde
-        // par contenu (jamais d'écrasement par null).
+        // TAP cross-device : le poll rapporte la colonne posée depuis un
+        // autre appareil sans changement de statut — merge dédié, garde
+        // par contenu (jamais d'écrasement par null). Latence = un tick
+        // de poll (le realtime qui promettait l'instantané était muet).
         const tapServeur = (newOrder as OrderData)
           .customer_confirmed_delivered_at;
         if (tapServeur != null) {
@@ -275,9 +285,9 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       if (newStatus === statusSeen && (newOrder as OrderData).eta_intrants) {
         // Statut inchangé mais intrants ETA présents : garde sur le
         // CONTENU (l'ancre accepted_at), jamais sur la présence de
-        // l'objet — le Realtime pousse la ligne brute SANS intrants, et
-        // un garde par présence figeait l'accepted_at:null du SSR à vie
-        // (bloquant relecteur 13.08 : stepper gelé sur « Confirmée »).
+        // l'objet — un payload partiel (SSR initial, collecte en échec)
+        // ne doit pas figer accepted_at:null à vie (bloquant relecteur
+        // 13.08 : stepper gelé sur « Confirmée »).
         // accepted_at est stable une fois écrit → pas de boucle possible.
         const next = (newOrder as OrderData).eta_intrants!;
         setOrder((prev) =>
@@ -291,16 +301,15 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         console.log(`[timeline] terminal status ${newStatus} — stopping`);
         stop();
       }
-      if (newStatus === "cancelled") {
-        // Le détour caisse cancelled→accepted EXISTE (R-2026-043) : on
-        // coupe le polling (coût) mais on GARDE le canal realtime (coût
-        // nul) — sans lui, une ré-acceptation laissait le client sur
-        // « Annulée » à vie (relecture 18.08).
-        console.log("[timeline] cancelled — poll off, realtime conservé");
-        if (intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
+      if (newStatus === "cancelled" && !pollLent) {
+        // Le détour caisse cancelled→accepted EXISTE (R-2026-043) : le
+        // realtime qui « couvrait » ce cas était MUET — c'est désormais
+        // un poll LENT (60 s) qui le couvre réellement, onglet ouvert
+        // compris ; le visibilitychange rattrape au retour d'onglet.
+        console.log("[timeline] cancelled — poll ralenti à 60 s");
+        if (intervalId) clearInterval(intervalId);
+        intervalId = setInterval(() => void fetchStatus("poll"), 60_000);
+        pollLent = true;
       }
     };
 
@@ -311,21 +320,16 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         clearInterval(intervalId);
         intervalId = null;
       }
-      if (realtimeChannel) {
-        void supabaseBrowser().removeChannel(realtimeChannel);
-        realtimeChannel = null;
-      }
     };
     // Exposé pour l'arrêt sur phase DÉRIVÉE terminale : Rialto ne clôture
     // jamais ses commandes en base (statuts accepted à vie), donc sans
     // cet arrêt une page laissée ouverte pollerait pour toujours — et
-    // chaque poll paie désormais la collecte d'intrants (relevé relecteur
-    // 13.08). ⚠️ POIGNÉE POLLING SEUL (relecture 18.08) : le canal
-    // realtime reste ouvert (coût nul) — le tap client force la phase
-    // terminale bien plus tôt que l'horloge, et couper le canal aurait
-    // rendu invisible une annulation/ré-acceptation postérieure (la
-    // garde R-2026-043). Le stop() COMPLET reste réservé au démontage
-    // et au statut DB réellement terminal (completed).
+    // chaque poll paie la collecte d'intrants (relevé relecteur 13.08).
+    // ⚠️ Cette poignée ne coupe que le TICK périodique : le refetch
+    // visibilitychange reste actif — c'est lui qui rattrape une
+    // annulation/ré-acceptation postérieure (R-2026-043) au retour
+    // d'onglet une fois la phase terminale atteinte. Le stop() COMPLET
+    // reste réservé au démontage et au statut DB terminal (completed).
     stopPollingRef.current = () => {
       if (intervalId) {
         clearInterval(intervalId);
@@ -352,32 +356,8 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       }
     };
 
-    // ─── 2. Supabase Realtime — abonnement sur UPDATE orders
-    try {
-      const sb = supabaseBrowser();
-      realtimeChannel = sb
-        .channel(`order:${orderId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "orders",
-            filter: `id=eq.${orderId}`,
-          },
-          (payload) => {
-            console.log(`[timeline] 🔔 realtime UPDATE received`, payload.new);
-            handleStatusUpdate(payload.new as Partial<OrderData>, "realtime");
-          },
-        )
-        .subscribe((status) => {
-          console.log(`[timeline] realtime channel status=${status}`);
-        });
-    } catch (err) {
-      console.warn("[timeline] realtime setup failed — polling only", err);
-    }
-
-    // ─── 3. Polling 15s (fallback si realtime down)
+    // ─── 2. Polling 15 s — LA source du suivi (realtime mort supprimé
+    //        le 19.08, voir l'en-tête de l'effet)
     console.log(
       `[timeline] START orderNumber=${orderNumber} order_id=${orderId} initial_status=${statusSeen}`,
     );
@@ -390,7 +370,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       stop();
     }
 
-    // ─── 4. Refetch quand l'onglet redevient visible
+    // ─── 3. Refetch quand l'onglet redevient visible
     const onVisibility = () => {
       if (document.visibilityState === "visible") void fetchStatus("focus");
     };
@@ -597,7 +577,8 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
 
   // Phase dérivée TERMINALE (« Livrée »/« Prête ») : on coupe le POLLING
   // (le statut DB ne deviendra jamais terminal : Rialto ne clôture pas
-  // ses commandes) mais le canal realtime reste ouvert — cf. la poignée.
+  // ses commandes) ; le refetch visibilitychange reste actif — cf. la
+  // poignée (le canal realtime historique, muet, a été supprimé le 19.08).
   useEffect(() => {
     if (phase.key === "delivered" || phase.key === "ready") {
       stopPollingRef.current?.();

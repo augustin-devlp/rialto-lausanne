@@ -93,6 +93,27 @@ export type TemplateContext = Partial<Record<TemplateVariableKey, string>>;
  * Remplace les {{variables}} dans un template par les valeurs du contexte.
  * Les variables inconnues ou non fournies sont remplacées par une chaîne vide.
  */
+/**
+ * Translittération GSM-7 des VALEURS substituées (décision Augustin
+ * 19.08) : UN SEUL caractère hors alphabet GSM-7 (le « î » de Benoît, le
+ * « ê » de Noémie…) bascule TOUT le SMS en UCS-2 — 70 caractères par
+ * segment au lieu de 160, soit 2-3 segments FACTURÉS au lieu d'un, sur
+ * chaque envoi, pour des milliers de clients. Les templates maison sont
+ * déjà écrits désaccentués (« Felicitations ») ; cette passe couvre les
+ * valeurs DYNAMIQUES (prénoms, libellés de lots). Uniformément ASCII
+ * (é→e aussi, bien que é soit GSM-7 : la simplicité vaut mieux qu'une
+ * table d'exceptions). Les URLs (déjà ASCII) ressortent inchangées.
+ */
+function translittereGsm7(valeur: string): string {
+  return valeur
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/œ/g, "oe")
+    .replace(/Œ/g, "Oe")
+    .replace(/æ/g, "ae")
+    .replace(/Æ/g, "Ae");
+}
+
 export function renderTemplate(
   content: string,
   ctx: TemplateContext,
@@ -100,7 +121,7 @@ export function renderTemplate(
   return content
     .replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_m, key: string) => {
       const k = key.toLowerCase() as TemplateVariableKey;
-      return (ctx[k] ?? "").trim();
+      return translittereGsm7((ctx[k] ?? "").trim());
     })
     .replace(/\s{2,}/g, " ")
     .trim();

@@ -1,9 +1,25 @@
 -- ============================================================================
--- HY1 — Hygiène orders (privilèges, purge click IDs, COMMENT) + seed SMS
+-- HY1b — Hygiène orders (privilèges, purge click IDs, COMMENT) + seed SMS
 -- Lot G clôture (GO Augustin 25.08.2026 − 6 jours), demande initiale caisse.
--- STATUT : EN NAVETTE (review caisse) — NE PAS EXÉCUTER avant le retour
---          « GO D'EXÉCUTION ». Exécution via apply_migration par la
---          conversation propriétaire du repo rialto-lausanne UNIQUEMENT.
+-- STATUT : ✅ EXÉCUTÉE le 19.08.2026 via apply_migration
+--          (hy1b_hygiene_orders). Post-vérif conforme : relacl orders =
+--          anon:r seul, authenticated:ar + UPDATE colonne préservé sur
+--          les TROIS colonnes caisse (status, cancellation_reason,
+--          printed_at) ; MAINTAIN disparu des deux rôles ; COMMENT posé ;
+--          seed referral_claim_reward présent (1 ligne, enabled) ; CHECK
+--          à 21 clés ; 0 attribution vide en base.
+--          GO CAISSE reçu le 19.08 (4 blocs) avec 3 corrections — d'où le
+--          « b » : (1) NULLIF au bloc 3 (une attribution qui n'avait QUE
+--          des click IDs redevient NULL, jamais {} — un reporting
+--          IS NOT NULL la compterait comme attribuée) ; (2) la caisse a
+--          TROIS colonnes UPDATE (status, cancellation_reason,
+--          printed_at) — le constat initial n'en listait que deux, la
+--          requête de preuve filtrait sur 3 noms de colonnes ; (3) la
+--          justification « SELECT anon = realtime du suivi » décrivait
+--          un flux INEXISTANT (aucune policy SELECT anon, canal realtime
+--          muet, suivi en polling service_role) — SQL inchangé, doc
+--          corrigée. Exécution via apply_migration par la conversation
+--          propriétaire du repo.
 -- ============================================================================
 --
 -- CE QUE FAIT CE SQL, EXACTEMENT (4 blocs indépendants) :
@@ -19,7 +35,8 @@
 --   une clé anon compromise pouvait vider la table ; MAINTAIN est du même
 --   modèle de menace : un LOCK TABLE orders IN ACCESS EXCLUSIVE MODE par
 --   une session anon gèlerait TOUS les accès — la caisse bloquée.
---   authenticated détient en plus UPDATE ciblé (printed_at, status) —
+--   authenticated détient en plus UPDATE ciblé sur TROIS colonnes
+--   (status, cancellation_reason, printed_at — précision caisse 19.08) :
 --   le canal d'écriture de la caisse, PRÉSERVÉ tel quel.
 --     REVOKE DELETE, TRUNCATE, TRIGGER, REFERENCES, MAINTAIN
 --       → anon, authenticated
@@ -33,8 +50,12 @@
 --       commandes comptoir par ce rôle, rien ne casse.
 --   CÔTÉ SITE : vérifié le 19.08 — TOUTES les écritures orders passent
 --   par les routes serveur en service_role (hors de portée d'un REVOKE
---   sur anon/authenticated) ; anon ne sert qu'aux SELECT (realtime du
---   suivi + SSR confirmation), non touchés.
+--   sur anon/authenticated). SELECT anon volontairement NON révoqué par
+--   simple prudence — mais AUCUN flux ne l'utilise (vérif caisse 19.08 :
+--   aucune policy SELECT anon sur orders, RLS deny-all → le canal
+--   realtime de ConfirmationClient était MUET ; le suivi vit du polling
+--   service_role ; l'abonnement realtime mort est supprimé du code dans
+--   le même lot).
 --
 -- BLOC 2 — COMMENT ON COLUMN restaurants.free_delivery_threshold :
 --   la dette ZL1 (col_description NULL sur une colonne au SENS RECYCLÉ
@@ -128,7 +149,11 @@ COMMENT ON COLUMN public.restaurants.free_delivery_threshold IS
 
 -- ─── BLOC 3 : purge click IDs > 24 mois (rejouable, no-op aujourd'hui) ──
 UPDATE public.orders
-SET attribution = attribution - 'gclid' - 'fbclid' - 'msclkid'
+-- NULLIF (correction caisse 19.08) : une attribution qui n'avait QUE des
+-- click IDs doit redevenir NULL (= « on ne sait pas »), jamais {} — un
+-- reporting « attribution IS NOT NULL » compterait {} comme attribuée.
+SET attribution = NULLIF(
+  attribution - 'gclid' - 'fbclid' - 'msclkid', '{}'::jsonb)
 WHERE attribution IS NOT NULL
   AND created_at < now() - interval '24 months'
   AND attribution ?| array['gclid', 'fbclid', 'msclkid'];

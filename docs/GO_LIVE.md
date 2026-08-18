@@ -263,9 +263,14 @@
 - ~~`referral_claim_reward` absent de la base~~ → seed porté par la
   navette HY1 (bloc 4), 19.08. Fallback code corrigé (URL Just Eat
   retirée) en attendant l'exécution.
-- Purge automatique des click IDs d'attribution (HY1 pose la politique
+- Purge automatique des click IDs d'attribution (HY1b pose la politique
   24 mois + le DML rejouable ; l'automatisation — greffe au cron
   quotidien — attendra la v1.1, première échéance réelle mi-2028).
+- **Navette d'hygiène SUIVANTE (HY2, post-gel — cadré caisse 19.08)** :
+  `REVOKE EXECUTE` sur `generate_order_number` pour les rôles publics ;
+  le DELETE de compensation du checkout (POST /api/orders, commande dont
+  les items n'ont pas pu être écrits) est documenté dans le code comme
+  LA seule exception assumée au « jamais de DELETE sur orders ».
 - i18n : chaînes FR de `dictionaries.ts` tutoyées mais MORTES (aucun
   consommateur) — à vouvoyer le jour où l'i18n est câblée.
 - Branche VIP anniversaire (`birthday_wish_vip`) — attend des paliers

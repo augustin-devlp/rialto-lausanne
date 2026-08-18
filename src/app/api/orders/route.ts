@@ -384,6 +384,11 @@ export async function POST(req: NextRequest) {
   const { error: iErr } = await sb.from("order_items").insert(rows);
   if (iErr) {
     console.error("[orders] items insert failed", iErr);
+    // ⚠️ LA SEULE exception assumée au « jamais de DELETE sur orders »
+    // (actée 19.08) : compensation IMMÉDIATE d'une commande dont les
+    // items n'ont pas pu être écrits — la ligne n'a jamais existé pour
+    // personne (ni caisse, ni client). Tout autre DELETE reste interdit
+    // (service_role uniquement depuis HY1b, et encore).
     await sb.from("orders").delete().eq("id", order.id);
     if (promoCodeId) await releasePromoCode(promoCodeId);
     return NextResponse.json(

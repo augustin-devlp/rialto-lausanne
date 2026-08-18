@@ -32,7 +32,7 @@
 | `reward_unlocked` | `src/app/api/scan/credit/route.ts:106` (scan comptoir, carte complète) | Vouvoyé le 22.07. Template DB uniquement, pas de fallback code. |
 | `wheel_prize_code` | `src/app/api/rialto/loyalty/spin/route.ts:288` (gain à la roue) | ⚠️ COUPLAGE : « Valable 30 jours » répète `valid_days: 30` de la route (commentaire posé à côté). Changer la durée = corriger les deux. |
 | `referral_success` | `src/app/api/cron/reward-referrals/route.ts:201` (SMS parrain) | ⚠️ Corrigé le 22.07 : annonçait « 30 jours » pour des codes générés à **60** (`route.ts:151`). La version EN BASE fait foi. |
-| `referral_claim_reward` | `src/app/api/cron/reward-referrals/route.ts:248` (SMS filleul) | ⚠️ Absent de la base : le CHECK `sms_templates_template_key_check` ne connaît pas la clé (INSERT rejeté 23514, constat 19.08). **Seed porté par la navette HY1 (bloc 4 : CHECK élargi + INSERT)** — d'ici son exécution, le fallback code fait foi. 🔴 Correctif 19.08 : l'URL « rialto-lausanne.ch » du fallback RETIRÉE (domaine détenu par Just Eat — chaque SMS filleul envoyait le client chez la plateforme) ; l'URL du domaine final s'ajoutera au template en base au jour J. |
+| `referral_claim_reward` | `src/app/api/cron/reward-referrals/route.ts:248` (SMS filleul) | ✅ **SEEDÉ EN BASE le 19.08 (HY1b exécutée** : CHECK élargi à 21 clés + INSERT). La ligne DB fait désormais foi (le fallback code reste le filet). 🔴 Correctif 19.08 : l'URL « rialto-lausanne.ch » RETIRÉE du seed ET du fallback (domaine détenu par Just Eat — chaque SMS filleul envoyait le client chez la plateforme) ; l'URL du domaine final s'ajoutera au template en base au jour J (checklist). Contenu GSM-7 (tiret simple, sans accents). |
 
 ## Les 2 INACTIFS PAR DÉCISION — statuts de commande
 

@@ -146,11 +146,17 @@ export async function GET(req: NextRequest) {
 
       if (!orders || orders.length === 0) continue;
 
-      // 2. Les 2 codes -100% (idempotent : 23505 = déjà émis à un run
-      //    précédent après un échec partiel — on continue sans bruit).
-      //    6 hex (24 bits) : une collision silencieuse à 4 hex ferait
-      //    partager un code usage-unique entre deux parrains. Même
-      //    dérivation que le repli convention du dashboard parrainage.
+      // 2. Les 2 codes « Pizza Marguerite offerte » (idempotent : 23505 =
+      //    déjà émis à un run précédent après un échec partiel — on
+      //    continue sans bruit). 6 hex (24 bits) : une collision
+      //    silencieuse à 4 hex ferait partager un code usage-unique entre
+      //    deux parrains. Même dérivation que le repli convention du
+      //    dashboard parrainage.
+      //    free_item et non percent 100 (décision Augustin 19.08) : le
+      //    −100 % sans plafond offrait le PANIER ENTIER alors que les
+      //    deux SMS promettent « une Pizza Marguerite offerte » — le
+      //    free_item est la promesse exacte, et le lot est matérialisé
+      //    dans la note de commande au checkout (POST /api/orders).
       const shortId = (ref.id as string).slice(0, 6).toUpperCase();
       const codeParrain = `MARG${shortId}P`;
       const codeFilleul = `MARG${shortId}F`;
@@ -160,8 +166,9 @@ export async function GET(req: NextRequest) {
       const basePromo = {
         business_id: BUSINESS_ID,
         restaurant_id: RESTAURANT_ID,
-        discount_type: "percent",
-        discount_value: 100,
+        discount_type: "free_item",
+        discount_value: 0,
+        free_item_label: "Pizza Marguerite",
         max_uses: 1,
         uses_count: 0,
         valid_from: new Date().toISOString(),

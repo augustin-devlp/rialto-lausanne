@@ -228,15 +228,14 @@
 
 ## Question produit ouverte (avant le gel)
 
-- [ ] **Code filleul = −100 % SANS plafond (surfacé par la relecture
-      19.08, préexistant)** : le SMS `referral_claim_reward` promet « une
-      Pizza Marguerite offerte », mais le code généré par le cron
-      parrainage est `percent 100` sans plafond ni minimum — appliqué au
-      checkout, il offre TOUTE la commande (un panier famille à 80 CHF
-      part gratuit). À trancher par Augustin avant le go-live : soit
-      choix assumé (documenter), soit passer le code en `free_item`
-      « Pizza Marguerite » (aligné sur la promesse du SMS — même
-      mécanique que roue/loterie, le lot arrive en note de commande).
+- [x] ✅ TRANCHÉ 19.08 (Augustin) : les codes parrainage passent de
+      `percent 100` sans plafond (« un trou qui offre un panier entier »)
+      à **`free_item` « Pizza Marguerite »** — la promesse exacte des
+      deux SMS. Corrigé pour le code FILLEUL **et** le code PARRAIN
+      (même `basePromo`, même promesse « une Pizza Marguerite offerte »
+      dans `referral_success`) ; le lot arrive en note de commande au
+      checkout. Codes percent déjà émis en base : aucun (vérifié — seuls
+      2 manual/1 birthday/2 spin_wheel existent).
 - [x] ✅ TRANCHÉ 04.08 : FideliteSection re-routé sur la nouvelle page
       `/rialto-club/fidelite` (nav non-connectés « Ma carte fidélité ») ;
       les 4 autres orphelins (AvisSection, ContactSection, LegalSection,

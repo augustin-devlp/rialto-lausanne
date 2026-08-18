@@ -69,14 +69,16 @@ export default function LivraisonReglageClient() {
   }, []);
 
   const parsedOffset = Number(offsetInput);
+  // Plafond 30 aligné sur le PATCH serveur (caisse 19.08, abaissé de 100) :
+  // la valeur legacy 50 (ancien seuil global) ne doit jamais repasser.
   const offsetOk =
-    Number.isFinite(parsedOffset) && parsedOffset >= 1 && parsedOffset <= 100;
+    Number.isFinite(parsedOffset) && parsedOffset >= 1 && parsedOffset <= 30;
   // Garde-fou valeur héritée (relecture 18.08) : l'ancien système stockait
   // un SEUIL GLOBAL (50) dans la même colonne que l'offset actuel. Si la
-  // migration ZL1 n'a pas encore posé 15, le champ affiche 50 — un montant
-  // parfaitement valide pour le PATCH mais qui rend la livraison offerte
-  // inatteignable (minimum 25 + 50 = 75 CHF).
-  const offsetSuspect = offsetOk && parsedOffset > 30;
+  // base a été restaurée sans ZL1, le GET charge 50 — hors bornes désormais
+  // (bouton mort), mais l'encart doit EXPLIQUER d'où vient ce chiffre :
+  // indépendant d'offsetOk.
+  const offsetSuspect = Number.isFinite(parsedOffset) && parsedOffset > 30;
 
   // L'aperçu tarifaire ne doit jamais mentir de 50 centimes : décimales
   // affichées telles quelles, entiers sans zéros inutiles.
@@ -109,7 +111,7 @@ export default function LivraisonReglageClient() {
         if (body.grille_apercu) setGrille(body.grille_apercu);
         setSucces(true);
       } else if (body.error === "offset_invalide") {
-        setErreur("Le montant doit être compris entre 1 et 100 CHF.");
+        setErreur("Le montant doit être compris entre 1 et 30 CHF.");
       } else {
         setErreur("Enregistrement impossible. Réessayez.");
       }
@@ -171,7 +173,7 @@ export default function LivraisonReglageClient() {
             type="number"
             inputMode="decimal"
             min={1}
-            max={100}
+            max={30}
             value={offsetInput}
             onChange={(e) => setOffsetInput(e.target.value)}
             className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-ink"
@@ -180,7 +182,7 @@ export default function LivraisonReglageClient() {
 
         {!offsetOk && (
           <p className="text-sm font-medium text-rialto">
-            Le montant doit être compris entre 1 et 100 CHF.
+            Le montant doit être compris entre 1 et 30 CHF.
           </p>
         )}
 

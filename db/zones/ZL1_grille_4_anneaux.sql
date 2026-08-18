@@ -1,9 +1,12 @@
 -- ============================================================================
 -- ZL1 — Refonte des zones de livraison : grille 4 anneaux, 64 NPA
 -- Chantier zones (GO Augustin 18.08.2026, phase B — décisions 1 à 10).
--- STATUT : EN NAVETTE (review caisse) — NE PAS EXÉCUTER avant le retour
---          « GO D'EXÉCUTION ». Exécution via apply_migration par la
---          conversation propriétaire du repo rialto-lausanne UNIQUEMENT.
+-- STATUT : ✅ EXÉCUTÉE le 19.08.2026 via apply_migration
+--          (zl1_grille_4_anneaux) après GO caisse (verdict : aucun
+--          lecteur côté caisse, rollback vérifié 13/13 fidèle au live).
+--          Post-vérif conforme : 64 zones actives (15 A + 11 B + 19 C +
+--          19 D), threshold recyclé 15.00, enabled false. État AVANT
+--          confirmé identique à l'ARCHIVE en fin de fichier.
 -- ============================================================================
 --
 -- CE QUE FAIT CE SQL, EXACTEMENT — DONNÉES UNIQUEMENT, AUCUN DDL :
@@ -35,16 +38,44 @@
 --      explicite est porté par le code (champ reason de
 --      /api/delivery-zones/check), pas par la table.
 --
--- ⚠️⚠️ ORDRE DE DÉPLOIEMENT NON NÉGOCIABLE (relecture 18.08 — pattern
--- maison, cf. loyalty/pending.ts) :
---   1. Exécuter ZL1 (inerte tant que free_delivery_enabled = false,
---      QUEL QUE SOIT le code en prod).
+-- ⚠️⚠️ ORDRE DE DÉPLOIEMENT NON NÉGOCIABLE (relecture 18.08, amendé au
+-- retour de navette caisse 19.08 — pattern maison, cf. loyalty/pending.ts) :
+--   1. Exécuter ZL1. ⚠️ EFFET IMMÉDIAT SUR LA GRILLE (correction caisse :
+--      « inerte tant que enabled=false » était FAUX) : delivery_zones est
+--      lue EN DIRECT par le code prod — à la seconde de l'exécution, les
+--      ~51 nouveaux NPA deviennent commandables et les minimums/frais/ETA
+--      des 13 existants changent pour toute nouvelle qualification.
+--      Seul le VOLET SEUIL (recyclage threshold→offset) est inerte tant
+--      que free_delivery_enabled = false. Fenêtre COURTE, hors service ;
+--      AUCUN geste au dashboard livraison entre les étapes.
 --   2. Déployer le code de la refonte DANS LA FOULÉE (il inclut le bump
 --      localStorage ADDRESS V3 qui invalide les adresses périmées, et la
 --      nouvelle liste de villes du footer — déployer le code SANS ZL1
 --      ferait mentir la vitrine sur la couverture).
 --   3. SEULEMENT APRÈS 1+2 (et quelques heures de renouvellement des
 --      bundles clients) : activer le toggle au dashboard.
+-- CONSTAT D'EXÉCUTION 19.08 : le déploiement Vercel étant automatique au
+-- push, l'étape 2 était DÉJÀ FAITE (commit 0cab4f8 en prod) — fenêtre
+-- inversée constatée et assumée : ZL1 exécutée en urgence pour réaligner
+-- la base sur la vitrine, toggle toujours false pendant l'opération.
+--
+-- 🔒 RÈGLE PERMANENTE (post-activation, caisse 19.08) : APRÈS ACTIVATION
+-- DU TOGGLE, COUPER free_delivery_enabled AVANT TOUT ROLLBACK DU CODE —
+-- TOUJOURS. Un revert du code fait relire l'offset (15) comme SEUIL
+-- ABSOLU → livraison gratuite sur 100 % des commandes livrées ; si
+-- l'offset a été modifié au dashboard entre-temps, même le rollback data
+-- ci-dessous ne rattrape pas (il est borné à la valeur 15).
+--
+-- ⚠️ REJOUABILITÉ SOUS CONDITION (caisse 19.08) : le rejeu de l'UPSERT
+-- n'est sûr que TANT QU'AUCUN éditeur dashboard des zones n'existe. Le
+-- jour où le restaurateur peut modifier delivery_zones depuis un écran :
+-- REJEU INTERDIT (il écraserait ses réglages) — toute rebascule d'anneau
+-- passe alors par une navette ZLn dédiée.
+--
+-- 📌 DETTE DDL (à porter dans la PROCHAINE navette DDL, caisse 19.08) :
+-- COMMENT ON COLUMN restaurants.free_delivery_threshold — col_description
+-- est NULL alors que la colonne a changé de sémantique (seuil→offset).
+-- C'est mot pour mot le piège business_id déjà payé une fois.
 -- PHRASE D'ARRÊT : tant que le code lisant free_delivery_threshold
 -- comme OFFSET n'est pas en prod, ne JAMAIS activer
 -- free_delivery_enabled — le code actuel le lit comme un SEUIL ABSOLU :

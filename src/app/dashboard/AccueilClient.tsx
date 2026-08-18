@@ -133,7 +133,7 @@ export default function AccueilClient() {
               Livraison
             </div>
             <div className="text-xs text-mute">
-              Seuil de livraison offerte
+              Livraison offerte par zone
             </div>
           </div>
           <Arrow />

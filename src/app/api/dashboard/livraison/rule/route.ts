@@ -114,10 +114,14 @@ export async function PATCH(req: NextRequest) {
 
   // Validation stricte : on refuse plutôt que de corriger silencieusement.
   const offset = Number(body.offset);
-  // Plancher 1 CHF (cohérent avec le CHECK > 0 en base) et plafond de bon
-  // sens : un offset au-delà de 100 CHF rendrait la gratuité inatteignable
-  // partout — c'est une faute de frappe.
-  if (!Number.isFinite(offset) || offset < 1 || offset > 100) {
+  // Plancher 1 CHF : le CHECK > 0 hérité de LS0 rend l'offset 0 (« offerte
+  // dès le minimum de zone ») IRREPRÉSENTABLE — limitation produit ASSUMÉE
+  // (caisse 19.08) : pour quasi l'offrir dès le minimum, régler 1 CHF.
+  // Plafond 30 (caisse 19.08, abaissé de 100) : au-delà, la gratuité est
+  // commercialement morte (minimum D 55 + 30 = 85 CHF) — et surtout la
+  // valeur legacy 50 (ancien seuil global resté dans la colonne recyclée)
+  // doit être REJETÉE si elle revient un jour par un PATCH.
+  if (!Number.isFinite(offset) || offset < 1 || offset > 30) {
     return NextResponse.json({ ok: false, error: "offset_invalide" }, { status: 400 });
   }
   if (typeof body.enabled !== "boolean") {

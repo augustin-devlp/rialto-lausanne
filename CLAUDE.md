@@ -30,6 +30,7 @@ Base Supabase dédiée : `ymnhfdkyqbhucxdrnyzq`. Ancienne base partagée Stampif
 - Fidélité v2 : le tampon EN ATTENTE est **dérivé**, jamais écrit ; le palier/la récompense ne se calcule QUE sur `customer_cards.current_stamps` (le solidifié). Ne jamais additionner pending et acquis.
 - Tout DDL passe en **navette** (review) puis est exécuté via `apply_migration` par la conversation propriétaire du repo. Jamais de SQL brut hors historique versionné.
 - **Toute migration touchant `orders` commence par `SET lock_timeout = '5s';`** (migration ET rollback) — sans cette garde, un ALTER en file derrière un verrou long gèle tous les accès à orders : blocage silencieux de la caisse (amendement navette TR1b, obligatoire depuis le 31.07.2026).
+- **Livraison offerte (règle permanente, caisse 19.08.2026) : APRÈS ACTIVATION du toggle, COUPER `free_delivery_enabled` AVANT TOUT ROLLBACK DU CODE — TOUJOURS.** `restaurants.free_delivery_threshold` est RECYCLÉE en OFFSET par zone (ZL1) : un revert du code la relit comme SEUIL ABSOLU → livraison gratuite sur 100 % des commandes livrées. Corollaires : rejeu de ZL1 interdit le jour où un éditeur dashboard des zones existe (toute rebascule = navette ZLn) ; `delivery_zones` est lue EN DIRECT par la prod (un upsert de grille a effet immédiat, seul le volet seuil est inerte toggle OFF).
 
 ## Tracking (Lots B-C livrés 23.07.2026)
 - Source unique des événements = `src/lib/tracking.ts` ; RIEN ne part sans consentement (clé `rialto_cookie_consent_v2`).

@@ -9,8 +9,20 @@
       03.08 — la promesse « 1 commande = 1 participation » est affichée
       sur le site). PREUVE : la première vraie commande crée une ligne
       `lottery_participants` du mois courant.
-- [ ] Seuil livraison offerte : montant validé par Mehmet + toggle
-      (`/dashboard/livraison`) — sinon reste OFF, c'est un choix.
+- [ ] Livraison offerte PAR ZONE (refonte 18-19.08) : offset validé par
+      Mehmet (15 posé par ZL1) + toggle (`/dashboard/livraison`) — sinon
+      reste OFF, c'est un choix. Pré-requis TOUS remplis avant d'activer :
+      ZL1 exécutée ✅ 19.08 (64 zones post-vérifiées) + code refonte en
+      prod ✅ (0cab4f8) + quelques heures de renouvellement des bundles.
+      🔒 **RÈGLE PERMANENTE (caisse 19.08) : APRÈS ACTIVATION DU TOGGLE,
+      COUPER `free_delivery_enabled` AVANT TOUT ROLLBACK DU CODE —
+      TOUJOURS.** Un revert du code fait relire l'offset (15) comme SEUIL
+      ABSOLU → livraison gratuite sur 100 % des commandes livrées ; si
+      l'offset a été changé au dashboard entre-temps, même le rollback
+      data de ZL1 ne rattrape pas.
+      📌 Dette DDL (prochaine navette) : `COMMENT ON COLUMN
+      restaurants.free_delivery_threshold` (sémantique recyclée
+      seuil→offset, col_description NULL = piège business_id).
 - [ ] Fidélité : barème confirmé (tranche 40 CHF actée le 24.07).
 
 ## Tests en attente de leur créneau

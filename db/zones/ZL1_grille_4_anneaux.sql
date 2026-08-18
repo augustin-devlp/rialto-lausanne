@@ -203,9 +203,12 @@ ON CONFLICT (restaurant_id, postal_code) DO UPDATE SET
 
 -- Décision 2 : la colonne threshold est recyclée en OFFSET (seuil de
 -- gratuité = min de zone + offset). enabled n'est pas touché (false).
+-- BORNÉ à la valeur legacy 50.00 : un rejeu de ZL1 (rebasculer une zone
+-- d'anneau) n'écrase jamais un offset réglé depuis au dashboard.
 UPDATE restaurants
 SET free_delivery_threshold = 15.00
-WHERE id = '046d930d-a4cd-4a43-a11a-7f76bfe74b06';
+WHERE id = '046d930d-a4cd-4a43-a11a-7f76bfe74b06'
+  AND free_delivery_threshold = 50.00;
 
 -- ============================================================================
 -- ARCHIVE — les 13 valeurs ANTÉRIEURES à ZL1 (pour rollback manuel) :

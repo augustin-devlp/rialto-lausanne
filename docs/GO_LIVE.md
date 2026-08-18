@@ -71,9 +71,18 @@
       `src/lib/eta/constants.ts` — modèle PAR RESSOURCE (18.08 : paliers
       pizzas, extraction trajet/zone −25, prior rush pondérée, retour
       livreur par zone de course, chevauchement max()). Les ajuster sur
-      la vérité terrain du TAP CLIENT (« commande arrivée ? ») — sans ces
-      données, aucun recalibrage fiable. Réponses du restaurateur aux 5
-      questions de calibration à reporter dans les constantes.
+      la vérité terrain du TAP CLIENT (« commande arrivée ? », TAP1
+      exécutée le 18.08) — filtres au recalibrage : exclure cancelled,
+      exclure les taps implausibles (le serveur ne borne que l'âge, pas
+      la phase), distributions plutôt que moyennes (échantillon non
+      aléatoire). Réponses du restaurateur aux 5 questions de
+      calibration à reporter dans les constantes.
+- [ ] BACKLOG sécurité tap (review caisse 18.08) : réévaluation
+      OBLIGATOIRE de l'absence d'auth/rate-limit sur
+      /api/orders/[id]/confirm-delivered si le tap déclenche un jour un
+      effet au-delà de la commande elle-même (SMS, fidélité, dashboard).
+      Aujourd'hui : uuid v4 = jeton de capacité, dégât borné à 1
+      datapoint + l'affichage de sa propre page.
 
 ## Échéances vivantes (état au 13.08 soir)
 

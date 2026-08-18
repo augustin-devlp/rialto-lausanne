@@ -65,6 +65,8 @@ type OrderData = {
   delivery_postal_code: string | null;
   delivery_city: string | null;
   created_at: string;
+  /** TAP1 (cross-device) : le tap d'un autre appareil arrive par ici. */
+  customer_confirmed_delivered_at?: string | null;
   requested_pickup_time: string | null;
   eta_intrants?: EtaIntrants | null;
   items: Array<{
@@ -252,6 +254,23 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
               (newOrder as OrderData).eta_intrants ?? prev.eta_intrants,
           } as OrderData;
         });
+      }
+      if (newStatus === statusSeen) {
+        // TAP cross-device : l'UPDATE realtime du tap porte la colonne
+        // (ligne brute) sans changement de statut — merge dédié, garde
+        // par contenu (jamais d'écrasement par null).
+        const tapServeur = (newOrder as OrderData)
+          .customer_confirmed_delivered_at;
+        if (tapServeur != null) {
+          setOrder((prev) =>
+            prev.customer_confirmed_delivered_at != null
+              ? prev
+              : ({
+                  ...prev,
+                  customer_confirmed_delivered_at: tapServeur,
+                } as OrderData),
+          );
+        }
       }
       if (newStatus === statusSeen && (newOrder as OrderData).eta_intrants) {
         // Statut inchangé mais intrants ETA présents : garde sur le
@@ -462,6 +481,15 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   }, [order.id]);
 
   useEffect(() => {
+    // Vérité serveur d'abord (TAP1 exécutée, colonne dans les selects) :
+    // un tap posé depuis un AUTRE appareil vaut « fait » ici aussi.
+    if (order.customer_confirmed_delivered_at != null) {
+      setTapEtat("fait");
+      try {
+        window.localStorage.setItem(cleTap, "1");
+      } catch {}
+      return;
+    }
     let etat: "non" | "pending" | "fait" = "non";
     try {
       const v = window.localStorage.getItem(cleTap);
@@ -481,7 +509,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
         } catch {}
       }
     });
-  }, [cleTap, posteTap]);
+  }, [cleTap, posteTap, order.customer_confirmed_delivered_at]);
 
   async function confirmeArrivee() {
     if (tapEnvoi) return;

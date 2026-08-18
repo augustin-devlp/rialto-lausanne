@@ -10,7 +10,7 @@ async function loadOrder(orderNumber: string) {
   const { data: order } = await sb
     .from("orders")
     .select(
-      "id, order_number, customer_name, customer_phone, status, total_amount, created_at, requested_pickup_time, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, delivery_floor_door, delivery_instructions, delivery_zone_id",
+      "id, order_number, customer_name, customer_phone, status, total_amount, created_at, requested_pickup_time, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, delivery_floor_door, delivery_instructions, delivery_zone_id, customer_confirmed_delivered_at",
     )
     .eq("restaurant_id", RESTAURANT_ID)
     .eq("order_number", orderNumber)

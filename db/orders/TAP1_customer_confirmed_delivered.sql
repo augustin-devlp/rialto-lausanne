@@ -27,7 +27,14 @@
 --     distributions, pas les moyennes ;
 --   - EXCLURE les commandes cancelled : un tap peut précéder un refus
 --     caisse (le timestamp reste, la garde TOCTOU de la route ne couvre
---     que l'annulation simultanée).
+--     que l'annulation simultanée) ;
+--   - le serveur borne l'ÂGE (5 min - 6 h) mais PAS la phase (assumé,
+--     review caisse 18.08) : filtrer au recalibrage les taps
+--     implausibles (antérieurs à accepted_at + cuisine estimée).
+--
+-- ✅ EXÉCUTÉE le 18.08.2026 (GO caisse) — post-vérifiée : colonne
+-- timestamptz nullable + COMMENT en place. Ce fichier reste le document
+-- de référence du recalibrage.
 --
 -- IMPACT CAISSE ATTENDU : AUCUN. La caisse ne lit ni n'écrit cette
 -- colonne ; un SELECT * côté caisse verra une colonne nullable de plus,

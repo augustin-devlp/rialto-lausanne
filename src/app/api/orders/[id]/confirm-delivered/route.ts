@@ -69,7 +69,18 @@ export async function POST(
     );
   }
 
-  const { error: maj } = await sb
+  // NOTE PÉRIMÈTRE (review caisse 18.08, assumé par écrit) : le serveur
+  // vérifie l'ÂGE mais pas la PHASE — il est plus permissif que l'UI
+  // (qui n'affiche le bouton qu'en livraison/prête). Un POST direct en
+  // début de préparation est donc accepté : au RECALIBRAGE, filtrer les
+  // taps implausibles (croiser avec accepted_at + cuisine estimée).
+  // SÉCURITÉ (réévaluée au jalon cross-device, 18.08) : l'uuid v4 est un
+  // jeton de capacité par commande — un abuseur ne peut piloter que
+  // l'affichage de SA propre page et polluer 1 datapoint. Acceptable
+  // SANS auth ni rate limit tant que le tap ne pilote rien d'autre ;
+  // réévaluation OBLIGATOIRE si un jour il déclenche un effet au-delà
+  // de la commande elle-même (SMS, fidélité, dashboard).
+  const { data: ecrit, error: maj } = await sb
     .from("orders")
     .update({ customer_confirmed_delivered_at: new Date().toISOString() })
     .eq("id", order.id)
@@ -77,7 +88,9 @@ export async function POST(
     // reçoit pas de timestamp (et le recalibrage exclura de toute façon
     // les cancelled — biais documenté dans TAP1).
     .neq("status", "cancelled")
-    .is("customer_confirmed_delivered_at", null);
+    .is("customer_confirmed_delivered_at", null)
+    .select("id")
+    .maybeSingle();
   if (maj) {
     if (estColonneAbsente(maj)) {
       return NextResponse.json(
@@ -89,8 +102,17 @@ export async function POST(
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 
-  console.log("[tap] ✅ livraison confirmée par le client", {
-    order: order.id,
-  });
+  // Log honnête (review caisse 18.08) : le no-op (déjà confirmé, ou
+  // annulé entre-temps) ne s'affiche plus en succès. Contrat HTTP
+  // inchangé : ok dans les deux cas (idempotence).
+  if (ecrit) {
+    console.log("[tap] ✅ livraison confirmée par le client", {
+      order: order.id,
+    });
+  } else {
+    console.log("[tap] no-op (déjà confirmée ou annulée entre-temps)", {
+      order: order.id,
+    });
+  }
   return NextResponse.json({ ok: true });
 }

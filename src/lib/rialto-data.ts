@@ -27,13 +27,22 @@ export const RIALTO_INFO = {
 } as const;
 
 /* ─── Zones de livraison (affichées sur la homepage) ─────────────────── */
+// ⚠️ Liste ÉDITORIALE (footer + modale « on ne livre pas ») — resynchronisée
+// sur la grille 4 anneaux ZL1 (18.08.2026, ~64 NPA jusqu'à Morges et
+// Echallens). La vérité opérationnelle reste delivery_zones en base : tout
+// changement de couverture doit être répercuté ICI à la main.
 export const DELIVERY_CITIES = [
   "Lausanne",
   "Pully",
   "Épalinges",
   "Prilly",
   "Renens",
-  "Chailly",
+  "Lutry",
+  "Écublens",
+  "Bussigny",
+  "Cully",
+  "Echallens",
+  "Morges",
 ] as const;
 
 /* ─── Images d'ambiance ──────────────────────────────────────────────── */

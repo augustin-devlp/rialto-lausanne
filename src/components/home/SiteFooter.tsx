@@ -71,6 +71,9 @@ export default function SiteFooter() {
                 </li>
               ))}
             </ul>
+            <p className="mt-2 text-xs text-white/60">
+              … et les communes voisines.
+            </p>
           </div>
 
           <div>

@@ -24,6 +24,27 @@ import {
 } from "./rule";
 
 /**
+ * Le JSON de la route publique change de FORME dans la refonte zones
+ * ({enabled, threshold} → {enabled, offsetAboveZoneMin}) et la réponse est
+ * cachée 60 s au CDN : pendant la bascule, un bundle neuf peut recevoir
+ * l'ancienne forme. Sans cette normalisation, offsetAboveZoneMin vaut
+ * undefined et le bandeau panier affiche « Plus que NaN CHF » (relecture
+ * 18.08). Toute forme suspecte retombe sur la règle désactivée : fee de
+ * zone affiché, jamais de gratuité inventée, jamais de NaN.
+ */
+function normaliseRule(rule: FreeDeliveryRule | undefined): FreeDeliveryRule {
+  if (
+    !rule ||
+    typeof rule.enabled !== "boolean" ||
+    !Number.isFinite(rule.offsetAboveZoneMin) ||
+    rule.offsetAboveZoneMin <= 0
+  ) {
+    return DEFAULT_FREE_DELIVERY_RULE;
+  }
+  return rule;
+}
+
+/**
  * @param actif passer false pour ne pas déclencher la requête du tout
  *   (parité de pattern avec useStampRule — ex. panier vide, rien à
  *   afficher). La requête part dès que `actif` devient vrai.
@@ -47,9 +68,7 @@ export function useFreeDeliveryRule(actif = true): FreeDeliveryRule | null {
           rule?: FreeDeliveryRule;
         };
         if (annule) return;
-        setRule(
-          body.ok && body.rule ? body.rule : DEFAULT_FREE_DELIVERY_RULE,
-        );
+        setRule(normaliseRule(body.ok ? body.rule : undefined));
       } catch {
         if (!annule) setRule(DEFAULT_FREE_DELIVERY_RULE);
       }

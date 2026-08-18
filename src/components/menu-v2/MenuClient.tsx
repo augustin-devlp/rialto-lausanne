@@ -570,6 +570,14 @@ export default function MenuClient({ categories, items, options }: Props) {
             setCart={setCart}
             minOrderAmount={minAmount}
             fulfillmentType={address ? "delivery" : "pickup"}
+            zone={
+              address
+                ? {
+                    min_order_amount: Number(address.min_order_amount ?? 0),
+                    delivery_fee: Number(address.delivery_fee ?? 0),
+                  }
+                : null
+            }
           />
         </div>
       </div>

@@ -10,7 +10,10 @@ import type { CartItem, CartOptionSelection } from "./types";
 import { track } from "./tracking";
 
 const CART_KEY = "RIALTO:CART:V2";
-const ADDRESS_KEY = "RIALTO:ADDRESS:V2";
+// V3 (18.08.2026, chantier zones) : bump volontaire — les adresses
+// qualifiées sous l'ancienne grille tarifaire (fee/min/ETA périmés)
+// sont invalidées d'un coup, tout le monde re-qualifie silencieusement.
+const ADDRESS_KEY = "RIALTO:ADDRESS:V3";
 
 export type QualifiedAddress = {
   address: string;
@@ -144,6 +147,10 @@ export function cartLineKey(
 export function readAddress(): QualifiedAddress | null {
   if (typeof window === "undefined") return null;
   try {
+    // Purge de la clé V2 orpheline : sans elle, l'ancienne adresse (grille
+    // tarifaire périmée) resterait indéfiniment dans le localStorage des
+    // clients ayant connu l'ancien site (relecture 18.08).
+    window.localStorage.removeItem("RIALTO:ADDRESS:V2");
     const raw = window.localStorage.getItem(ADDRESS_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as QualifiedAddress;

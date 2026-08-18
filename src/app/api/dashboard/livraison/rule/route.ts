@@ -9,19 +9,25 @@ import { toFreeDeliveryRule } from "@/lib/delivery/rule";
 export const dynamic = "force-dynamic";
 
 /**
- * GET/PATCH /api/dashboard/livraison/rule — réglage « livraison offerte à
- * partir d'un seuil » (LS1). Colonnes portées par `restaurants` (LS0).
+ * GET/PATCH /api/dashboard/livraison/rule — réglage « livraison offerte »
+ * (LS1, refonte PAR ZONE 18.08.2026, chantier zones décision 2).
+ *
+ * Le restaurateur règle DEUX choses : l'interrupteur maître (enabled) et
+ * l'OFFSET au-dessus du minimum de zone (la colonne
+ * restaurants.free_delivery_threshold, recyclée). Le seuil effectif de
+ * chaque zone = min_order_amount + offset : la grille (A dès 40, B dès
+ * 50, C dès 60, D dès 70 avec l'offset 15) suit les minimums
+ * automatiquement.
  *
  * Contrairement au barème fidélité, PAS de garde anti-rétroactivité : les
  * frais sont figés à la création de chaque commande (POST /api/orders) —
- * changer le seuil ne touche jamais une commande existante, seulement les
+ * changer l'offset ne touche jamais une commande existante, seulement les
  * suivantes.
  *
- * Le GET renvoie aussi `floor_reference` = le plus petit min_order_amount
- * des zones de livraison actives : c'est le plancher naturel du seuil. En
- * dessous, TOUTE commande livrée devient gratuite en frais — le dashboard
- * affiche un avertissement (point 2 de la review navette LS0), le PATCH ne
- * bloque pas : le restaurateur tranche.
+ * Le GET renvoie aussi `grille_apercu` : les profils (min → seuil) des
+ * zones actives, pour que le dashboard montre l'effet concret de
+ * l'offset (remplace l'ancien floor_reference, devenu sans objet : le
+ * seuil ne peut plus passer SOUS un minimum de zone par construction).
  */
 
 const SELECT_COLS = "free_delivery_threshold, free_delivery_enabled";
@@ -42,18 +48,27 @@ function guard(req: NextRequest): NextResponse | null {
   return null;
 }
 
-async function floorReference(
+/** Profils distincts (min, fee>0) des zones actives, triés — l'aperçu de
+ * la grille dérivée. Les zones à frais nul (Chailly) sont exclues : rien
+ * à offrir chez elles. */
+async function grilleApercu(
   sb: ReturnType<typeof supabaseService>,
-): Promise<number | null> {
+): Promise<Array<{ min_order_amount: number }>> {
   const { data } = await sb
     .from("delivery_zones")
-    .select("min_order_amount")
+    .select("min_order_amount, delivery_fee")
     .eq("restaurant_id", RESTAURANT_ID)
     .eq("is_active", true);
-  const mins = ((data as Array<{ min_order_amount: number | string }> | null) ?? [])
-    .map((z) => Number(z.min_order_amount))
-    .filter((n) => Number.isFinite(n));
-  return mins.length > 0 ? Math.min(...mins) : null;
+  const mins = new Set<number>();
+  for (const z of (data ??
+    []) as Array<{ min_order_amount: unknown; delivery_fee: unknown }>) {
+    const min = Number(z.min_order_amount);
+    const fee = Number(z.delivery_fee);
+    if (Number.isFinite(min) && Number.isFinite(fee) && fee > 0) {
+      mins.add(min);
+    }
+  }
+  return [...mins].sort((a, b) => a - b).map((m) => ({ min_order_amount: m }));
 }
 
 export async function GET(req: NextRequest) {
@@ -79,7 +94,7 @@ export async function GET(req: NextRequest) {
     {
       ok: true,
       rule: toFreeDeliveryRule(data as Record<string, unknown>),
-      floor_reference: await floorReference(sb),
+      grille_apercu: await grilleApercu(sb),
     },
     { headers: { "cache-control": "no-store" } },
   );
@@ -90,7 +105,7 @@ export async function PATCH(req: NextRequest) {
   if (blocked) return blocked;
 
   const body = (await req.json().catch(() => null)) as {
-    threshold?: number | string;
+    offset?: number | string;
     enabled?: boolean;
   } | null;
   if (!body) {
@@ -98,12 +113,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Validation stricte : on refuse plutôt que de corriger silencieusement.
-  const threshold = Number(body.threshold);
+  const offset = Number(body.offset);
   // Plancher 1 CHF (cohérent avec le CHECK > 0 en base) et plafond de bon
-  // sens : au-delà de 1000 CHF le seuil est inatteignable, c'est une faute
-  // de frappe.
-  if (!Number.isFinite(threshold) || threshold < 1 || threshold > 1000) {
-    return NextResponse.json({ ok: false, error: "seuil_invalide" }, { status: 400 });
+  // sens : un offset au-delà de 100 CHF rendrait la gratuité inatteignable
+  // partout — c'est une faute de frappe.
+  if (!Number.isFinite(offset) || offset < 1 || offset > 100) {
+    return NextResponse.json({ ok: false, error: "offset_invalide" }, { status: 400 });
   }
   if (typeof body.enabled !== "boolean") {
     return NextResponse.json({ ok: false, error: "enabled_invalide" }, { status: 400 });
@@ -113,7 +128,7 @@ export async function PATCH(req: NextRequest) {
   const { data, error } = await sb
     .from("restaurants")
     .update({
-      free_delivery_threshold: threshold,
+      free_delivery_threshold: offset,
       free_delivery_enabled: body.enabled,
     })
     .eq("id", RESTAURANT_ID)
@@ -128,6 +143,6 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     rule: toFreeDeliveryRule(data as Record<string, unknown>),
-    floor_reference: await floorReference(sb),
+    grille_apercu: await grilleApercu(sb),
   });
 }

@@ -112,8 +112,12 @@ export const REMISE_LIVREUR_MIN = 5;
  * qui fantôment des courses, plusieurs livreurs réels possibles). Sans
  * cette borne, la chaîne séquentielle diverge dès 4 livraisons en 90 min
  * et TOUT le monde reçoit « environ 1h30 » chaque service.
+ * 45 → 60 (décision 7 chantier zones) : une course anneau D (Morges,
+ * trajet 25) immobilise 25×2+5 = 55 min — le cap 45 l'écrêtait
+ * systématiquement. À recroiser avec le NOMBRE DE LIVREURS (question
+ * posée au restaurateur — DRIVERS=1 assumé en attendant).
  */
-export const MAX_RETOUR_LIVREUR_MIN = 45;
+export const MAX_RETOUR_LIVREUR_MIN = 60;
 /**
  * Repli de zone en cas d'ERREUR de lecture (≠ absence légitime) :
  * DEFAULT_ZONE_MINUTES (30) est la zone la plus COURTE — l'utiliser en

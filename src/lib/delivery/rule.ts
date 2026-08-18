@@ -1,6 +1,15 @@
 /**
- * Livraison offerte à partir d'un seuil — LA règle, à un seul endroit
- * (LS1, 24.07.2026). Colonnes portées par `restaurants` (migration LS0).
+ * Livraison offerte — LA règle, à un seul endroit (LS1 24.07.2026,
+ * refonte PAR ZONE 18.08.2026, chantier zones décisions 1-2).
+ *
+ * LE SEUIL EST DÉRIVÉ, PAS STOCKÉ : seuil(zone) = min_order_amount de la
+ * zone + OFFSET global. La colonne restaurants.free_delivery_threshold
+ * est RECYCLÉE en offset (15 par défaut — ZL1 pose la valeur) ;
+ * free_delivery_enabled reste l'interrupteur maître. Un seul bouton, un
+ * seul chiffre au dashboard : la grille (A dès 40, B dès 50, C dès 60,
+ * D dès 70) suit les minimums de zone automatiquement. Ne PAS ajouter de
+ * colonne de seuil par zone : elle dupliquerait une valeur 100 %
+ * calculable et se désynchroniserait (audit A2).
  *
  * ⚠️ SÉPARATION VOLONTAIRE DES ASSIETTES — décision Augustin 24.07.2026,
  * NE PAS « UNIFIER » :
@@ -13,26 +22,26 @@
  *     total_amount remisé. Raison : on ne récompense que ce qui est payé
  *     (faille des codes parrainage à −100 %).
  *
- * Les deux règles regardent donc le même panier avec deux lunettes
- * différentes, et c'est voulu : le seuil INCITE sur ce que le client
- * commande, la fidélité RÉCOMPENSE ce qu'il paie. Conséquence assumée
- * (v1 sans garde) : un code −100 % sur un gros panier cumule commande
- * gratuite ET livraison offerte — rare, garde d'une ligne si abus constaté.
+ * Le `min_order_amount` des zones joue DEUX rôles depuis la refonte :
+ * le seuil pour ÊTRE LIVRÉ (garde du POST) ET la base du seuil de
+ * gratuité (min + offset) — c'est le même « prix d'entrée » de la zone,
+ * les deux montent ensemble avec la distance, c'est le design.
  *
- * Le `min_order_amount` des zones reste indépendant : c'est le seuil pour
- * ÊTRE LIVRÉ, celui-ci est le seuil pour ne pas payer la livraison.
+ * ⭐ ZONE À FRAIS NUL (1012 Chailly, décision 4) : rien à offrir — le fee
+ * effectif est 0 par construction et AUCUN palier ne doit s'afficher
+ * (milestones.ts retourne null si zoneFee ≤ 0).
  */
 
 export type FreeDeliveryRule = {
   enabled: boolean;
-  /** Seuil en CHF sur le sous-total marchandise avant remise. */
-  threshold: number;
+  /** OFFSET en CHF au-dessus du minimum de zone (seuil = min + offset). */
+  offsetAboveZoneMin: number;
 };
 
-/** Valeurs par défaut = celles posées en base par LS0. */
+/** Valeurs par défaut = celles posées en base par ZL1. */
 export const DEFAULT_FREE_DELIVERY_RULE: FreeDeliveryRule = {
   enabled: false,
-  threshold: 50,
+  offsetAboveZoneMin: 15,
 };
 
 /** Lit une colonne numeric Supabase (souvent renvoyée en string). */
@@ -43,17 +52,28 @@ function num(v: unknown): number {
 
 /**
  * Assainit un enregistrement `restaurants` en FreeDeliveryRule utilisable.
- * Tolère les colonnes absentes (avant LS0) en retombant sur les défauts.
+ * `free_delivery_threshold` porte l'OFFSET depuis ZL1 (recyclage assumé —
+ * le nom de colonne ment, le renommer serait du DDL pour rien).
  */
 export function toFreeDeliveryRule(
   row: Record<string, unknown> | null | undefined,
 ): FreeDeliveryRule {
   if (!row) return DEFAULT_FREE_DELIVERY_RULE;
-  const threshold = num(row.free_delivery_threshold);
+  const offset = num(row.free_delivery_threshold);
   return {
     enabled: row.free_delivery_enabled === true,
-    threshold: threshold > 0 ? threshold : DEFAULT_FREE_DELIVERY_RULE.threshold,
+    offsetAboveZoneMin:
+      offset > 0 ? offset : DEFAULT_FREE_DELIVERY_RULE.offsetAboveZoneMin,
   };
+}
+
+/** LE seuil de gratuité d'une zone — unique dérivation, jamais re-écrite
+ * ailleurs. */
+export function freeDeliveryThresholdForZone(
+  zoneMinOrderAmount: number,
+  rule: FreeDeliveryRule,
+): number {
+  return zoneMinOrderAmount + rule.offsetAboveZoneMin;
 }
 
 /**
@@ -65,29 +85,39 @@ export function toFreeDeliveryRule(
  */
 export function isFreeDeliveryReached(
   subtotalGoods: number,
+  zoneMinOrderAmount: number,
   rule: FreeDeliveryRule,
 ): boolean {
   // Tolérance d'un demi-centime (décision Augustin 29.07.2026) : les sommes
   // de prix ne sont pas représentables en binaire — un panier composé à
-  // 50.00 pile peut valoir 49.999999999999993. Facturer la livraison sur un
+  // 40.00 pile peut valoir 39.999999999999993. Facturer la livraison sur un
   // résidu binaire serait indéfendable au comptoir. Le prédicat étant
   // UNIQUE, la tolérance s'applique partout d'un coup (serveur, client,
   // paliers).
-  return rule.enabled && subtotalGoods >= rule.threshold - 0.005;
+  return (
+    rule.enabled &&
+    subtotalGoods >=
+      freeDeliveryThresholdForZone(zoneMinOrderAmount, rule) - 0.005
+  );
 }
 
 /**
  * Frais de livraison effectifs pour un panier donné. Calcul pur, sans effet
  * de bord — MÊME fonction côté serveur (POST /api/orders) et côté client
- * (affichage panier/checkout, LS2) : les deux ne peuvent pas diverger.
+ * (affichage panier/checkout) : les deux ne peuvent pas diverger.
  *
- * @param subtotalGoods sous-total marchandise AVANT remise promo (cf. en-tête)
- * @param zoneFee       frais de la zone de livraison qualifiée
+ * @param subtotalGoods      sous-total marchandise AVANT remise (cf. en-tête)
+ * @param zoneFee            frais de la zone de livraison qualifiée
+ * @param zoneMinOrderAmount minimum de commande de la MÊME zone
  */
 export function effectiveDeliveryFee(
   subtotalGoods: number,
   zoneFee: number,
+  zoneMinOrderAmount: number,
   rule: FreeDeliveryRule,
 ): number {
-  return isFreeDeliveryReached(subtotalGoods, rule) ? 0 : zoneFee;
+  if (zoneFee <= 0) return 0; // zone à frais nul (Chailly) : rien à offrir
+  return isFreeDeliveryReached(subtotalGoods, zoneMinOrderAmount, rule)
+    ? 0
+    : zoneFee;
 }

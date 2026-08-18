@@ -167,14 +167,22 @@ export async function POST(req: NextRequest) {
     // stocké = le facturé réel (0 si offerte) → CA, exports, rendu
     // espèces, assiette fidélité et purchase suivent mécaniquement.
     const zoneFee = Number(zone.delivery_fee);
+    // Refonte zones 18.08 : seuil de gratuité PAR ZONE = min de la zone
+    // (relu frais lignes plus haut, jamais le payload client) + offset.
     deliveryFee = effectiveDeliveryFee(
       subtotal,
       zoneFee,
+      Number(zone.min_order_amount),
       toFreeDeliveryRule(restaurant as Record<string, unknown>),
     );
     freeDeliveryApplied = zoneFee > 0 && deliveryFee === 0;
     deliveryZoneId = zone.id as string;
-    deliveryCity = (zone.city as string | null) ?? body.delivery_city ?? null;
+    // La ville SAISIE par le client prime : zone.city peut être un libellé
+    // multi-communes (« Bottens / Poliez-Pittet / … », grille ZL1) qui n'a
+    // rien à faire sur l'étiquette livreur ni dans le mail de confirmation.
+    const villeSaisie =
+      typeof body.delivery_city === "string" ? body.delivery_city.trim() : "";
+    deliveryCity = villeSaisie || (zone.city as string | null) || null;
   } else {
     // Pickup : validation du panier min restaurant
     if (subtotal < Number(restaurant.order_min_amount)) {

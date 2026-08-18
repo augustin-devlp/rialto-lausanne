@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * Écran « Livraison » du dashboard restaurateur (LS1) — seuil de livraison
- * offerte. Le restaurateur choisit le montant et active/désactive ; tant
- * que c'est désactivé, les frais de zone s'appliquent tels quels.
+ * Écran « Livraison » du dashboard restaurateur (LS1, refonte PAR ZONE
+ * 18.08.2026 — chantier zones décision 2).
  *
- * Avertissement NON bloquant (point 2 review navette LS0) : si le seuil
- * est au niveau ou sous le plus petit minimum de commande des zones
- * actives, TOUTE commande livrée devient gratuite en frais — on prévient,
- * le restaurateur tranche.
+ * Le restaurateur règle UN interrupteur et UN chiffre : l'OFFSET
+ * au-dessus du minimum de commande de chaque zone. Le seuil de gratuité
+ * de chaque zone = son minimum + l'offset — la grille suit les minimums
+ * automatiquement (A dès 40, B dès 50, C dès 60, D dès 70 avec l'offset
+ * 15). L'aperçu affiche la grille dérivée réelle (profils distincts des
+ * zones actives). L'ancien avertissement « seuil très bas » n'a plus
+ * d'objet : le seuil ne peut plus passer sous un minimum de zone par
+ * construction.
  */
 
 import { useEffect, useState } from "react";
@@ -20,17 +23,17 @@ import {
 type Payload = {
   ok: boolean;
   rule: FreeDeliveryRule;
-  floor_reference: number | null;
+  grille_apercu: Array<{ min_order_amount: number }>;
 };
 
 export default function LivraisonReglageClient() {
   const [rule, setRule] = useState<FreeDeliveryRule>(DEFAULT_FREE_DELIVERY_RULE);
   // Saisie gardée en CHAÎNE : vider le champ ne doit pas devenir 0 (même
   // piège que la tranche fidélité).
-  const [thresholdInput, setThresholdInput] = useState<string>(
-    String(DEFAULT_FREE_DELIVERY_RULE.threshold),
+  const [offsetInput, setOffsetInput] = useState<string>(
+    String(DEFAULT_FREE_DELIVERY_RULE.offsetAboveZoneMin),
   );
-  const [floorRef, setFloorRef] = useState<number | null>(null);
+  const [grille, setGrille] = useState<Array<{ min_order_amount: number }>>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState(false);
@@ -51,8 +54,8 @@ export default function LivraisonReglageClient() {
         const body = (await res.json()) as Payload;
         if (body.ok) {
           setRule(body.rule);
-          setThresholdInput(String(body.rule.threshold));
-          setFloorRef(body.floor_reference);
+          setOffsetInput(String(body.rule.offsetAboveZoneMin));
+          setGrille(body.grille_apercu ?? []);
         }
       } catch {
         if (!annule) setErreur("Impossible de charger le réglage.");
@@ -65,21 +68,23 @@ export default function LivraisonReglageClient() {
     };
   }, []);
 
-  const parsedThreshold = Number(thresholdInput);
-  const thresholdOk =
-    Number.isFinite(parsedThreshold) &&
-    parsedThreshold >= 1 &&
-    parsedThreshold <= 1000;
-  // Avertissement : seuil ≤ plancher naturel (plus petit minimum de
-  // commande des zones actives) ET toggle actif → gratuit pour toutes.
-  const seuilTresBas =
-    rule.enabled &&
-    thresholdOk &&
-    floorRef !== null &&
-    parsedThreshold <= floorRef;
+  const parsedOffset = Number(offsetInput);
+  const offsetOk =
+    Number.isFinite(parsedOffset) && parsedOffset >= 1 && parsedOffset <= 100;
+  // Garde-fou valeur héritée (relecture 18.08) : l'ancien système stockait
+  // un SEUIL GLOBAL (50) dans la même colonne que l'offset actuel. Si la
+  // migration ZL1 n'a pas encore posé 15, le champ affiche 50 — un montant
+  // parfaitement valide pour le PATCH mais qui rend la livraison offerte
+  // inatteignable (minimum 25 + 50 = 75 CHF).
+  const offsetSuspect = offsetOk && parsedOffset > 30;
+
+  // L'aperçu tarifaire ne doit jamais mentir de 50 centimes : décimales
+  // affichées telles quelles, entiers sans zéros inutiles.
+  const fmtCHF = (n: number) =>
+    Number.isInteger(n) ? String(n) : n.toFixed(2);
 
   async function enregistrer() {
-    if (envoi || !thresholdOk) return;
+    if (envoi || !offsetOk) return;
     setEnvoi(true);
     setErreur(null);
     setSucces(false);
@@ -88,7 +93,7 @@ export default function LivraisonReglageClient() {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          threshold: parsedThreshold,
+          offset: parsedOffset,
           enabled: rule.enabled,
         }),
       });
@@ -96,15 +101,15 @@ export default function LivraisonReglageClient() {
         ok: boolean;
         error?: string;
         rule?: FreeDeliveryRule;
-        floor_reference?: number | null;
+        grille_apercu?: Array<{ min_order_amount: number }>;
       };
       if (body.ok && body.rule) {
         setRule(body.rule);
-        setThresholdInput(String(body.rule.threshold));
-        if (body.floor_reference !== undefined) setFloorRef(body.floor_reference);
+        setOffsetInput(String(body.rule.offsetAboveZoneMin));
+        if (body.grille_apercu) setGrille(body.grille_apercu);
         setSucces(true);
-      } else if (body.error === "seuil_invalide") {
-        setErreur("Le seuil doit être compris entre 1 et 1000 CHF.");
+      } else if (body.error === "offset_invalide") {
+        setErreur("Le montant doit être compris entre 1 et 100 CHF.");
       } else {
         setErreur("Enregistrement impossible. Réessayez.");
       }
@@ -127,11 +132,11 @@ export default function LivraisonReglageClient() {
     <div className="space-y-4 pb-6">
       <h1 className="font-display text-2xl font-bold text-ink">Livraison</h1>
       <p className="text-sm text-mute">
-        Offrez les frais de livraison à partir d&apos;un montant de commande.
-        Le seuil se calcule sur les articles commandés, hors frais de
-        livraison et avant remise éventuelle. Vous pouvez changer ce réglage
-        à tout moment — il ne s&apos;applique qu&apos;aux commandes
-        suivantes.
+        Offrez les frais de livraison quand la commande dépasse le minimum
+        de sa zone d&apos;un certain montant. Chaque zone a son propre
+        seuil : minimum de la zone + le montant ci-dessous. Le calcul se
+        fait sur les articles commandés, hors frais et avant remise. Ce
+        réglage ne s&apos;applique qu&apos;aux commandes suivantes.
       </p>
 
       {erreur && (
@@ -160,52 +165,69 @@ export default function LivraisonReglageClient() {
 
         <label className="block">
           <span className="text-sm font-medium text-ink">
-            Seuil (CHF d&apos;articles commandés)
+            Montant au-dessus du minimum de zone (CHF)
           </span>
           <input
             type="number"
             inputMode="decimal"
             min={1}
-            max={1000}
-            value={thresholdInput}
-            onChange={(e) => setThresholdInput(e.target.value)}
+            max={100}
+            value={offsetInput}
+            onChange={(e) => setOffsetInput(e.target.value)}
             className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-ink"
           />
         </label>
 
-        {!thresholdOk && (
+        {!offsetOk && (
           <p className="text-sm font-medium text-rialto">
-            Le seuil doit être compris entre 1 et 1000 CHF.
+            Le montant doit être compris entre 1 et 100 CHF.
           </p>
         )}
 
-        {seuilTresBas && (
-          <div className="rounded-2xl border border-saffron/50 bg-saffron/10 p-3 text-sm text-ink">
-            ⚠️ Ce seuil est au niveau ou en dessous du minimum de commande en
-            livraison ({floorRef?.toFixed(2)} CHF) : la livraison sera
-            offerte sur <strong>toutes</strong> les commandes livrées.
-            Vérifiez que c&apos;est bien voulu avant d&apos;enregistrer.
+        {offsetSuspect && (
+          <div className="rounded-2xl border border-saffron/40 bg-saffron/10 p-3 text-sm text-ink">
+            <strong>Montant élevé.</strong> Ce chiffre s&apos;ajoute au
+            minimum de chaque zone : avec {fmtCHF(parsedOffset)} CHF, la
+            livraison offerte démarre à{" "}
+            {grille.length > 0
+              ? `${fmtCHF(grille[0].min_order_amount + parsedOffset)} CHF minimum`
+              : "un montant très élevé"}
+            . Si ce chiffre vient de l&apos;ancien réglage (seuil global),
+            la valeur prévue est 15.
           </div>
         )}
 
         <div className="rounded-2xl bg-surface p-3 text-sm text-mute">
-          {rule.enabled && thresholdOk ? (
+          {rule.enabled && offsetOk && grille.length > 0 ? (
             <>
-              Aperçu : dès{" "}
-              <strong className="text-ink">
-                {parsedThreshold.toFixed(2)} CHF
-              </strong>{" "}
-              d&apos;articles, la livraison est offerte. En dessous, les
-              frais de la zone s&apos;appliquent.
+              <p className="mb-1 font-medium text-ink">
+                Aperçu par zone (minimum → livraison offerte dès) :
+              </p>
+              <ul className="space-y-0.5">
+                {grille.map((g) => (
+                  <li key={g.min_order_amount}>
+                    minimum {fmtCHF(g.min_order_amount)} CHF →{" "}
+                    <strong className="text-ink">
+                      offerte dès {fmtCHF(g.min_order_amount + parsedOffset)}{" "}
+                      CHF
+                    </strong>
+                  </li>
+                ))}
+              </ul>
             </>
+          ) : rule.enabled ? (
+            <>La grille s&apos;affichera dès que le montant est valide.</>
           ) : (
-            <>Désactivé : les frais de livraison de la zone s&apos;appliquent à toutes les commandes.</>
+            <>
+              Désactivé : les frais de livraison de la zone s&apos;appliquent
+              à toutes les commandes.
+            </>
           )}
         </div>
 
         <button
           onClick={enregistrer}
-          disabled={envoi || !thresholdOk}
+          disabled={envoi || !offsetOk}
           className="w-full rounded-xl bg-rialto px-4 py-3 font-display font-semibold text-white transition hover:bg-rialto-dark disabled:opacity-50"
         >
           {envoi ? "Enregistrement…" : "Enregistrer"}

@@ -216,11 +216,28 @@ export default function CheckoutPageClient({
   // VIVANTE (même moteur que la page de suivi), alimentée par le compte de
   // pizzas du panier. Le figé de zone n'est plus qu'un repli réseau.
   const etaLive = useEtaRange(address?.postal_code, comptePizzasPanier(cart));
-  const deliveryFee = fdRule
-    ? effectiveDeliveryFee(subtotal, zoneFee, fdRule)
-    : zoneFee;
+  // Refonte zones 18.08 : le seuil de gratuité est PAR ZONE (min + offset)
+  // — le min_order_amount de l'adresse qualifiée entre dans le calcul.
+  const deliveryFee =
+    fdRule && address
+      ? effectiveDeliveryFee(
+          subtotal,
+          zoneFee,
+          Number(address.min_order_amount ?? 0),
+          fdRule,
+        )
+      : zoneFee;
   const freeDelivery = zoneFee > 0 && deliveryFee === 0;
-  const fdMilestone = getFreeDeliveryMilestone(subtotal, fdRule);
+  const fdMilestone = getFreeDeliveryMilestone(
+    subtotal,
+    address
+      ? {
+          min_order_amount: Number(address.min_order_amount ?? 0),
+          delivery_fee: zoneFee,
+        }
+      : null,
+    fdRule,
+  );
   const promoDiscount = promo?.discount_amount ?? 0;
   const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
   const missing = Math.max(0, minAmount - subtotal);
@@ -343,6 +360,7 @@ export default function CheckoutPageClient({
         }
         const body = (await res.json()) as {
           covered: boolean;
+          reason?: "po_box" | "not_covered";
           zone?: {
             id: string;
             city: string | null;
@@ -353,7 +371,9 @@ export default function CheckoutPageClient({
         };
         if (!body.covered || !body.zone) {
           setCpZoneError(
-            `Nous ne livrons pas au ${pc}. Corrigez le code postal ou choisissez une adresse desservie.`,
+            body.reason === "po_box"
+              ? "1001 et 1002 sont des cases postales — indiquez le NPA de votre adresse de rue."
+              : `Nous ne livrons pas au ${pc}. Corrigez le code postal ou choisissez une adresse desservie.`,
           );
           return;
         }

@@ -25,6 +25,11 @@ type Props = {
   setCart: (cart: CartItem[]) => void;
   minOrderAmount: number;
   fulfillmentType?: "pickup" | "delivery";
+  /** Zone de l'adresse qualifiée — requise pour le palier « livraison
+   * offerte » depuis la refonte par zone (18.08 : seuil = min + offset).
+   * Absente = bandeau masqué (décision 9 : un seuil générique serait
+   * faux une fois sur deux). */
+  zone?: { min_order_amount: number; delivery_fee: number } | null;
   className?: string;
 };
 
@@ -33,6 +38,7 @@ export default function CartPanel({
   setCart,
   minOrderAmount,
   fulfillmentType = "pickup",
+  zone = null,
   className = "",
 }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -41,10 +47,11 @@ export default function CartPanel({
   const missing = Math.max(0, minOrderAmount - subtotal);
   const canCheckout = count > 0 && missing === 0;
   // LS2 : moteur « distance au palier » — n'affiche rien tant que la règle
-  // n'est pas chargée ou que le seuil est désactivé (tableau vide). Pas de
-  // requête tant que le panier est vide (rien ne s'afficherait).
-  const fdRule = useFreeDeliveryRule(count > 0);
-  const fdMilestone = getFreeDeliveryMilestone(subtotal, fdRule);
+  // n'est pas chargée, que le seuil est désactivé, que l'adresse n'est pas
+  // qualifiée, ou que la zone est à frais nul (Chailly : rien à offrir).
+  // Pas de requête tant que le panier est vide (rien ne s'afficherait).
+  const fdRule = useFreeDeliveryRule(count > 0 && zone != null);
+  const fdMilestone = getFreeDeliveryMilestone(subtotal, zone, fdRule);
   const progressPct = Math.min(100, (subtotal / minOrderAmount) * 100);
 
   // Ferme drawer si panier vidé

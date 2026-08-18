@@ -29,7 +29,9 @@ export default function AddressGate({
   const [postalCode, setPostalCode] = useState("");
   const [streetAddress, setStreetAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [modalKind, setModalKind] = useState<null | "not-covered" | "error">(null);
+  const [modalKind, setModalKind] = useState<
+    null | "not-covered" | "po-box" | "error"
+  >(null);
   const [modalText, setModalText] = useState<string>("");
 
   // Pré-remplir si l'utilisateur a déjà qualifié une adresse auparavant
@@ -64,6 +66,7 @@ export default function AddressGate({
       }
       const body = (await res.json()) as {
         covered: boolean;
+        reason?: "po_box" | "not_covered";
         zone?: {
           id: string;
           postal_code: string;
@@ -74,6 +77,15 @@ export default function AddressGate({
         };
       };
       if (!body.covered || !body.zone) {
+        // Cases postales (décision 8, chantier zones) : 1001/1002 n'ont
+        // aucune adresse de rue — le message générique « on ne livre
+        // pas » serait mensonger, le client habite bien la zone.
+        // Registre neutre, PAS la modale « Erreur » : le client n'a rien
+        // fait de mal (relecture 18.08).
+        if (body.reason === "po_box") {
+          setModalKind("po-box");
+          return;
+        }
         setModalKind("not-covered");
         return;
       }
@@ -205,6 +217,9 @@ export default function AddressGate({
                     </li>
                   ))}
                 </ul>
+                <p className="mt-1.5 text-xs text-mute">
+                  … et les communes voisines.
+                </p>
                 <p className="mt-3 text-xs text-mute">
                   Vous pouvez aussi appeler le restaurant pour vérifier votre
                   adresse : <strong>021 312 64 60</strong>
@@ -218,6 +233,43 @@ export default function AddressGate({
                 className="btn-ghost"
               >
                 Essayer une autre adresse
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cases postales 1001/1002 : le client habite bien la zone, on lui
+          demande juste son NPA de rue — ton informatif, pas un échec. */}
+      {modalKind === "po-box" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setModalKind(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-3xl bg-white p-7 shadow-pop"
+          >
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 text-3xl">📮</div>
+              <div>
+                <h3 className="font-display text-xl font-semibold leading-tight">
+                  Précisez votre NPA
+                </h3>
+                <p className="mt-2 text-sm text-mute">
+                  1001 et 1002 correspondent à des cases postales. Indiquez le
+                  NPA de votre adresse de rue (par exemple 1003, 1004, 1005…)
+                  pour que nous puissions vous livrer.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setModalKind(null)}
+                className="btn-primary"
+              >
+                Compris
               </button>
             </div>
           </div>

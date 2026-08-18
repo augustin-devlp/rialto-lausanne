@@ -1,5 +1,12 @@
 /**
- * Palier « livraison offerte » (LS2, replié le 03.08.2026).
+ * Palier « livraison offerte » (LS2, replié le 03.08.2026 — refonte PAR
+ * ZONE 18.08.2026).
+ *
+ * Le seuil dépend désormais de la ZONE (min + offset) : le palier exige
+ * l'adresse qualifiée. Sans zone connue → null (décision 9 : le bandeau
+ * du panier est MASQUÉ tant que l'adresse n'est pas qualifiée — un
+ * seuil générique serait faux une fois sur deux). Zone à frais nul
+ * (Chailly) → null aussi : rien à offrir (décision 4).
  *
  * HISTORIQUE : né « moteur multi-paliers » ; replié en fonction simple sur
  * relevé relecteur (les appelants faisaient tous `.find(clé fixe)` — dette
@@ -17,7 +24,11 @@
  */
 
 import { formatCHF } from "@/lib/format";
-import { isFreeDeliveryReached, type FreeDeliveryRule } from "./rule";
+import {
+  isFreeDeliveryReached,
+  freeDeliveryThresholdForZone,
+  type FreeDeliveryRule,
+} from "./rule";
 
 export type Milestone = {
   /** Seuil en CHF, sur l'assiette propre à la source (cf. en-tête). */
@@ -29,12 +40,21 @@ export type Milestone = {
   labelReached: string;
 };
 
-/** Null si la règle n'est pas chargée ou si le seuil est désactivé. */
+/**
+ * Null si : règle non chargée/désactivée, zone inconnue (adresse pas
+ * encore qualifiée), ou zone à frais nul (rien à offrir).
+ */
 export function getFreeDeliveryMilestone(
   subtotalGoods: number,
+  zone: { min_order_amount: number; delivery_fee: number } | null | undefined,
   rule: FreeDeliveryRule | null | undefined,
 ): Milestone | null {
   if (!rule?.enabled) return null;
+  if (!zone) return null;
+  if (Number(zone.delivery_fee) <= 0) return null;
+
+  const zoneMin = Number(zone.min_order_amount);
+  const threshold = freeDeliveryThresholdForZone(zoneMin, rule);
 
   // `reached` = LE prédicat serveur (jamais re-dérivé de remaining).
   // `remaining` : normaliser au 1/100e de centime AVANT le ceil — un ceil
@@ -44,17 +64,16 @@ export function getFreeDeliveryMilestone(
   // garantit qu'un résidu à 7e-15 n'affiche jamais « Plus que 0.00 CHF ».
   // Formule re-vérifiée numériquement (relecture 28.07.2026) — ne PAS la
   // « simplifier » en Math.ceil(threshold - subtotal).
-  const reached = isFreeDeliveryReached(subtotalGoods, rule);
+  const reached = isFreeDeliveryReached(subtotalGoods, zoneMin, rule);
   const remaining = reached
     ? 0
     : Math.max(
         0.01,
-        Math.ceil(Math.round((rule.threshold - subtotalGoods) * 10000) / 100) /
-          100,
+        Math.ceil(Math.round((threshold - subtotalGoods) * 10000) / 100) / 100,
       );
 
   return {
-    threshold: rule.threshold,
+    threshold,
     reached,
     remaining,
     labelPending: `Plus que ${formatCHF(remaining)} pour la livraison offerte`,

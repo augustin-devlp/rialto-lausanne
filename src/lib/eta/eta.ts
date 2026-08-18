@@ -178,6 +178,17 @@ export function computeEtaRange(input: EtaInput): EtaRange {
  *   55-65 → « environ une heure » · 65-80 → « un peu plus d'une heure » ·
  *   > 80 → « environ 1h30 ».
  *
+ * ⚖️ RÈGLE DE CHOIX DU PALIER (question Augustin 18.08) : c'est LE POINT
+ * ESTIMÉ (totalMinutes) qui choisit le palier — il n'existe AUCUN spread
+ * séparé qui s'ajouterait par-dessus. La bande de 10 EST la promesse :
+ * borne basse = arrondi5(point), borne haute = +10 = l'échéance
+ * (echeanceMinutes), cible du compte à rebours et de la bascule
+ * « Livrée ». Exemple : point 53 → arrondi5 = 55 > 50 → « environ une
+ * heure » (jamais « 53-68 » : le spread +15 discuté au cadrage a été
+ * ABSORBÉ par les bandes de 10 des libellés tranchés — écart signalé et
+ * assumé, une seule largeur de promesse partout). La frontière bande →
+ * « environ une heure » est arrondi5(point) > 50, soit point > 52,5.
+ *
  * ⚠️ IDENTITÉ VÉRIFIÉE PAR CALCUL (contre-passe 18.08) : pour tout
  * total, formatEtaRemaining(echeanceMinutes(total)) === libelleEta(total)
  * — la promesse du suivi à l'acceptation est EXACTEMENT celle du

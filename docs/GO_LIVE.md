@@ -53,7 +53,11 @@
       ouvrir sur une base 100 % réelle. Identification : téléphones de
       test d'Augustin (+33676549598/99, +41791342996/97 — compléter la
       liste au moment du ménage), commandes `TEST-*` et `R-2026-0xx` de
-      test. ⚠️ Dont **R-2026-044** (20.08) : commande CHIMÈRE du bug zone
+      test. ⚠️ Dont **R-2026-049 et R-2026-050** (20.08) : commandes de
+      preuve du lot « re-dérivation des prix serveur » (POST forgés,
+      téléphone +41790000000, montants sains — elles VALIDENT le
+      correctif, elles n'ont rien de cassé, mais restent des commandes de
+      test à purger). ⚠️ Dont **R-2026-044** (20.08) : commande CHIMÈRE du bug zone
       — `Grand-Rue 54 / NPA 1010 / Morges`, facturée zone Lausanne
       (frais 5, min 25) pour une adresse de Morges (zone D : 12/55) ;
       données incohérentes, à purger impérativement. Ordre de purge

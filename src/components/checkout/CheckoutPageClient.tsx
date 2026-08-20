@@ -1243,14 +1243,14 @@ export default function CheckoutPageClient({
                     htmlFor="checkout-email"
                     className="mb-1 block text-xs font-medium text-mute"
                   >
-                    Email (uniquement pour votre reçu, jamais de publicité)
+                    Email (optionnel — uniquement pour votre reçu, jamais
+                    de publicité)
                   </label>
                   <input
                     id="checkout-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Optionnel"
                     autoComplete="email"
                     className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                   />

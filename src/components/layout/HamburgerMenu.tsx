@@ -254,8 +254,11 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
 
           {/* ─── Infos ──────────────────────────────── */}
           <Section title="Infos">
+            {/* ?infos=1 : exemption du raccourci serveur vers /menu —
+                sans lui, le #fragment n'atteignant pas le serveur, ce
+                lien devenait un no-op pour tout client qualifié. */}
             <Item
-              href="/#location"
+              href="/?infos=1#location"
               icon="📍"
               label="Nous trouver"
             />

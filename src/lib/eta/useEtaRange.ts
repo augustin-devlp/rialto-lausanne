@@ -80,7 +80,7 @@ export function useEtaRange(
           /* repli figé chez l'appelant */
         }
       })();
-    }, DEBOUNCE_MS);
+    }, delai);
     return () => {
       annule = true;
       window.clearTimeout(timer);

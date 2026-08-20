@@ -34,6 +34,7 @@ import {
   cartCount,
   cartLineKey,
   cartSubtotal,
+  clearAddress,
   clearCart,
   readAddress,
   readCart,
@@ -193,6 +194,8 @@ export default function CheckoutPageClient({
     setCart(c);
     setAddress(a);
     if (!a) {
+      // Purge le cookie-drapeau aussi (anti-boucle, relecture 20.08).
+      clearAddress();
       router.replace("/?need_address=1");
       return;
     }
@@ -542,7 +545,12 @@ export default function CheckoutPageClient({
   const contactValid =
     firstName.trim().length >= 2 && phone.trim().length >= 8;
   const amountValid = missing === 0;
+  // Restauration du garde de l'ancien <input type=time required> (le
+  // picker roues n'a pas de required natif) : en « Planifié » sans heure
+  // posée (créneaux épuisés), pas de soumission (relecture 20.08).
+  const horaireValid = asap || pickupTime !== "";
   const canSubmit =
+    horaireValid &&
     housingValid &&
     addressValid &&
     paymentBaseValid &&

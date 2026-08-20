@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * RetourClient — É8, réduit au FILET DE TRANSITION (finitions 20.08).
+ * RetourClient — É8, filet PERMANENT derrière le raccourci serveur.
  *
- * Le raccourci nominal est désormais SERVEUR (cookie-drapeau
- * rialto_adresse → redirect /menu avant tout rendu : plus de flash).
- * Ce composant ne sert plus qu'aux clients qualifiés AVANT l'ère du
- * cookie (adresse en localStorage, cookie absent) : il re-qualifie une
- * fois, POSE le cookie via writeAddress, et redirige — le flash ne peut
- * les concerner qu'une seule fois. La re-qualification récurrente vit
- * sur /menu (MenuClient).
+ * Le raccourci nominal est SERVEUR (cookie-drapeau rialto_adresse →
+ * redirect /menu avant tout rendu : plus de flash). Ce filet couvre les
+ * cas « localStorage présent, cookie absent » : clients d'avant l'ère du
+ * cookie, ET SURTOUT Safari/iPhone — ITP plafonne à 7 JOURS les cookies
+ * posés par document.cookie (le max-age 6 mois est ignoré) : un client
+ * iOS revenant après une semaine repasse par ici, voit UN flash, et le
+ * cookie est re-posé via writeAddress pour la semaine suivante. NE PAS
+ * SUPPRIMER ce composant (relecture 20.08). La re-qualification
+ * récurrente vit sur /menu (MenuClient).
  *
  * ?need_address=1 (demande explicite de modification) désactive tout.
  */
@@ -70,6 +72,12 @@ export default function RetourClient({
             min_order_amount: Number(body.zone.min_order_amount),
             estimated_delivery_minutes: body.zone.estimated_delivery_minutes,
           });
+          try {
+            // Le check vient d'être fait : /menu n'a pas à le refaire.
+            sessionStorage.setItem("RIALTO:REQUALIF_FAITE", "1");
+          } catch {
+            /* ignore */
+          }
           router.replace("/menu");
         } else {
           // Zone désactivée entre-temps (ou NPA devenu non desservi) :

@@ -98,6 +98,13 @@ export default function AddressGate({
         min_order_amount: Number(body.zone.min_order_amount ?? minOrderFallback),
         estimated_delivery_minutes: body.zone.estimated_delivery_minutes,
       });
+      try {
+        // La qualification vient d'être faite : /menu n'a pas à refaire
+        // le même check dans la foulée (relecture 20.08).
+        sessionStorage.setItem("RIALTO:REQUALIF_FAITE", "1");
+      } catch {
+        /* ignore */
+      }
       router.push("/menu");
     } catch {
       setModalKind("error");

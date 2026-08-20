@@ -44,12 +44,17 @@ export default function AddressRequiredToast() {
       }
     }, 150);
 
-    // Clean le query param de l'URL sans recharger
+    // Clean le query param de l'URL SANS aller-retour serveur (relecture
+    // 20.08 — BLOQUANT) : router.replace refaisait une requête RSC de
+    // « / » sans ?need_address → le redirect serveur au cookie renvoyait
+    // le client sur /menu avant toute saisie : « Modifier l'adresse »
+    // était impossible pour un client qualifié. history.replaceState est
+    // intégré au routeur depuis Next 14.1 : l'URL change, rien ne part.
     const params = new URLSearchParams(searchParams.toString());
     params.delete("need_address");
     params.delete("reason");
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
   }, [searchParams, router, pathname]);
 
   return (

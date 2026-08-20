@@ -16,7 +16,7 @@ import type {
 } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { matchDishImage } from "@/lib/rialto-data";
-import { addLinesToCart, cartLineKey, readAddress } from "@/lib/clientStore";
+import { addLinesToCart, cartLineKey, readAddress, clearAddress } from "@/lib/clientStore";
 import { track } from "@/lib/tracking";
 
 type EnrichedItem = MenuItem & {
@@ -120,6 +120,8 @@ export default function ProductPageClient({
   // Phase 7 FIX 1 : guard adresse qualifiée, redirect vers / avec toast
   useEffect(() => {
     if (!readAddress()) {
+      // Purge le cookie-drapeau aussi (anti-boucle, relecture 20.08).
+      clearAddress();
       router.replace("/?need_address=1");
     }
   }, [router]);

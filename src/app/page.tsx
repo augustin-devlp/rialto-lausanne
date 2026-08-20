@@ -36,11 +36,15 @@ export default async function HomePage({
 }) {
   // ANTI-FLASH (finitions 20.08) : un client déjà qualifié (cookie-drapeau
   // posé par writeAddress) est redirigé vers /menu AVANT tout rendu — il
-  // ne voit plus jamais l'écran d'adresse par accident. ?need_address=1
-  // (demande explicite de modification) désactive le raccourci. La
+  // ne voit plus jamais l'écran d'adresse par accident. La
   // re-qualification silencieuse des valeurs de zone vit sur /menu.
+  // ?need_address=1 (modifier l'adresse) et ?infos=1 (consulter la home :
+  // horaires, adresse, avis — lien « Nous trouver » du burger, relecture
+  // 20.08 : un #fragment n'atteint jamais le serveur) désactivent le
+  // raccourci.
   if (
     searchParams?.need_address !== "1" &&
+    searchParams?.infos !== "1" &&
     cookies().get("rialto_adresse")?.value === "1"
   ) {
     redirect("/menu");

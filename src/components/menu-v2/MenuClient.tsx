@@ -116,9 +116,14 @@ export default function MenuClient({ categories, items, options, restaurantId }:
     setCart(readCart());
     setAddress(readAddress());
 
-    // Si pas d'adresse qualifiée → renvoie vers home
+    // Si pas d'adresse qualifiée → renvoie vers home. clearAddress purge
+    // AUSSI le cookie-drapeau (relecture 20.08 — BLOQUANT) : un cookie
+    // vivant sans localStorage (éviction, futur bump V3→V4) bouclait
+    // / ↔ /menu à l'infini ; le cookie doit rester le miroir exact du
+    // localStorage.
     const a = readAddress();
     if (!a) {
+      clearAddress();
       router.replace("/?need_address=1");
     }
 

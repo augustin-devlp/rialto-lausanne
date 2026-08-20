@@ -35,6 +35,7 @@ import {
   clearCart,
   readAddress,
   readCart,
+  villeSeedable,
   writeAddress,
   writeCart,
   type QualifiedAddress,
@@ -72,6 +73,30 @@ type Props = {
 const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
 
 const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
+
+/** Vrai si la ville saisie recoupe la commune de la zone. Jetons ≥ 3
+ *  caractères, normalisés NFD sans accents ; les libellés multi-communes
+ *  « A / B / C » de la grille ZL1 acceptent chacune de leurs parties ;
+ *  comparaison par préfixe pour absorber les petites fautes de frappe.
+ *  Ville vide ou zone sans libellé → toujours vrai (autofill). */
+function villeCompatibleZone(
+  saisie: string,
+  zoneCity: string | null,
+): boolean {
+  if (!zoneCity) return true;
+  const jetons = (t: string) =>
+    t
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter((x) => x.length >= 3);
+  const js = jetons(saisie);
+  if (js.length === 0) return true;
+  const jz = zoneCity.split("/").flatMap(jetons);
+  if (jz.length === 0) return true;
+  return js.some((a) => jz.some((b) => a.startsWith(b) || b.startsWith(a)));
+}
 
 type HousingType = "house" | "apartment";
 type PaymentMethod = "card" | "cash" | "twint";
@@ -144,6 +169,38 @@ export default function CheckoutPageClient({
   const [editionLivraison, setEditionLivraison] = useState(false);
   const [panneauInstructions, setPanneauInstructions] = useState(false);
 
+  // BROUILLONS des pop-ups (correctif bug zone 20.08 + règle « fermer =
+  // annuler ») : les pop-ups n'écrivent JAMAIS les états réels pendant la
+  // saisie. Ouvrir copie réel → brouillon ; seul « Enregistrer » committe
+  // (pour la livraison : APRÈS vérification synchrone de la zone) ; croix,
+  // voile et Échap jettent le brouillon.
+  const [dHousingType, setDHousingType] = useState<HousingType | null>(null);
+  const [dStreet, setDStreet] = useState("");
+  const [dNpa, setDNpa] = useState("");
+  const [dVille, setDVille] = useState("");
+  const [dEntryCode1, setDEntryCode1] = useState("");
+  const [dEntryCode2, setDEntryCode2] = useState("");
+  const [dFloor, setDFloor] = useState("");
+  const [dApptNum, setDApptNum] = useState("");
+  const [dDoorbell, setDDoorbell] = useState("");
+  const [dZoneError, setDZoneError] = useState<string | null>(null);
+  const [dSaving, setDSaving] = useState(false);
+  // Jeton de génération du pop-up livraison : incrémenté à CHAQUE
+  // ouverture et fermeture-annulation — un commit dont le fetch était en
+  // vol au moment d'une fermeture s'abandonne (relecture 20.08 : sans ce
+  // jeton, Échap pendant « Vérification… » n'annulait pas vraiment).
+  const editionGenRef = useRef(0);
+  const [dRemiseMode, setDRemiseMode] = useState<
+    "main_propre" | "laisser_porte"
+  >("main_propre");
+  const [dRemiseOption, setDRemiseOption] = useState("porte");
+  const [dInstructions, setDInstructions] = useState("");
+  // Brouillon du « choix fait » : armé par un clic dans le panneau, il ne
+  // devient remiseTouchee (donc préfixe REMISE) qu'à l'Enregistrer —
+  // ouvrir puis enregistrer SANS toucher ne doit rien écrire (invariant
+  // « le défaut intouché n'écrit rien », relecture 20.08).
+  const [dRemiseTouchee, setDRemiseTouchee] = useState(false);
+
   // Pop-ups (instructions livreur + détails de la livraison) : verrou du
   // scroll body + fermeture Escape (pattern FilterModal).
   useEffect(() => {
@@ -153,7 +210,7 @@ export default function CheckoutPageClient({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setPanneauInstructions(false);
-        setEditionLivraison(false);
+        fermerEditionLivraison();
       }
     };
     document.addEventListener("keydown", onKey);
@@ -202,17 +259,9 @@ export default function CheckoutPageClient({
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   // Petit lot checkout (29.07.2026, relevés relecteur Lot E) : dernier
-  // sous-total pour lequel la remise a été validée (évite les re-fetchs en
-  // boucle), et erreur de zone quand le CP édité n'est pas desservi.
+  // sous-total pour lequel la remise a été validée (évite les re-fetchs
+  // en boucle).
   const lastValidatedSubtotal = useRef<number | null>(null);
-  const [cpZoneError, setCpZoneError] = useState<string | null>(null);
-  // Miroirs « dernière valeur » de street/city pour les callbacks async de
-  // re-qualification (lire l'état frais sans mettre ces champs en deps —
-  // sinon chaque frappe relancerait le debounce du CP).
-  const streetRef = useRef("");
-  const cityRef = useRef("");
-  streetRef.current = street;
-  cityRef.current = city;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,15 +295,30 @@ export default function CheckoutPageClient({
     // dernière commande) : la rue du gate prime sur le prefill — sinon
     // la vue compacte affichait « ancienne rue — nouveau CP »
     // (relecture 20.08).
-    setStreet(
-      p.postalCode && a.postal_code !== p.postalCode
-        ? a.address ?? ""
-        : p.street ?? a.address ?? "",
-    );
-    setPostalCode(a.postal_code ?? p.postalCode ?? "");
-    setCity(a.city ?? p.city ?? "");
+    // Le prefill n'est digne de confiance que s'il porte le MÊME NPA que
+    // l'adresse qualifiée : différent → autre zone ; VIDE → résidu du bug
+    // NPA-vidé pré-correctif (R-2026-044) — dans les deux cas sa rue et
+    // sa ville sont mariées à un autre NPA (relecture 20.08).
+    const prefillCoherent =
+      !!p.postalCode && p.postalCode === a.postal_code;
+    const rue0 = prefillCoherent
+      ? p.street ?? a.address ?? ""
+      : a.address ?? "";
+    const npa0 = a.postal_code ?? "";
+    const ville0 = a.city ?? (prefillCoherent ? p.city ?? "" : "");
+    setStreet(rue0);
+    setPostalCode(npa0);
+    setCity(ville0);
     setHousingType(p.housingType ?? null);
-    if (!p.housingType) setEditionLivraison(true);
+    if (!p.housingType) {
+      // Première visite : le pop-up s'ouvre — on seed son BROUILLON avec
+      // les valeurs du gate (le pop-up n'écrit plus les états réels).
+      setDHousingType(null);
+      setDStreet(rue0);
+      setDNpa(npa0);
+      setDVille(ville0);
+      setEditionLivraison(true);
+    }
     setEntryCode1(p.entryCode1 ?? "");
     setEntryCode2(p.entryCode2 ?? "");
     setFloor(p.floor ?? "");
@@ -394,94 +458,163 @@ export default function CheckoutPageClient({
     };
   }, [subtotal, promo]);
 
-  // Re-qualification de la zone quand le CP change (relevé relecteur
-  // Lot E) : l'adresse qualifiée en page d'accueil fige frais/minimum —
-  // un CP édité ici vers une autre zone faisait payer des frais différents
-  // de ceux affichés. On relit la zone, on met à jour frais/minimum/ville
-  // (récap, paliers et begin_checkout suivent), on bloque si non desservie.
-  useEffect(() => {
-    if (!address) return;
-    const pc = postalCode.trim();
-    if (!/^\d{4}$/.test(pc) || pc === address.postal_code) {
-      setCpZoneError(null);
-      return;
-    }
-    // Même AbortController que l'effet promo : sans lui, des réponses
-    // désordonnées laissaient un cpZoneError collé sur un CP corrigé.
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
-            restaurantId,
-          )}&postal_code=${encodeURIComponent(pc)}`,
-          { signal: controller.signal },
+  /** Ouvre le pop-up « Détails de la livraison » en copiant les valeurs
+   *  réelles dans le BROUILLON. Bug 20.08 (commande R-2026-044) : le
+   *  pop-up écrivait les états réels à la frappe, un NPA vidé passait
+   *  « Enregistrer » sans erreur, la re-qualification débouncée se
+   *  court-circuitait en silence et le POST retombait sur l'ANCIEN code
+   *  postal — rue et ville neuves, zone de l'ancienne adresse. */
+  function ouvrirEditionLivraison() {
+    editionGenRef.current += 1;
+    setDHousingType(housingType);
+    setDStreet(street);
+    setDNpa(postalCode);
+    setDVille(city);
+    setDEntryCode1(entryCode1);
+    setDEntryCode2(entryCode2);
+    setDFloor(floor);
+    setDApptNum(apartmentNumber);
+    setDDoorbell(doorbellName);
+    setDZoneError(null);
+    setDSaving(false);
+    setEditionLivraison(true);
+  }
+
+  /** Fermeture-ANNULATION du pop-up livraison (croix, voile, Échap) :
+   *  invalide par jeton tout enregistrement dont le fetch est en vol —
+   *  son commit s'abandonnera au retour. */
+  function fermerEditionLivraison() {
+    editionGenRef.current += 1;
+    setEditionLivraison(false);
+  }
+
+  const npaBrouillonValide = /^\d{4}$/.test(dNpa.trim());
+  const livraisonBrouillonValide =
+    dHousingType !== null && dStreet.trim().length >= 3 && npaBrouillonValide;
+
+  /** Commit ATOMIQUE du pop-up livraison : la zone du NPA saisi est
+   *  vérifiée de façon SYNCHRONE avant toute écriture — zone non
+   *  desservie ou réseau en échec → RIEN n'est committé, le pop-up reste
+   *  ouvert avec l'erreur. Aucun repli silencieux : c'est le repli
+   *  « le POST re-vérifiera » qui a produit la commande chimère. */
+  async function enregistrerLivraison() {
+    if (dSaving || !address || !livraisonBrouillonValide) return;
+    const rue = dStreet.trim();
+    const npa = dNpa.trim();
+    // Jeton capturé AVANT le fetch : si le pop-up est fermé (annulation)
+    // ou rouvert pendant le vol, le commit ci-dessous s'abandonne.
+    const gen = editionGenRef.current;
+    setDSaving(true);
+    setDZoneError(null);
+    try {
+      // TOUJOURS re-vérifier la zone, même à NPA inchangé (relecture
+      // 20.08) : le raccourci « NPA identique » re-committait un zone_id
+      // et des tarifs potentiellement périmés (zone recréée, frais édités
+      // au dashboard) — et le remède affiché par le 409 serveur
+      // (« bouton Modifier ») ne pouvait alors jamais réparer.
+      const res = await fetch(
+        `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
+          restaurantId,
+        )}&postal_code=${encodeURIComponent(npa)}`,
+      );
+      if (!res.ok) throw new Error(`check ${res.status}`);
+      const body = (await res.json()) as {
+        covered: boolean;
+        reason?: "po_box" | "not_covered";
+        zone?: {
+          id: string;
+          city: string | null;
+          delivery_fee: number | string;
+          min_order_amount: number | string;
+          estimated_delivery_minutes: number | null;
+        };
+      };
+      if (gen !== editionGenRef.current) return;
+      if (!body.covered || !body.zone) {
+        setDZoneError(
+          body.reason === "po_box"
+            ? "1001 et 1002 sont des cases postales — indiquez le NPA de votre adresse de rue."
+            : `Nous ne livrons pas au ${npa}. Corrigez le code postal ou choisissez une adresse desservie.`,
         );
-        if (!res.ok) {
-          // Erreur serveur ≠ zone non desservie : ne JAMAIS laisser un
-          // blocage collé sur cette base (le POST re-vérifiera).
-          setCpZoneError(null);
-          return;
-        }
-        const body = (await res.json()) as {
-          covered: boolean;
-          reason?: "po_box" | "not_covered";
-          zone?: {
-            id: string;
-            city: string | null;
-            delivery_fee: number | string;
-            min_order_amount: number | string;
-            estimated_delivery_minutes: number | null;
-          };
-        };
-        if (!body.covered || !body.zone) {
-          setCpZoneError(
-            body.reason === "po_box"
-              ? "1001 et 1002 sont des cases postales — indiquez le NPA de votre adresse de rue."
-              : `Nous ne livrons pas au ${pc}. Corrigez le code postal ou choisissez une adresse desservie.`,
-          );
-          return;
-        }
-        setCpZoneError(null);
-        const next: QualifiedAddress = {
-          ...address,
-          // La rue AFFICHÉE (état street) doit suivre : {...address} seul
-          // persistait une chimère « ancienne rue + nouveau CP », rediffusée
-          // à l'en-tête via rialto:address-updated (majeur relecteur).
-          address: streetRef.current.trim() || address.address,
-          postal_code: pc,
-          city: body.zone.city ?? address.city,
-          zone_id: body.zone.id,
-          delivery_fee: Number(body.zone.delivery_fee),
-          min_order_amount: Number(body.zone.min_order_amount),
-          estimated_delivery_minutes:
-            body.zone.estimated_delivery_minutes ??
-            address.estimated_delivery_minutes,
-        };
-        setAddress(next);
-        writeAddress(next);
-        // Ne remplir la ville QUE si le champ est vierge ou porte encore
-        // la ville de l'ancienne zone : la réponse arrive ~600 ms + RTT
-        // après la frappe du CP, pile quand le client tape sa ville — ne
-        // jamais écraser sa saisie (majeur relecteur). Lecture via ref :
-        // mettre city en dépendance relancerait le debounce à chaque
-        // frappe de ville.
-        if (
-          body.zone.city &&
-          (!cityRef.current.trim() || cityRef.current === address.city)
-        ) {
-          setCity(body.zone.city);
-        }
-      } catch {
-        /* réseau ou abort : on garde la zone connue — le POST serveur
-           re-vérifie la zone de toute façon et refuse un CP non desservi */
+        return;
       }
-    }, 600);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [postalCode, address, restaurantId]);
+      const zone = {
+        id: body.zone.id,
+        city: body.zone.city,
+        delivery_fee: Number(body.zone.delivery_fee),
+        min_order_amount: Number(body.zone.min_order_amount),
+        estimated_delivery_minutes:
+          body.zone.estimated_delivery_minutes ??
+          address.estimated_delivery_minutes,
+      };
+      // Cohérence ville ↔ zone (variante « NPA laissé tel quel » du bug
+      // R-2026-044) : une ville qui ne recoupe pas la commune de la zone
+      // signifie que le client a changé de localité SANS changer le NPA —
+      // exactement la chimère « Grand-Rue 54 / 1010 / Morges ». On refuse
+      // avec un message qui nomme la commune attendue.
+      if (!villeCompatibleZone(dVille.trim(), zone.city)) {
+        setDZoneError(
+          `Le NPA ${npa} correspond à ${zone.city} — vérifiez le code postal ou la localité.`,
+        );
+        return;
+      }
+      const ville = dVille.trim() || zone.city || "";
+      const next: QualifiedAddress = {
+        address: rue,
+        postal_code: npa,
+        city: ville || null,
+        zone_id: zone.id,
+        delivery_fee: zone.delivery_fee,
+        min_order_amount: zone.min_order_amount,
+        estimated_delivery_minutes: zone.estimated_delivery_minutes,
+      };
+      // Écritures React d'abord, localStorage en DERNIER : un setItem qui
+      // lève ne peut plus scinder states/address (relecture 20.08).
+      setHousingType(dHousingType);
+      setStreet(rue);
+      setPostalCode(npa);
+      setCity(ville);
+      setEntryCode1(dEntryCode1);
+      setEntryCode2(dEntryCode2);
+      setFloor(dFloor);
+      setApartmentNumber(dApptNum);
+      setDoorbellName(dDoorbell);
+      setAddress(next);
+      writeAddress(next);
+      setEditionLivraison(false);
+    } catch {
+      // Jeton : ne pas afficher l'erreur d'un fetch fantôme dans un
+      // pop-up rouvert entre-temps.
+      if (gen === editionGenRef.current) {
+        setDZoneError(
+          "Impossible de vérifier votre zone de livraison — réessayez dans un instant.",
+        );
+      }
+    } finally {
+      setDSaving(false);
+    }
+  }
+
+  /** Même règle pour le panneau instructions : brouillon, fermer =
+   *  annuler, « Enregistrer » = committer. */
+  function ouvrirPanneauInstructions() {
+    setDRemiseMode(remiseMode);
+    setDRemiseOption(remiseOption);
+    setDInstructions(instructions);
+    setDRemiseTouchee(false);
+    setPanneauInstructions(true);
+  }
+
+  function enregistrerInstructions() {
+    setRemiseMode(dRemiseMode);
+    setRemiseOption(dRemiseOption);
+    setInstructions(dInstructions);
+    // Le préfixe REMISE ne s'arme que si un choix a été CLIQUÉ dans le
+    // panneau : ouvrir puis Enregistrer sans rien toucher n'écrit rien
+    // (invariant historique, relecture 20.08).
+    if (dRemiseTouchee) setRemiseTouchee(true);
+    setPanneauInstructions(false);
+  }
 
   function updateQuantity(key: string, delta: number) {
     const next = cart
@@ -566,7 +699,8 @@ export default function CheckoutPageClient({
     paymentSubValid &&
     contactValid &&
     amountValid &&
-    !cpZoneError &&
+    !editionLivraison &&
+    !panneauInstructions &&
     !loading &&
     !!address &&
     accepting;
@@ -650,8 +784,11 @@ export default function CheckoutPageClient({
           requested_pickup_time: pickupISO,
           fulfillment_type: "delivery",
           delivery_address: street.trim(),
-          delivery_postal_code:
-            postalCode.trim() || address.postal_code,
+          // Source UNIQUE : l'adresse QUALIFIÉE (bug 20.08 — le repli
+          // « state CP sinon adresse » mélangeait les sources et a envoyé
+          // rue et ville neuves avec l'ANCIEN code postal). Le commit
+          // atomique du pop-up garantit states === address.
+          delivery_postal_code: address.postal_code,
           delivery_city: city.trim() || address.city,
           delivery_zone_id: address.zone_id,
           // Le mode de remise voyage dans les instructions (champ
@@ -815,7 +952,7 @@ export default function CheckoutPageClient({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEditionLivraison(true)}
+                  onClick={ouvrirEditionLivraison}
                   className="shrink-0 rounded-btn border border-border px-3.5 py-2 text-sm font-semibold text-ink transition hover:border-ink"
                 >
                   Modifier
@@ -825,7 +962,7 @@ export default function CheckoutPageClient({
             {housingType === null && (
               <button
                 type="button"
-                onClick={() => setEditionLivraison(true)}
+                onClick={ouvrirEditionLivraison}
                 className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4 text-left transition hover:border-ink"
               >
                 <span className="flex items-center gap-3">
@@ -846,20 +983,18 @@ export default function CheckoutPageClient({
                 le CTA se grisait sans plus aucun message à l'écran,
                 y compris quand l'erreur arrivait après le repli via le
                 debounce du re-check de CP). */}
-            {housingType !== null &&
-              (cpZoneError || street.trim().length < 3) && (
-                <p className="mt-2 text-xs font-medium text-rialto">
-                  {cpZoneError ??
-                    "Adresse incomplète — cliquez Modifier pour la corriger."}
-                </p>
-              )}
+            {housingType !== null && street.trim().length < 3 && (
+              <p className="mt-2 text-xs font-medium text-rialto">
+                Adresse incomplète — cliquez Modifier pour la corriger.
+              </p>
+            )}
 
             {/* UN SEUL bouton « Instructions pour le livreur » — ouvre le
                 panneau des choix au lieu de tout déplier (spec 20.08). */}
             {housingType !== null && (
               <button
                 type="button"
-                onClick={() => setPanneauInstructions(true)}
+                onClick={ouvrirPanneauInstructions}
                 className="mt-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4 text-left transition hover:border-ink"
               >
                 <span className="flex min-w-0 items-center gap-3">
@@ -1096,32 +1231,29 @@ export default function CheckoutPageClient({
                     className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>
-                {/* ⚠️ JURIDIQUE (correction Augustin 20.08) : la promesse
-                    « jamais de publicité » ne vaut QUE POUR L'EMAIL — le
-                    marketing Rialto passe activement par SMS sur le
-                    numéro de téléphone. Elle est donc portée par le champ
-                    email LUI-MÊME et ne doit JAMAIS apparaître sous le
-                    champ téléphone ni en pied de section (elle
-                    engloberait le numéro et nous ferait promettre par
-                    écrit l'inverse de ce que nous faisons). */}
                 <div>
+                  {/* ⚠️ JURIDIQUE (décisions Augustin 20.08) : la promesse
+                      « jamais de publicité » ne vaut QUE POUR L'EMAIL — le
+                      marketing Rialto passe ACTIVEMENT par SMS sur le
+                      numéro. Elle vit dans le LIBELLÉ du champ email et
+                      NULLE PART ailleurs : sous le téléphone ou en pied de
+                      section, elle engloberait le numéro et promettrait
+                      par écrit l'inverse de ce que nous faisons. */}
+                  <label
+                    htmlFor="checkout-email"
+                    className="mb-1 block text-xs font-medium text-mute"
+                  >
+                    Email (uniquement pour votre reçu, jamais de publicité)
+                  </label>
                   <input
+                    id="checkout-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email (optionnel)"
-                    aria-label="Email"
-                    aria-describedby="promesse-email"
+                    placeholder="Optionnel"
                     autoComplete="email"
                     className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                   />
-                  {/* Visible en permanence (un placeholder disparaît à la
-                      saisie et se tronque sur mobile — relecture 20.08),
-                      collé au champ email et lié par aria-describedby :
-                      la promesse ne couvre QUE l'email. */}
-                  <p id="promesse-email" className="mt-1 text-xs text-mute">
-                    Uniquement pour votre reçu — jamais de publicité.
-                  </p>
                 </div>
               </div>
             </Section>
@@ -1326,15 +1458,15 @@ export default function CheckoutPageClient({
               : `Confirmer — ${total.toFixed(2)} CHF`}
           </button>
         </div>
-        {/* ─── Pop-up « Détails de la livraison » (correction 20.08) :
-            MÊME modèle que le panneau instructions — ouverture au clic,
-            fermeture Échap/backdrop, verrou scroll. Permet de changer
-            l'adresse ET le type de logement. */}
+        {/* ─── Pop-up « Détails de la livraison » ─── BROUILLON : croix,
+            voile et Échap ANNULENT (retour aux valeurs d'ouverture) ;
+            « Enregistrer » vérifie la zone du NPA de façon synchrone puis
+            committe tout d'un bloc (correctif bug zone 20.08). */}
         {editionLivraison && (
           <div
             className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm md:items-center md:p-4"
             onClick={(e) => {
-              if (e.target === e.currentTarget) setEditionLivraison(false);
+              if (e.target === e.currentTarget) fermerEditionLivraison();
             }}
           >
             <div
@@ -1349,7 +1481,7 @@ export default function CheckoutPageClient({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setEditionLivraison(false)}
+                  onClick={fermerEditionLivraison}
                   className="rounded-full p-2 text-mute hover:bg-neutral-100"
                   aria-label="Fermer"
                 >
@@ -1361,26 +1493,24 @@ export default function CheckoutPageClient({
               </div>
               <div
                 className="space-y-3 transition-all duration-200"
-                // Entrée dans un champ d'adresse = valider l'ÉDITION,
-                // jamais la commande (relecture 20.08 : la soumission
-                // implicite du form partait avec l'adresse à moitié
-                // corrigée chez un habitué).
+                // Entrée dans un champ d'adresse = tenter l'ENREGISTREMENT
+                // (avec sa vérification de zone), jamais la commande.
                 onKeyDown={(e) => {
                   if (
                     e.key === "Enter" &&
                     (e.target as HTMLElement).tagName === "INPUT"
                   ) {
                     e.preventDefault();
-                    if (street.trim().length >= 3) setEditionLivraison(false);
+                    void enregistrerLivraison();
                   }
                 }}
               >
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setHousingType("house")}
+                    onClick={() => setDHousingType("house")}
                     className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      housingType === "house"
+                      dHousingType === "house"
                         ? "border-[#C73E1D] bg-white shadow-card"
                         : "border-gray-200 bg-white hover:border-gray-300"
                     }`}
@@ -1392,9 +1522,9 @@ export default function CheckoutPageClient({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setHousingType("apartment")}
+                    onClick={() => setDHousingType("apartment")}
                     className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      housingType === "apartment"
+                      dHousingType === "apartment"
                         ? "border-[#C73E1D] bg-white shadow-card"
                         : "border-gray-200 bg-white hover:border-gray-300"
                     }`}
@@ -1406,12 +1536,12 @@ export default function CheckoutPageClient({
                   </button>
                 </div>
 
-                {housingType !== null && (
+                {dHousingType !== null && (
                   <>
                     <input
                       type="text"
-                      value={street}
-                      onChange={(e) => setStreet(e.target.value)}
+                      value={dStreet}
+                      onChange={(e) => setDStreet(e.target.value)}
                       placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
                       aria-label="Rue et numéro"
                       required
@@ -1420,29 +1550,34 @@ export default function CheckoutPageClient({
                     <div className="grid grid-cols-3 gap-3">
                       <input
                         type="text"
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
+                        value={dNpa}
+                        onChange={(e) => setDNpa(e.target.value)}
                         placeholder="NPA"
                         aria-label="NPA"
                         className="col-span-1 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
                       />
                       <input
                         type="text"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
+                        value={dVille}
+                        onChange={(e) => setDVille(e.target.value)}
                         placeholder="Ville"
                         aria-label="Ville"
                         className="col-span-2 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
                       />
                     </div>
 
-                    {cpZoneError && (
+                    {!npaBrouillonValide && (
                       <p className="text-xs font-medium text-rialto">
-                        {cpZoneError}
+                        Indiquez un NPA à 4 chiffres.
+                      </p>
+                    )}
+                    {dZoneError && (
+                      <p className="text-xs font-medium text-rialto">
+                        {dZoneError}
                       </p>
                     )}
 
-                    {housingType === "apartment" && (
+                    {dHousingType === "apartment" && (
                       <div className="space-y-3 rounded-2xl border border-border bg-neutral-50 p-4">
                         <p className="text-xs font-bold uppercase tracking-wide text-ink">
                           Pour que le livreur trouve facilement
@@ -1450,16 +1585,16 @@ export default function CheckoutPageClient({
                         <div className="grid grid-cols-2 gap-3">
                           <input
                             type="text"
-                            value={entryCode1}
-                            onChange={(e) => setEntryCode1(e.target.value)}
+                            value={dEntryCode1}
+                            onChange={(e) => setDEntryCode1(e.target.value)}
                             placeholder="Code entrée 1"
                             aria-label="Code entrée 1"
                             className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
                           />
                           <input
                             type="text"
-                            value={entryCode2}
-                            onChange={(e) => setEntryCode2(e.target.value)}
+                            value={dEntryCode2}
+                            onChange={(e) => setDEntryCode2(e.target.value)}
                             placeholder="Code entrée 2 (si nécessaire)"
                             aria-label="Code entrée 2"
                             className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
@@ -1468,16 +1603,16 @@ export default function CheckoutPageClient({
                         <div className="grid grid-cols-2 gap-3">
                           <input
                             type="text"
-                            value={floor}
-                            onChange={(e) => setFloor(e.target.value)}
+                            value={dFloor}
+                            onChange={(e) => setDFloor(e.target.value)}
                             placeholder="Étage (ex: 3, RDC)"
                             aria-label="Étage"
                             className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
                           />
                           <input
                             type="text"
-                            value={apartmentNumber}
-                            onChange={(e) => setApartmentNumber(e.target.value)}
+                            value={dApptNum}
+                            onChange={(e) => setDApptNum(e.target.value)}
                             placeholder="N° appartement / Porte"
                             aria-label="N° appartement / Porte"
                             className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
@@ -1485,8 +1620,8 @@ export default function CheckoutPageClient({
                         </div>
                         <input
                           type="text"
-                          value={doorbellName}
-                          onChange={(e) => setDoorbellName(e.target.value)}
+                          value={dDoorbell}
+                          onChange={(e) => setDDoorbell(e.target.value)}
                           placeholder="Nom sur la sonnette / interphone"
                           aria-label="Nom sur la sonnette / interphone"
                           className="w-full rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
@@ -1496,11 +1631,11 @@ export default function CheckoutPageClient({
 
                     <button
                       type="button"
-                      onClick={() => setEditionLivraison(false)}
-                      disabled={street.trim().length < 3}
+                      onClick={() => void enregistrerLivraison()}
+                      disabled={dSaving || !livraisonBrouillonValide}
                       className="btn-primary mt-1 w-full disabled:opacity-40"
                     >
-                      Enregistrer
+                      {dSaving ? "Vérification de la zone…" : "Enregistrer"}
                     </button>
                   </>
                 )}
@@ -1548,12 +1683,12 @@ export default function CheckoutPageClient({
                 <button
                   type="button"
                   onClick={() => {
-                    setRemiseMode("main_propre");
-                    setRemiseOption("porte");
-                    setRemiseTouchee(true);
+                    setDRemiseMode("main_propre");
+                    setDRemiseOption("porte");
+                    setDRemiseTouchee(true);
                   }}
                   className={`rounded-2xl border-2 p-3 text-left transition-all ${
-                    remiseMode === "main_propre"
+                    dRemiseMode === "main_propre"
                       ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white"
                   }`}
@@ -1565,12 +1700,12 @@ export default function CheckoutPageClient({
                 <button
                   type="button"
                   onClick={() => {
-                    setRemiseMode("laisser_porte");
-                    setRemiseOption("porte");
-                    setRemiseTouchee(true);
+                    setDRemiseMode("laisser_porte");
+                    setDRemiseOption("porte");
+                    setDRemiseTouchee(true);
                   }}
                   className={`rounded-2xl border-2 p-3 text-left transition-all ${
-                    remiseMode === "laisser_porte"
+                    dRemiseMode === "laisser_porte"
                       ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white"
                   }`}
@@ -1583,23 +1718,23 @@ export default function CheckoutPageClient({
 
               {/* Sous-options DE LA FAMILLE CHOISIE uniquement. */}
               <div className="mt-3 space-y-1.5">
-                {OPTIONS_REMISE[remiseMode].map((o) => (
+                {OPTIONS_REMISE[dRemiseMode].map((o) => (
                   <button
                     key={o.cle}
                     type="button"
                     onClick={() => {
-                      setRemiseOption(o.cle);
-                      setRemiseTouchee(true);
+                      setDRemiseOption(o.cle);
+                      setDRemiseTouchee(true);
                     }}
                     className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
-                      remiseOption === o.cle
+                      dRemiseOption === o.cle
                         ? "border-[#C73E1D] font-semibold text-ink shadow-card"
                         : "border-border text-ink hover:border-ink"
                     }`}
                   >
                     <span
                       className={`h-2 w-2 shrink-0 rounded-full ${
-                        remiseOption === o.cle ? "bg-rialto" : "bg-border"
+                        dRemiseOption === o.cle ? "bg-rialto" : "bg-border"
                       }`}
                       aria-hidden
                     />
@@ -1608,7 +1743,7 @@ export default function CheckoutPageClient({
                 ))}
               </div>
 
-              {remiseMode === "laisser_porte" && (
+              {dRemiseMode === "laisser_porte" && (
                 <p className="mt-3 rounded-xl border border-border bg-neutral-50 p-3 text-xs text-gray-700">
                   Le paiement se fait à la remise chez Rialto : pour un
                   dépôt sans contact, choisissez « Carte — à distance »
@@ -1618,8 +1753,8 @@ export default function CheckoutPageClient({
               )}
 
               <textarea
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
+                value={dInstructions}
+                onChange={(e) => setDInstructions(e.target.value)}
                 placeholder="Instructions libres — portail, chien, sonnette, etc."
                 aria-label="Instructions libres"
                 rows={2}
@@ -1628,7 +1763,7 @@ export default function CheckoutPageClient({
 
               <button
                 type="button"
-                onClick={() => setPanneauInstructions(false)}
+                onClick={enregistrerInstructions}
                 className="btn-primary mt-4 w-full"
               >
                 Enregistrer

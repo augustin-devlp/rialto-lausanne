@@ -51,7 +51,13 @@ export function writeCart(cart: CartItem[]): void {
 
 export function clearCart(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(CART_KEY);
+  try {
+    window.localStorage.removeItem(CART_KEY);
+  } catch {
+    /* appelé APRÈS l'INSERT de la commande : un throw ici remonterait en
+       « erreur de commande » sur une commande déjà créée (relecture
+       20.08) — jamais de throw vers l'UI */
+  }
   window.dispatchEvent(new CustomEvent("rialto:cart-updated"));
 }
 
@@ -143,6 +149,16 @@ export function cartLineKey(
   return `${itemId}::${opt}::${notes}`;
 }
 
+/** Libellé de zone utilisable comme « ville » d'une adresse client :
+ *  les libellés multi-communes « A / B / C » de la grille ZL1 ne sont
+ *  PAS des villes saisies — recopiés dans l'adresse, ils partaient sur
+ *  l'étiquette livreur, le CSV et le mail (relecture 20.08). null =
+ *  laisser le champ ville vide, le client saisit sa commune. */
+export function villeSeedable(label: string | null | undefined): string | null {
+  if (!label || label.includes("/")) return null;
+  return label;
+}
+
 /* ─── Address ────────────────────────────────────────────────────────── */
 export function readAddress(): QualifiedAddress | null {
   if (typeof window === "undefined") return null;
@@ -172,14 +188,29 @@ const ADDRESS_COOKIE = "rialto_adresse";
 
 export function writeAddress(addr: QualifiedAddress): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr));
-  document.cookie = `${ADDRESS_COOKIE}=1; path=/; max-age=15552000; SameSite=Lax`;
+  try {
+    // Même politique que writeCart : setItem peut lever (quota, Safari
+    // navigation privée) — un throw au milieu du commit du checkout
+    // scindait states/address (relecture 20.08). Dégradé assumé : l'état
+    // mémoire vit, la persistance attendra la prochaine écriture.
+    window.localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr));
+    document.cookie = `${ADDRESS_COOKIE}=1; path=/; max-age=15552000; SameSite=Lax`;
+  } catch {
+    /* stockage indisponible : on continue — jamais de throw vers l'UI */
+  }
   window.dispatchEvent(new CustomEvent("rialto:address-updated"));
 }
 
 export function clearAddress(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(ADDRESS_KEY);
+  // Cookie d'abord (document.cookie ne lève pas) : le drapeau anti-flash
+  // ne doit JAMAIS survivre à un removeItem en échec, sinon boucle
+  // / → /menu → /?need_address=1 (relecture 20.08).
   document.cookie = `${ADDRESS_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+  try {
+    window.localStorage.removeItem(ADDRESS_KEY);
+  } catch {
+    /* idem writeAddress */
+  }
   window.dispatchEvent(new CustomEvent("rialto:address-updated"));
 }

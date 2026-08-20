@@ -31,26 +31,10 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
 
   return (
     <article
-      className={`dish-card group relative flex items-stretch overflow-hidden border border-border ${
+      className={`dish-card group relative flex min-h-[92px] items-stretch overflow-hidden border border-border ${
         unavailable ? "opacity-50" : ""
       }`}
     >
-      {outOfStock && (
-        <span className="absolute left-3 top-3 z-10 rounded-full bg-rialto px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
-          Épuisé
-        </span>
-      )}
-      {/* Phase 11 C13 : badges saisonnier & priorité */}
-      {!outOfStock && item.is_priority && (
-        <span className="absolute left-3 top-3 z-10 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink shadow-md">
-          Coup de cœur
-        </span>
-      )}
-      {!outOfStock && !item.is_priority && item.is_seasonal && (
-        <span className="absolute left-3 top-3 z-10 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
-          Saison
-        </span>
-      )}
       {/* Lien principal enveloppant le contenu éditorial + la photo */}
       <Link
         href={href}
@@ -98,6 +82,23 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
         </div>
         {/* Correction de spec 20.08 : bandeau ~3:1, texte 2/3 — image 1/3. */}
         <div className="relative w-1/3 shrink-0">
+          {/* Badges ANCRÉS À LA PHOTO (correction Augustin 20.08 : en haut
+              à droite, jamais par-dessus le titre — l'ancrage à la carte
+              pouvait déborder sur la colonne texte en 320 px). « Épuisé »
+              n'a pas de badge (le voile centré ci-dessous suffit), et les
+              badges suivent la MÊME condition que le voile (unavailable —
+              un plat is_available=false affichait « Coup de cœur » sur le
+              voile « Épuisé », relecture 20.08). */}
+          {!unavailable && item.is_priority && (
+            <span className="absolute right-2 top-2 z-10 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink shadow-md">
+              Coup de cœur
+            </span>
+          )}
+          {!unavailable && !item.is_priority && item.is_seasonal && (
+            <span className="absolute right-2 top-2 z-10 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
+              Saison
+            </span>
+          )}
           <Image
             src={src}
             alt={item.name}

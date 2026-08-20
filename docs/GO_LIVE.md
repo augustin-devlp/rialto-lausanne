@@ -53,7 +53,11 @@
       ouvrir sur une base 100 % réelle. Identification : téléphones de
       test d'Augustin (+33676549598/99, +41791342996/97 — compléter la
       liste au moment du ménage), commandes `TEST-*` et `R-2026-0xx` de
-      test. Ordre de purge (enfants d'abord, FK) :
+      test. ⚠️ Dont **R-2026-044** (20.08) : commande CHIMÈRE du bug zone
+      — `Grand-Rue 54 / NPA 1010 / Morges`, facturée zone Lausanne
+      (frais 5, min 25) pour une adresse de Morges (zone D : 12/55) ;
+      données incohérentes, à purger impérativement. Ordre de purge
+      (enfants d'abord, FK) :
       1. `transactions` (crédits tampons de test — y c. le tampon 042,
          intouchable AVANT le ménage par l'invariant « jamais reprendre »,
          purgé AVEC tout le reste ici)

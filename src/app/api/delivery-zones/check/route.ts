@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = supabaseService();
-  const { data: zone } = await admin
+  const { data: zone, error } = await admin
     .from("delivery_zones")
     .select(
       "id, postal_code, city, delivery_fee, min_order_amount, estimated_delivery_minutes, is_active",
@@ -44,6 +44,17 @@ export async function GET(req: NextRequest) {
     .eq("is_active", true)
     .maybeSingle();
 
+  // Une panne DB n'est PAS « zone non desservie » : depuis que le
+  // checkout fait de cette vérification un préalable BLOQUANT à
+  // l'enregistrement d'adresse (correctif 20.08), confondre les deux
+  // affichait « Nous ne livrons pas au XXXX » (faux) au lieu d'inviter à
+  // réessayer. 500 → le client montre son message de retry.
+  if (error) {
+    return NextResponse.json(
+      { error: "Vérification momentanément indisponible" },
+      { status: 500 },
+    );
+  }
   if (!zone) {
     return NextResponse.json({ covered: false, reason: "not_covered" });
   }

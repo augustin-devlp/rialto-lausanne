@@ -10,7 +10,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { writeAddress, readAddress } from "@/lib/clientStore";
+import { writeAddress, readAddress, villeSeedable } from "@/lib/clientStore";
 import { DELIVERY_CITIES } from "@/lib/rialto-data";
 
 type Props = {
@@ -92,7 +92,7 @@ export default function AddressGate({
       writeAddress({
         address: streetAddress.trim(),
         postal_code: body.zone.postal_code,
-        city: body.zone.city,
+        city: villeSeedable(body.zone.city),
         zone_id: body.zone.id,
         delivery_fee: Number(body.zone.delivery_fee),
         min_order_amount: Number(body.zone.min_order_amount ?? minOrderFallback),

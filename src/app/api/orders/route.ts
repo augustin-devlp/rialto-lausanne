@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const { data: zone } = await sb
+    const { data: zone, error: zoneErr } = await sb
       .from("delivery_zones")
       .select(
         "id, postal_code, city, delivery_fee, min_order_amount, is_active",
@@ -141,12 +141,40 @@ export async function POST(req: NextRequest) {
       .eq("postal_code", body.delivery_postal_code.trim())
       .eq("is_active", true)
       .maybeSingle();
+    // Panne DB ≠ zone non desservie (relecture 20.08, même correctif que
+    // /api/delivery-zones/check) : sans cette distinction, un pépin
+    // PostgREST au « Confirmer » affichait « Nous ne livrons pas au
+    // XXXX » — faux — à un client d'une zone couverte.
+    if (zoneErr) {
+      return NextResponse.json(
+        {
+          error:
+            "Vérification de la zone momentanément indisponible — réessayez dans un instant.",
+        },
+        { status: 503 },
+      );
+    }
     if (!zone) {
       return NextResponse.json(
         {
           error: `Nous ne livrons pas au ${body.delivery_postal_code.trim()}. Optez pour le retrait en magasin.`,
         },
         { status: 400 },
+      );
+    }
+    // Tripwire de cohérence (bug 20.08, R-2026-044) : le checkout envoie
+    // le zone_id de l'adresse qu'il a AFFICHÉE au client (frais, minimum,
+    // seuil de gratuité). S'il ne correspond pas à la zone re-dérivée du
+    // NPA posté, l'état client est désynchronisé : refuser BRUYAMMENT
+    // plutôt que facturer des frais jamais affichés. Payload sans zone_id
+    // → la re-dérivation NPA reste seule barrière (prix, minimum).
+    if (body.delivery_zone_id && body.delivery_zone_id !== zone.id) {
+      return NextResponse.json(
+        {
+          error:
+            "Votre adresse a changé — re-vérifiez-la (bouton Modifier) puis revalidez votre commande.",
+        },
+        { status: 409 },
       );
     }
     if (subtotal < Number(zone.min_order_amount)) {

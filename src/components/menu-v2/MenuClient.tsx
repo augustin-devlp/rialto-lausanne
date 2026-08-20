@@ -35,6 +35,7 @@ import {
   clearAddress,
   readAddress,
   readCart,
+  villeSeedable,
   writeAddress,
   type QualifiedAddress,
 } from "@/lib/clientStore";
@@ -180,7 +181,7 @@ export default function MenuClient({ categories, items, options, restaurantId }:
           writeAddress({
             address: a.address,
             postal_code: body.zone.postal_code,
-            city: body.zone.city,
+            city: villeSeedable(body.zone.city),
             zone_id: body.zone.id,
             delivery_fee: Number(body.zone.delivery_fee),
             min_order_amount: Number(body.zone.min_order_amount),

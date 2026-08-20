@@ -72,7 +72,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={`${fraunces.variable} ${inter.variable}`}>
-      <body className="font-sans antialiased bg-cream text-ink">
+      <body className="font-sans antialiased bg-white text-ink">
         {/* Logo Rialto top-left fixed, cliquable -> / (Phase 7 FIX 3) */}
         <I18nProvider>
           <RialtoLogo variant="fixed" size="sm" />

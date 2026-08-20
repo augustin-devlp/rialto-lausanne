@@ -18,7 +18,7 @@ type Props = {
 export default function LegalPage({ title, subtitle, updatedAt, children }: Props) {
   return (
     <>
-      <main className="min-h-screen bg-cream pb-16 pt-20 md:pt-24">
+      <main className="min-h-screen bg-white pb-16 pt-20 md:pt-24">
         <div className="container-hero">
           <Link
             href="/"

@@ -160,7 +160,7 @@ export default function RoueClient() {
   if (!authed) {
     return (
       <>
-        <main className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 pt-20 md:pt-24">
+        <main className="flex min-h-screen flex-col items-center justify-center bg-white px-4 pt-20 md:pt-24">
           <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-rialto/10 text-4xl">
               🎰
@@ -187,7 +187,7 @@ export default function RoueClient() {
 
   if (loading || !data) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-cream pt-20">
+      <main className="flex min-h-screen items-center justify-center bg-white pt-20">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-rialto border-t-transparent" />
       </main>
     );
@@ -261,7 +261,7 @@ export default function RoueClient() {
                 On vous a aussi envoyé le code par SMS.
               </p>
               <Link href="/menu" className="mt-6 inline-block">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-rialto hover:bg-cream">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-rialto hover:bg-neutral-50">
                   Utiliser mon code →
                 </span>
               </Link>
@@ -385,7 +385,7 @@ export default function RoueClient() {
               </div>
             )}
           {data.last_prize?.used && data.last_prize.code && (
-            <div className="mt-6 rounded-xl bg-cream p-3 text-xs text-mute">
+            <div className="mt-6 rounded-xl bg-white p-3 text-xs text-mute">
               Votre dernier code (<strong>{data.last_prize.code}</strong>) a
               déjà été utilisé.
             </div>
@@ -459,7 +459,7 @@ export default function RoueClient() {
 function StateWrapper({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <main className="min-h-screen bg-cream pb-16 pt-20 md:pt-24">
+      <main className="min-h-screen bg-white pb-16 pt-20 md:pt-24">
         <div className="container-hero">
           <div className="mx-auto max-w-lg">
             <header className="mb-6">

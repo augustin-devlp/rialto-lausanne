@@ -59,7 +59,7 @@ export default function LanguageToggle({ className = "" }: { className?: string 
                 setOpen(false);
               }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition ${
-                locale === l ? "bg-rialto/10 text-rialto font-semibold" : "hover:bg-cream"
+                locale === l ? "bg-rialto/10 text-rialto font-semibold" : "hover:bg-neutral-50"
               }`}
             >
               <span className="text-base">{LOCALE_META[l].flag}</span>

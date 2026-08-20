@@ -93,7 +93,7 @@ export default function DishModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-cream shadow-pop sm:rounded-3xl"
+        className="flex max-h-[95vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-pop sm:rounded-3xl"
       >
         {/* Image top */}
         <div className="relative h-52 w-full shrink-0 sm:h-64">
@@ -214,7 +214,7 @@ export default function DishModal({
               <button
                 type="button"
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-cream disabled:opacity-40"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-neutral-50 disabled:opacity-40"
                 disabled={qty <= 1}
                 aria-label="Diminuer"
               >
@@ -226,7 +226,7 @@ export default function DishModal({
               <button
                 type="button"
                 onClick={() => setQty(qty + 1)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-cream"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-neutral-50"
                 aria-label="Augmenter"
               >
                 +

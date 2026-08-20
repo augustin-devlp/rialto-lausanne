@@ -140,7 +140,7 @@ export default function PushToggle({ phone, customerId, className = "" }: Props)
 
   if (state === "denied") {
     return (
-      <div className={`rounded-2xl border border-border bg-cream-dark p-3 text-xs text-mute ${className}`}>
+      <div className={`rounded-2xl border border-border bg-neutral-100 p-3 text-xs text-mute ${className}`}>
         🔕 Notifications bloquées dans votre navigateur. Allez dans les
         paramètres du site pour les ré-autoriser.
       </div>

@@ -133,7 +133,7 @@ export default function CartPanel({
         <button
           type="button"
           onClick={() => setMobileOpen(false)}
-          className="rounded-full p-2 text-mute hover:bg-cream-dark lg:hidden"
+          className="rounded-full p-2 text-mute hover:bg-neutral-200 lg:hidden"
           aria-label="Fermer"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
@@ -195,7 +195,7 @@ export default function CartPanel({
 
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {/* Quantity control */}
-                  <div className="inline-flex items-center gap-1 rounded-full border border-border bg-cream flex-shrink-0">
+                  <div className="inline-flex items-center gap-1 rounded-full border border-border bg-white flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => handleQuantity(item.key, -1)}
@@ -233,7 +233,7 @@ export default function CartPanel({
 
       {/* Phase 12 V3 — Upsell suggestions */}
       {count > 0 && (
-        <div className="border-t border-border bg-cream/40 px-3 pt-3 pb-1">
+        <div className="border-t border-border bg-neutral-50 px-3 pt-3 pb-1">
           <UpsellPanel cart={cart} onAdd={handleUpsellAdd} />
         </div>
       )}
@@ -270,7 +270,7 @@ export default function CartPanel({
                 Encore <strong>{formatCHF(missing)}</strong> pour atteindre le
                 minimum ({formatCHF(minOrderAmount)}).
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-cream-dark">
+              <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
                 <div
                   className="h-full rounded-full bg-rialto transition-all"
                   style={{ width: `${progressPct}%` }}
@@ -319,7 +319,7 @@ export default function CartPanel({
           onClick={() => setMobileOpen(true)}
           className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 px-4 py-3 backdrop-blur-lg animate-fade-up lg:hidden"
         >
-          <div className={`flex items-center justify-between gap-2 rounded-2xl px-4 py-3 ${canCheckout ? "bg-gradient-to-r from-rialto to-rialto-dark text-white" : "bg-cream-dark text-ink"}`}>
+          <div className={`flex items-center justify-between gap-2 rounded-2xl px-4 py-3 ${canCheckout ? "bg-gradient-to-r from-rialto to-rialto-dark text-white" : "bg-neutral-100 text-ink"}`}>
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold flex-shrink-0">
                 {count}
@@ -343,7 +343,7 @@ export default function CartPanel({
             if (e.target === e.currentTarget) setMobileOpen(false);
           }}
         >
-          <div className="flex h-[85vh] w-full flex-col rounded-t-3xl bg-cream shadow-pop animate-slide-up">
+          <div className="flex h-[85vh] w-full flex-col rounded-t-3xl bg-white shadow-pop animate-slide-up">
             {CartContent}
           </div>
         </div>

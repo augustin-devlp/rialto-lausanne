@@ -211,7 +211,7 @@ export default function AddressGate({
                   {DELIVERY_CITIES.map((c) => (
                     <li
                       key={c}
-                      className="rounded-full bg-cream-dark px-3 py-1 text-xs font-semibold text-ink"
+                      className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-ink"
                     >
                       {c}
                     </li>

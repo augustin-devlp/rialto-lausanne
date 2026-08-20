@@ -676,8 +676,8 @@ export default function CheckoutPageClient({
   if (!address) return null;
 
   return (
-    <main className="min-h-screen bg-cream pb-28 md:pb-12">
-      <header className="border-b border-border bg-cream/95 backdrop-blur-lg">
+    <main className="min-h-screen bg-white pb-28 md:pb-12">
+      <header className="border-b border-border bg-white/95 backdrop-blur-lg">
         <div className="container-hero flex h-14 items-center justify-between gap-3 sm:h-16">
           <Link
             href="/menu"
@@ -1325,7 +1325,7 @@ function CartLineRow({
           </div>
         )}
         <div className="mt-1.5 flex items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-cream px-2 py-0.5">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-white px-2 py-0.5">
             <button
               type="button"
               onClick={onDecr}

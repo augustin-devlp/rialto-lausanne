@@ -27,7 +27,7 @@ export default function ReviewsCarousel() {
           {REVIEWS.slice(0, 3).map((r) => (
             <figure
               key={r.author}
-              className="w-[85%] shrink-0 snap-center rounded-3xl border border-border bg-cream p-6 md:w-auto md:shrink md:snap-none"
+              className="w-[85%] shrink-0 snap-center rounded-3xl border border-border bg-white p-6 md:w-auto md:shrink md:snap-none"
             >
               <div className="flex items-center gap-1 text-saffron" aria-label={`${r.rating} étoiles`}>
                 {Array.from({ length: 5 }).map((_, i) => (

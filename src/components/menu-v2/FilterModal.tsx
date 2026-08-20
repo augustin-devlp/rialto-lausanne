@@ -307,7 +307,7 @@ export default function FilterModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-cream"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-ink hover:bg-neutral-50"
             aria-label="Fermer"
           >
             <svg
@@ -412,7 +412,7 @@ export default function FilterModal({
         </div>
 
         {/* Footer actions */}
-        <footer className="flex items-center gap-2 border-t border-border bg-cream px-4 py-3">
+        <footer className="flex items-center gap-2 border-t border-border bg-white px-4 py-3">
           <button
             type="button"
             onClick={() => {

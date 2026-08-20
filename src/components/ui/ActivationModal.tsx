@@ -116,7 +116,7 @@ export default function ActivationModal({
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="w-full max-w-md overflow-hidden rounded-t-3xl bg-cream shadow-pop md:rounded-3xl">
+      <div className="w-full max-w-md overflow-hidden rounded-t-3xl bg-white shadow-pop md:rounded-3xl">
         {/* Header avec visuel terracotta */}
         <div className="bg-gradient-to-br from-rialto to-rialto-dark p-6 text-white">
           <div className="flex items-start justify-between gap-3">

@@ -153,7 +153,7 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
           setTimeout(() => router.refresh(), 1500);
         }}
       />
-      <main className="min-h-[100dvh] bg-cream pb-16 pt-20">
+      <main className="min-h-[100dvh] bg-white pb-16 pt-20">
         <div className="mx-auto max-w-md px-4 pt-2">
           {/* Header — logo global fixed (Phase 7 FIX 3) sert d'identité,
               on garde juste un titre contextuel "Rialto Club" à droite. */}
@@ -339,7 +339,7 @@ export default function LoyaltyCardView({ card }: { card: Card }) {
             <button
               type="button"
               disabled
-              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-cream-dark px-5 py-2.5 text-xs font-medium text-mute"
+              className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-neutral-100 px-5 py-2.5 text-xs font-medium text-mute"
               title="Bientôt disponible"
             >
 

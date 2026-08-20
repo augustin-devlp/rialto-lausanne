@@ -3,6 +3,24 @@ import type { Config } from "tailwindcss";
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
+    // Refonte UI lot 1 (20.08.2026) : échelle de rayons ÉCRASÉE (pas
+    // étendue) — tout le site descend vers le quasi-carré d'un coup, par
+    // les tokens, sans réécrire les classes rounded-* existantes.
+    // `btn` = token dédié aux boutons d'action (léger surplus de rayon,
+    // proposition acceptée par Augustin — à trancher visuellement).
+    // `full` conservé : pastilles, badges et points de statut restent ronds.
+    borderRadius: {
+      none: "0",
+      sm: "2px",
+      DEFAULT: "4px",
+      md: "4px",
+      lg: "4px",
+      xl: "4px",
+      "2xl": "6px",
+      "3xl": "6px",
+      btn: "10px",
+      full: "9999px",
+    },
     extend: {
       colors: {
         // Palette "Italien chaleureux" — terracotta + crème + safran.
@@ -25,8 +43,11 @@ const config: Config = {
         },
         ink: "#1A1A1A",
         mute: "#6B6B6B",
-        surface: "#FAFAF7",
-        border: "#E8E3D8",
+        // Refonte UI lot 1 : surface blanche (le beige quitte les fonds),
+        // liseré gris neutre à peine visible (l'ancien #E8E3D8 tirait
+        // beige). `cream` reste défini : accents/badges + dashboard.
+        surface: "#FFFFFF",
+        border: "#ECECEC",
       },
       fontFamily: {
         // Remplies par next/font dans layout.tsx via CSS variables
@@ -40,7 +61,8 @@ const config: Config = {
         "h2": ["clamp(1.5rem, 3vw, 2.25rem)", { lineHeight: "1.1", letterSpacing: "-0.01em" }],
       },
       boxShadow: {
-        card: "0 1px 3px rgba(26,26,26,.06), 0 1px 2px rgba(26,26,26,.04)",
+        // Refonte UI lot 1 : les cartes vivent du liseré, plus de l'ombre.
+        card: "0 1px 2px rgba(26,26,26,.04)",
         pop: "0 20px 50px -10px rgba(26,26,26,.15), 0 8px 20px -8px rgba(26,26,26,.1)",
         hover: "0 12px 32px -8px rgba(199,62,29,.18)",
       },

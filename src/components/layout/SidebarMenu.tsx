@@ -97,7 +97,7 @@ export default function SidebarMenu({ categories, activeId, onSelect, className 
           type="button"
           onClick={() => setOpen(!open)}
           aria-label={open ? "Fermer menu" : "Ouvrir menu"}
-          className="p-1.5 rounded-lg hover:bg-cream text-rialto-dark transition-colors flex-shrink-0"
+          className="p-1.5 rounded-lg hover:bg-neutral-50 text-rialto-dark transition-colors flex-shrink-0"
         >
           {open ? <ChevronLeft /> : <ChevronRight />}
         </button>
@@ -118,8 +118,8 @@ export default function SidebarMenu({ categories, activeId, onSelect, className 
                 w-full flex items-center gap-2 px-2.5 py-2
                 transition-colors text-left
                 ${isActive
-                  ? "bg-cream border-l-[3px] border-rialto text-rialto-dark font-semibold"
-                  : "border-l-[3px] border-transparent text-ink hover:bg-cream/60"}
+                  ? "bg-white border-l-[3px] border-rialto text-rialto-dark font-semibold"
+                  : "border-l-[3px] border-transparent text-ink hover:bg-neutral-50/60"}
               `}
             >
               <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-base">

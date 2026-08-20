@@ -100,7 +100,7 @@ export default function ConnexionClient() {
 
   return (
     <>
-      <main className="min-h-screen bg-cream pb-16 pt-20 md:pt-24">
+      <main className="min-h-screen bg-white pb-16 pt-20 md:pt-24">
         <div className="container-hero">
           <div className="mx-auto max-w-lg">
             <Link

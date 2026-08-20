@@ -744,7 +744,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-cream pb-20">
+    <main className="min-h-screen bg-white pb-20">
       {/* Bandeau célébration */}
       <section className="relative overflow-hidden bg-white py-14 md:py-20">
         <div
@@ -820,7 +820,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
               Suivi de la commande
             </h2>
             {etaLabel && !isCancelled && (
-              <p className="mb-4 rounded-xl bg-cream p-3 text-sm text-ink">
+              <p className="mb-4 rounded-xl bg-white p-3 text-sm text-ink">
                 <span aria-hidden="true">🕒</span>{" "}
                 {fulfillment === "pickup"
                   ? etaLabel.startsWith("d'une")
@@ -1066,10 +1066,10 @@ function LoyaltyCardSection({
     return (
       <div className="rounded-3xl border border-border bg-white p-6 shadow-card md:p-8">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 animate-pulse rounded-full bg-cream-dark" />
+          <div className="h-10 w-10 animate-pulse rounded-full bg-neutral-100" />
           <div className="flex-1 space-y-2">
-            <div className="h-4 w-32 animate-pulse rounded bg-cream-dark" />
-            <div className="h-3 w-48 animate-pulse rounded bg-cream-dark" />
+            <div className="h-4 w-32 animate-pulse rounded bg-neutral-100" />
+            <div className="h-3 w-48 animate-pulse rounded bg-neutral-100" />
           </div>
         </div>
       </div>
@@ -1108,7 +1108,7 @@ function LoyaltyCardSection({
             href={cardUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-semibold text-rialto transition hover:bg-cream"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 text-sm font-semibold text-rialto transition hover:bg-neutral-50"
           >
             Afficher mon QR code
             <svg
@@ -1152,7 +1152,7 @@ function LoyaltyCardSection({
                     /* ignore */
                   }
                 }}
-                className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-rialto hover:bg-cream"
+                className="rounded-lg bg-white px-2 py-1.5 text-[10px] font-semibold text-rialto hover:bg-neutral-50"
               >
                 Copier
               </button>

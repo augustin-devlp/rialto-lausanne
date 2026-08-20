@@ -145,7 +145,7 @@ export default function ParrainageClient() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-cream pb-16 pt-20">
+      <main className="min-h-screen bg-white pb-16 pt-20">
         <div className="container-hero text-center text-mute">Chargement…</div>
       </main>
     );
@@ -153,7 +153,7 @@ export default function ParrainageClient() {
 
   return (
     <>
-      <main className="min-h-screen bg-cream pb-16 pt-20 md:pt-24">
+      <main className="min-h-screen bg-white pb-16 pt-20 md:pt-24">
         <div className="container-hero max-w-2xl">
           <Link
             href="/rialto-club/connexion"

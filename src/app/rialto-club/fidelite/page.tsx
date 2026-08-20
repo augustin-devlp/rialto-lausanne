@@ -14,7 +14,7 @@ export const metadata = {
  */
 export default function FidelitePage() {
   return (
-    <main className="min-h-screen bg-cream pb-12 pt-10 md:pt-14">
+    <main className="min-h-screen bg-white pb-12 pt-10 md:pt-14">
       <FideliteSection />
     </main>
   );

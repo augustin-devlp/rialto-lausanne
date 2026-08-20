@@ -311,9 +311,9 @@ export default function MenuClient({ categories, items, options }: Props) {
   );
 
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="min-h-screen bg-white">
       {/* ─── Header sticky ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b border-border bg-cream/95 backdrop-blur-lg">
+      <header className="sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur-lg">
         <div className="container-hero flex h-14 items-center gap-3 pl-[72px] pr-[56px] sm:h-16 sm:pl-[88px] sm:pr-[60px]">
           {/* Logo retiré du header sticky — le logo global fixed top-left
               (layout.tsx, Phase 7 FIX 3) prend le relais. On garde un

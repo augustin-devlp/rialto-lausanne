@@ -11,7 +11,7 @@ import { SIGNATURE_DISHES } from "@/lib/rialto-data";
 
 export default function SignatureDishes() {
   return (
-    <section className="bg-cream py-16 md:py-24">
+    <section className="bg-white py-16 md:py-24">
       <div className="container-hero">
         <div className="mb-10 flex flex-col gap-3 md:mb-14 md:flex-row md:items-end md:justify-between">
           <div>

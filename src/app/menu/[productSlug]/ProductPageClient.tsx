@@ -200,7 +200,7 @@ export default function ProductPageClient({
   const displayedDesc = descExpanded ? description : description.slice(0, 400);
 
   return (
-    <main className="min-h-screen bg-cream pb-32">
+    <main className="min-h-screen bg-white pb-32">
       {/* Hero photo */}
       <section className="relative h-64 w-full overflow-hidden bg-ink md:h-96">
         <Image
@@ -418,7 +418,7 @@ export default function ProductPageClient({
               <button
                 type="button"
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-cream disabled:opacity-40"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-neutral-50 disabled:opacity-40"
                 disabled={qty <= 1}
               >
                 −
@@ -429,7 +429,7 @@ export default function ProductPageClient({
               <button
                 type="button"
                 onClick={() => setQty(qty + 1)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-cream"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full font-semibold text-ink transition hover:bg-neutral-50"
               >
                 +
               </button>
@@ -452,7 +452,7 @@ export default function ProductPageClient({
                 className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
               >
                 <div
-                  className="aspect-square w-full bg-cream bg-cover bg-center"
+                  className="aspect-square w-full bg-white bg-cover bg-center"
                   style={{
                     backgroundImage: `url('${s.image_url || matchDishImage(s.name, item.category_name)}')`,
                   }}

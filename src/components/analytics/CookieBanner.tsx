@@ -52,7 +52,7 @@ export default function CookieBanner() {
           <button
             type="button"
             onClick={() => setConsent("rejected")}
-            className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-cream-dark md:text-sm"
+            className="rounded-full border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-neutral-200 md:text-sm"
           >
             Refuser
           </button>

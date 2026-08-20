@@ -38,7 +38,7 @@ export default function SiteHeader({ transparentOnTop = false }: Props) {
   }, []);
 
   const bg = scrolled
-    ? "bg-cream/90 backdrop-blur-lg border-b border-border/50"
+    ? "bg-white/90 backdrop-blur-lg border-b border-border/50"
     : "bg-transparent";
   const textColor = scrolled ? "text-ink" : "text-white";
 

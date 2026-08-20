@@ -9,7 +9,7 @@ import { RIALTO_INFO } from "@/lib/rialto-data";
 
 export default function LocationHours() {
   return (
-    <section className="bg-cream py-16 md:py-24">
+    <section className="bg-white py-16 md:py-24">
       <div className="container-hero grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
         <div className="flex flex-col justify-center">
           <span className="eyebrow">Venez nous voir</span>

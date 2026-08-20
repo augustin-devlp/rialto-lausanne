@@ -427,7 +427,6 @@ function Item({
             : "text-ink hover:bg-neutral-100"
         }`}
       >
-        <span className="text-lg leading-none">{icon}</span>
         <span className="flex-1">{label}</span>
         {badge !== undefined && (
           <span
@@ -460,7 +459,6 @@ function ExternalItem({
         rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
         className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-ink transition hover:bg-neutral-100"
       >
-        <span className="text-lg leading-none">{icon}</span>
         <span className="flex-1">{label}</span>
         {href.startsWith("http") && (
           <svg

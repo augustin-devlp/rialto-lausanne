@@ -9,7 +9,9 @@ import { RIALTO_INFO } from "@/lib/rialto-data";
 
 export default function LocationHours() {
   return (
-    <section className="bg-white py-16 md:py-24">
+    // id="location" : cible du lien « Nous trouver » du burger
+    // (/?infos=1#location) — l'ancre manquait (relecture 20.08).
+    <section id="location" className="scroll-mt-20 bg-white py-16 md:py-24">
       <div className="container-hero grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
         <div className="flex flex-col justify-center">
           <span className="eyebrow">Venez nous voir</span>

@@ -311,7 +311,6 @@ export default function ProductPageClient({
           {allergens.length > 0 && (
             <div className="mt-6 rounded-2xl border-2 border-saffron bg-saffron/10 p-4">
               <div className="flex items-start gap-3">
-                <div className="shrink-0 text-xl">⚠️</div>
                 <div className="flex-1">
                   <h2 className="font-display text-base font-semibold">
                     Allergènes

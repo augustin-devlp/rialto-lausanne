@@ -95,6 +95,8 @@ type Prefill = {
   apartmentNumber?: string;
   doorbellName?: string;
   instructions?: string;
+  remiseMode?: "main_propre" | "laisser_porte";
+  remiseOption?: string;
   firstName?: string;
   phone?: string;
   email?: string;
@@ -139,10 +141,31 @@ export default function CheckoutPageClient({
     "main_propre",
   );
   const [remiseOption, setRemiseOption] = useState("porte");
+  // true dès que le client a touché au mode de remise : le préfixe
+  // REMISE ne part QUE dans ce cas (ou si un choix différent du défaut
+  // est restauré du prefill) — le défaut intouché n'écrit rien, comme
+  // historiquement (relecture 20.08).
+  const [remiseTouchee, setRemiseTouchee] = useState(false);
   // Édition des détails de livraison (compact par défaut si prefill) et
   // panneau des instructions livreur.
   const [editionLivraison, setEditionLivraison] = useState(false);
   const [panneauInstructions, setPanneauInstructions] = useState(false);
+
+  // Panneau instructions : verrou du scroll body + fermeture Escape
+  // (pattern FilterModal — relecture 20.08).
+  useEffect(() => {
+    if (!panneauInstructions) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanneauInstructions(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [panneauInstructions]);
 
   // Section 2 : adresse + apt fields
   const [street, setStreet] = useState("");
@@ -223,7 +246,15 @@ export default function CheckoutPageClient({
     // l'adresse QUALIFIÉE dans CETTE session l'emporte sur le prefill — la
     // priorité inverse déclenchait au montage une re-qualification muette
     // vers la zone de la commande précédente (majeur relecteur 31.07.2026).
-    setStreet(p.street ?? a.address ?? "");
+    // Nouvelle zone qualifiée dans CETTE session (CP différent de la
+    // dernière commande) : la rue du gate prime sur le prefill — sinon
+    // la vue compacte affichait « ancienne rue — nouveau CP »
+    // (relecture 20.08).
+    setStreet(
+      p.postalCode && a.postal_code !== p.postalCode
+        ? a.address ?? ""
+        : p.street ?? a.address ?? "",
+    );
     setPostalCode(a.postal_code ?? p.postalCode ?? "");
     setCity(a.city ?? p.city ?? "");
     setHousingType(p.housingType ?? null);
@@ -234,6 +265,8 @@ export default function CheckoutPageClient({
     setApartmentNumber(p.apartmentNumber ?? "");
     setDoorbellName(p.doorbellName ?? "");
     setInstructions(p.instructions ?? "");
+    setRemiseMode(p.remiseMode ?? "main_propre");
+    setRemiseOption(p.remiseOption ?? "porte");
     setFirstName(p.firstName ?? "");
     setPhone(p.phone ?? "");
     setEmail(p.email ?? "");
@@ -643,7 +676,10 @@ export default function CheckoutPageClient({
         firstName: firstName.trim(),
         phone: cleanPhone,
         email: email.trim() || undefined,
-      });
+      ,
+      remiseMode,
+      remiseOption,
+    });
 
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -660,12 +696,17 @@ export default function CheckoutPageClient({
             postalCode.trim() || address.postal_code,
           delivery_city: city.trim() || address.city,
           delivery_zone_id: address.zone_id,
-          // É7 : le mode de remise voyage dans les instructions (champ
-          // existant, lu par l'étiquette livreur) — main propre = défaut
-          // historique, aucun préfixe (statu quo exact).
+          // Le mode de remise voyage dans les instructions (champ
+          // existant, lu par l'étiquette livreur). Le préfixe ne part que
+          // si le client a fait un CHOIX (panneau touché ou valeur
+          // différente du défaut) — le défaut intouché n'écrit rien.
           delivery_instructions:
             [
-              `REMISE : ${resumeRemise.toLowerCase()}`,
+              remiseTouchee ||
+              remiseMode !== "main_propre" ||
+              remiseOption !== "porte"
+                ? `REMISE : ${resumeRemise.toLowerCase()}`
+                : null,
               instructions.trim() || null,
             ]
               .filter(Boolean)
@@ -820,8 +861,36 @@ export default function CheckoutPageClient({
                   Modifier
                 </button>
               </div>
-            ) : (
-              <div className="space-y-3 transition-all duration-200">
+            ) : null}
+            {/* L'erreur de zone et l'adresse incomplète doivent rester
+                VISIBLES en vue compacte (relecture 20.08 — bloquant :
+                le CTA se grisait sans plus aucun message à l'écran,
+                y compris quand l'erreur arrivait après le repli via le
+                debounce du re-check de CP). */}
+            {!editionLivraison && housingType !== null &&
+              (cpZoneError || street.trim().length < 3) && (
+                <p className="mt-2 text-xs font-medium text-rialto">
+                  {cpZoneError ??
+                    "Adresse incomplète — cliquez Modifier pour la corriger."}
+                </p>
+              )}
+            {editionLivraison || housingType === null ? (
+              <div
+                className="space-y-3 transition-all duration-200"
+                // Entrée dans un champ d'adresse = valider l'ÉDITION,
+                // jamais la commande (relecture 20.08 : la soumission
+                // implicite du form partait avec l'adresse à moitié
+                // corrigée chez un habitué).
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    (e.target as HTMLElement).tagName === "INPUT"
+                  ) {
+                    e.preventDefault();
+                    if (street.trim().length >= 3) setEditionLivraison(false);
+                  }
+                }}
+              >
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
@@ -944,14 +1013,15 @@ export default function CheckoutPageClient({
                     <button
                       type="button"
                       onClick={() => setEditionLivraison(false)}
-                      className="rounded-btn border border-border px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink"
+                      disabled={street.trim().length < 3}
+                      className="rounded-btn border border-border px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink disabled:opacity-40"
                     >
                       OK
                     </button>
                   </>
                 )}
               </div>
-            )}
+            ) : null}
 
             {/* UN SEUL bouton « Instructions pour le livreur » — ouvre le
                 panneau des choix au lieu de tout déplier (spec 20.08). */}
@@ -1395,7 +1465,7 @@ export default function CheckoutPageClient({
             <button
               type="submit"
               disabled={!canSubmit}
-              className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-lg shadow-lg transition-colors mt-6"
+              className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-btn text-lg shadow-lg transition-colors mt-6"
             >
               {loading
                 ? "Envoi…"
@@ -1414,7 +1484,7 @@ export default function CheckoutPageClient({
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-2xl text-base shadow-lg transition-colors"
+            className="w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-btn text-base shadow-lg transition-colors"
           >
             {loading
               ? "Envoi…"
@@ -1434,6 +1504,7 @@ export default function CheckoutPageClient({
           >
             <div
               role="dialog"
+              aria-modal="true"
               aria-label="Instructions pour le livreur"
               className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-pop md:rounded-3xl"
             >
@@ -1460,6 +1531,7 @@ export default function CheckoutPageClient({
                   onClick={() => {
                     setRemiseMode("main_propre");
                     setRemiseOption("porte");
+                    setRemiseTouchee(true);
                   }}
                   className={`rounded-2xl border-2 p-3 text-left transition-all ${
                     remiseMode === "main_propre"
@@ -1476,6 +1548,7 @@ export default function CheckoutPageClient({
                   onClick={() => {
                     setRemiseMode("laisser_porte");
                     setRemiseOption("porte");
+                    setRemiseTouchee(true);
                   }}
                   className={`rounded-2xl border-2 p-3 text-left transition-all ${
                     remiseMode === "laisser_porte"
@@ -1495,7 +1568,10 @@ export default function CheckoutPageClient({
                   <button
                     key={o.cle}
                     type="button"
-                    onClick={() => setRemiseOption(o.cle)}
+                    onClick={() => {
+                      setRemiseOption(o.cle);
+                      setRemiseTouchee(true);
+                    }}
                     className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
                       remiseOption === o.cle
                         ? "border-[#C73E1D] font-semibold text-ink shadow-card"

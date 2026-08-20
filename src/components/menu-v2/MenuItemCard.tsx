@@ -43,12 +43,12 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
       {/* Phase 11 C13 : badges saisonnier & priorité */}
       {!outOfStock && item.is_priority && (
         <span className="absolute left-3 top-3 z-10 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink shadow-md">
-          ⭐ Coup de cœur
+          Coup de cœur
         </span>
       )}
       {!outOfStock && !item.is_priority && item.is_seasonal && (
         <span className="absolute left-3 top-3 z-10 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-md">
-          🍂 Saison
+          Saison
         </span>
       )}
       {/* Lien principal enveloppant le contenu éditorial + la photo */}
@@ -65,20 +65,22 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
               </h3>
               {(item.is_vegetarian || item.is_spicy) && (
                 <div className="flex shrink-0 items-center gap-1">
+                  {/* Badges TEXTE (les émojis quittent tout le tunnel,
+                      direction 20.08). */}
                   {item.is_vegetarian && (
                     <span
                       title="Végétarien"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-[10px]"
+                      className="inline-flex items-center rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700"
                     >
-                      🌱
+                      Végé
                     </span>
                   )}
                   {item.is_spicy && (
                     <span
                       title="Piquant"
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rialto-50 text-[10px]"
+                      className="inline-flex items-center rounded-full bg-rialto-50 px-1.5 py-0.5 text-[9px] font-semibold text-rialto"
                     >
-                      🌶
+                      Piquant
                     </span>
                   )}
                 </div>

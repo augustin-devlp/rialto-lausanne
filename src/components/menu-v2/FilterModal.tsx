@@ -400,7 +400,6 @@ export default function FilterModal({
                           onChange={() => toggleExcluded(allergen)}
                           className="accent-rialto"
                         />
-                        <span className="text-sm leading-none">🚫</span>
                         <span className="font-medium">
                           {ALLERGEN_LABELS_FR[allergen] ?? allergen}
                         </span>

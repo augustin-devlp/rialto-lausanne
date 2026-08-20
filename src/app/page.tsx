@@ -7,6 +7,7 @@ import LocationHours from "@/components/home/LocationHours";
 import ReviewsCarousel from "@/components/home/ReviewsCarousel";
 import SiteFooter from "@/components/home/SiteFooter";
 import AddressRequiredToast from "@/components/home/AddressRequiredToast";
+import RetourClient from "@/components/home/RetourClient";
 
 // Rendu dynamique : la connexion Supabase se fait au runtime, jamais au build
 // (évite "supabaseUrl is required" pendant la génération statique).
@@ -37,6 +38,8 @@ export default async function HomePage() {
           dans les searchParams, client-only donc wrapped en Suspense */}
       <Suspense fallback={null}>
         <AddressRequiredToast />
+        {/* É8 : client connu -> re-qualification silencieuse puis /menu. */}
+        <RetourClient restaurantId={restaurantId} />
       </Suspense>
       {/* L'AppHeader global (layout) a remplacé le SiteHeader local (refonte 20.08). */}
       <HeroSection

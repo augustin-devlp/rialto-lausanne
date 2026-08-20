@@ -1,13 +1,22 @@
 "use client";
 
 /**
- * Page /checkout — Phase 1 refonte (logement + paiement).
+ * Page /checkout — refonte UI lot 1 (É7, 20.08.2026, layout Uber Eats).
  *
- * 4 sections successives :
- *   1. Logement (maison / appartement)
- *   2. Adresse de livraison (champs adaptatifs)
- *   3. Mode de paiement (carte / espèces / twint) + sous-options
- *   4. Coordonnées (prénom + téléphone + email optionnel)
+ * En-tête minimal local (« Retour à l'établissement » + logo, rien
+ * d'autre — l'AppHeader global est null sur cette route : zéro fuite).
+ * Colonne GAUCHE (2/3) : 1. Logement · 2. Détails de la livraison
+ * (adresse, champs adaptatifs, MODE DE REMISE exclusif) · 3. Option de
+ * livraison (Standard / Planifié) · 4. Moyen de paiement · 5. Coordonnées
+ * · upsell. Colonne DROITE (1/3, sticky) : établissement + CTA principal
+ * sans scroll, récapitulatif du panier REPLIABLE, code promotionnel,
+ * totaux, second CTA.
+ *
+ * ⚠️ « PLANIFIÉ » N'EST PAS UNE PLANIFICATION : l'heure choisie part dans
+ * requested_pickup_time (champ existant, visible caisse) mais la
+ * préparation démarre immédiatement et l'ETA reste ancré sur
+ * l'acceptation. Assumé et temporaire (décision Augustin 20.08) — la
+ * planification réelle est un point BLOQUANT go-live (GO_LIVE.md).
  *
  * Préremplissage silencieux via localStorage RIALTO:CHECKOUT_PREFILL:V1.
  * Numéro WhatsApp Mehmet en placeholder — Augustin remplace.
@@ -39,6 +48,7 @@ import {
 } from "@/lib/operationCritique";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
+import RialtoLogo from "@/components/brand/RialtoLogo";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { comptePizzasPanier } from "@/lib/eta/pizzas";
@@ -110,6 +120,11 @@ export default function CheckoutPageClient({
 
   // Section 1 : logement
   const [housingType, setHousingType] = useState<HousingType | null>(null);
+  // É7 : mode de remise (présentation pure — se matérialise en préfixe de
+  // delivery_instructions au submit, aucun champ métier nouveau).
+  const [remiseMode, setRemiseMode] = useState<"main_propre" | "laisser_porte">(
+    "main_propre",
+  );
 
   // Section 2 : adresse + apt fields
   const [street, setStreet] = useState("");
@@ -597,7 +612,18 @@ export default function CheckoutPageClient({
             postalCode.trim() || address.postal_code,
           delivery_city: city.trim() || address.city,
           delivery_zone_id: address.zone_id,
-          delivery_instructions: instructions.trim() || null,
+          // É7 : le mode de remise voyage dans les instructions (champ
+          // existant, lu par l'étiquette livreur) — main propre = défaut
+          // historique, aucun préfixe (statu quo exact).
+          delivery_instructions:
+            [
+              remiseMode === "laisser_porte"
+                ? "REMISE : laisser devant la porte"
+                : null,
+              instructions.trim() || null,
+            ]
+              .filter(Boolean)
+              .join(" — ") || null,
           // Phase 1 checkout refonte
           housing_type: housingType,
           entry_code_1: entryCode1.trim() || null,
@@ -694,12 +720,13 @@ export default function CheckoutPageClient({
             >
               <path d="M19 12H5M12 19l-7-7 7-7" />
             </svg>
-            Retour au menu
+            Retour à l&apos;établissement
           </Link>
-          <span className="font-display text-sm font-semibold md:text-base">
-            Finaliser la commande
-          </span>
-          <span className="w-[90px]" />
+          {/* É7 : logo au centre, RIEN d'autre — zéro fuite (pas de menu,
+              pas de recherche, pas de caddie ; l'AppHeader global est
+              null sur /checkout). */}
+          <RialtoLogo size="sm" asStatic />
+          <span className="w-[170px]" />
         </div>
       </header>
 
@@ -707,26 +734,9 @@ export default function CheckoutPageClient({
         onSubmit={handleSubmit}
         className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[minmax(0,1fr),380px] lg:gap-6 lg:py-6"
       >
-        {/* ─── Colonne gauche ─────────────────────────────────── */}
+        {/* ─── Colonne gauche (É7 : le récap panier a déménagé dans la
+            colonne droite, repliable — l'upsell reste ici en bas) ──── */}
         <div className="space-y-8">
-          {/* Récap panier (ancrage visuel, pas une section numérotée) */}
-          <div>
-            <h2 className="font-display text-base font-bold text-ink mb-3">
-              Votre panier ({count} article{count > 1 ? "s" : ""})
-            </h2>
-            <div className="space-y-2">
-              {cart.map((item) => (
-                <CartLineRow
-                  key={item.key}
-                  item={item}
-                  onIncr={() => updateQuantity(item.key, 1)}
-                  onDecr={() => updateQuantity(item.key, -1)}
-                />
-              ))}
-            </div>
-            <UpsellPanel cart={cart} onAdd={addUpsellItem} />
-          </div>
-
           {/* ───────────── SECTION 1 — TYPE DE LOGEMENT ───────────── */}
           <Section title="Type de logement" step="1">
             <div className="grid grid-cols-2 gap-3">
@@ -763,9 +773,9 @@ export default function CheckoutPageClient({
             </div>
           </Section>
 
-          {/* ───────────── SECTION 2 — ADRESSE ─────────────────── */}
+          {/* ───────────── SECTION 2 — DÉTAILS DE LA LIVRAISON ───── */}
           {housingType !== null && (
-            <Section title="Adresse de livraison" step="2">
+            <Section title="Détails de la livraison" step="2">
               <div className="space-y-3 transition-all duration-200">
                 <input
                   type="text"
@@ -866,55 +876,123 @@ export default function CheckoutPageClient({
                   />
                 )}
 
-                {/* Heure livraison — utile à Mehmet */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setAsap(true)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      asap
-                        ? "border-[#C73E1D] bg-[#F9F1E4]"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    <div className="text-sm font-bold">Dès que possible</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {etaLive?.label ??
-                        `~${address.estimated_delivery_minutes} min`}
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAsap(false)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${
-                      !asap
-                        ? "border-[#C73E1D] bg-[#F9F1E4]"
-                        : "border-gray-200 bg-white"
-                    }`}
-                  >
-                    <div className="text-sm font-bold">Heure précise</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Choisir un créneau
-                    </div>
-                  </button>
+                {/* MODE DE REMISE (É7, pattern Uber Eats) : deux modes
+                    MUTUELLEMENT EXCLUSIFS — les options de l'un ne
+                    s'affichent jamais sous l'autre. AUCUN champ métier
+                    nouveau : le choix se matérialise en préfixe de
+                    delivery_instructions au submit (le client pouvait déjà
+                    l'écrire en texte libre — statu quo métier exact).
+                    ⚠️ Interaction assumée : le paiement Rialto est À LA
+                    REMISE (espèces/TWINT/carte livreur) — « laisser devant
+                    la porte » n'est réaliste qu'avec la carte à distance ;
+                    note affichée, jamais bloquant (canSubmit intouché). */}
+                <div className="pt-1">
+                  <p className="mb-2 text-sm font-medium text-gray-700">
+                    Mode de remise
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setRemiseMode("main_propre")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        remiseMode === "main_propre"
+                          ? "border-[#C73E1D] bg-rialto/5"
+                          : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <div className="text-sm font-bold">
+                        Remettre en main propre
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Le livreur vous remet la commande
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRemiseMode("laisser_porte")}
+                      className={`p-3 rounded-xl border-2 text-left transition-all ${
+                        remiseMode === "laisser_porte"
+                          ? "border-[#C73E1D] bg-rialto/5"
+                          : "border-gray-200 bg-white"
+                      }`}
+                    >
+                      <div className="text-sm font-bold">Laisser sur place</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Déposée devant votre porte
+                      </div>
+                    </button>
+                  </div>
+                  {remiseMode === "laisser_porte" && (
+                    <p className="mt-2 rounded-xl bg-neutral-50 border border-border p-3 text-xs text-gray-700">
+                      Le paiement se fait à la remise chez Rialto : pour un
+                      dépôt sans contact, choisissez « Carte — à distance »
+                      comme moyen de paiement, sinon le livreur devra tout de
+                      même vous rencontrer pour encaisser.
+                    </p>
+                  )}
                 </div>
-                {!asap && (
-                  <input
-                    type="time"
-                    value={pickupTime}
-                    onChange={(e) => setPickupTime(e.target.value)}
-                    step={900}
-                    required
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
-                )}
               </div>
             </Section>
           )}
 
-          {/* ───────────── SECTION 3 — PAIEMENT ────────────────── */}
+          {/* ───────── SECTION 3 — OPTION DE LIVRAISON (É7) ─────────
+              « Planifié » rhabille le sélecteur d'heure EXISTANT :
+              l'heure part dans requested_pickup_time (champ existant,
+              visible à la caisse) mais AUCUN moteur ne planifie — la
+              préparation démarre immédiatement et l'ETA reste ancré sur
+              l'acceptation. ASSUMÉ ET TEMPORAIRE (décision Augustin
+              20.08) : la planification réelle (scheduled_for, caisse,
+              ETA ancré sur le créneau) est un chantier à part,
+              OBLIGATOIRE avant le go-live — point bloquant GO_LIVE.md. */}
           {housingType !== null && (
-            <Section title="Mode de paiement" step="3">
+            <Section title="Option de livraison" step="3">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAsap(true)}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    asap
+                      ? "border-[#C73E1D] bg-rialto/5"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="text-sm font-bold">Standard</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {etaLive?.label ??
+                      `~${address.estimated_delivery_minutes} min`}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAsap(false)}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${
+                    !asap
+                      ? "border-[#C73E1D] bg-rialto/5"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="text-sm font-bold">Planifié</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Choisir un créneau
+                  </div>
+                </button>
+              </div>
+              {!asap && (
+                <input
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) => setPickupTime(e.target.value)}
+                  step={900}
+                  required
+                  className="mt-3 w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                />
+              )}
+            </Section>
+          )}
+
+          {/* ───────────── SECTION 4 — MOYEN DE PAIEMENT ───────── */}
+          {housingType !== null && (
+            <Section title="Moyen de paiement" step="4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
@@ -1043,7 +1121,7 @@ export default function CheckoutPageClient({
 
           {/* ───────────── SECTION 4 — COORDONNÉES ─────────────── */}
           {housingType !== null && (
-            <Section title="Vos coordonnées" step="4">
+            <Section title="Vos coordonnées" step="5">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -1078,75 +1156,118 @@ export default function CheckoutPageClient({
             </Section>
           )}
 
-          {/* Promo (optionnel, conservé) */}
-          {housingType !== null && (
-            <Section title="Code promo" step="" optional>
-              {promo ? (
-                <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div>
-                    <div className="text-sm font-semibold text-emerald-800">
-                      ✓ {promo.code}
-                    </div>
-                    <div className="text-xs text-emerald-700">
-                      {promo.message}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPromo(null);
-                      setPromoInput("");
-                    }}
-                    className="text-xs font-semibold text-emerald-800 underline"
-                  >
-                    Retirer
-                  </button>
-                </div>
-              ) : promoOpen ? (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={promoInput}
-                      onChange={(e) =>
-                        setPromoInput(e.target.value.toUpperCase())
-                      }
-                      placeholder="RIA-XXXXX"
-                      className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      autoCapitalize="characters"
-                      autoCorrect="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      onClick={applyPromo}
-                      disabled={!promoInput.trim() || promoChecking}
-                      className="px-4 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold text-ink hover:border-[#C73E1D] disabled:opacity-50"
-                    >
-                      {promoChecking ? "…" : "Appliquer"}
-                    </button>
-                  </div>
-                  {promoError && (
-                    <p className="text-xs text-rialto">⚠️ {promoError}</p>
-                  )}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setPromoOpen(true)}
-                  className="text-sm font-medium text-rialto hover:underline"
-                >
-                  + Saisir un code
-                </button>
-              )}
-            </Section>
-          )}
+          {/* Upsell conservé en bas de colonne (levier métier). */}
+          {housingType !== null && <UpsellPanel cart={cart} onAdd={addUpsellItem} />}
         </div>
 
         {/* ─── Colonne droite : récap + CTA ────────────────── */}
         <aside className="lg:sticky lg:top-8 lg:h-fit">
           <div className="rounded-3xl border border-border bg-white p-6 shadow-card">
-            <h3 className="font-display text-xl font-bold">Récapitulatif</h3>
+            {/* É7 : nom de l'établissement + CTA PRINCIPAL visible sans
+                scroller (le second CTA vit en bas de la colonne). */}
+            <div className="text-xs font-semibold uppercase tracking-wider text-mute">
+              Votre commande chez
+            </div>
+            <div className="mt-0.5 font-display text-lg font-bold text-ink">
+              Rialto — Av. de Béthusy 29, Lausanne
+            </div>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="mt-4 w-full bg-[#C73E1D] hover:bg-[#9A2E14] disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-btn text-base transition-colors"
+            >
+              {loading
+                ? "Envoi…"
+                : `Confirmer ma commande — ${total.toFixed(2)} CHF`}
+            </button>
+
+            {/* Récapitulatif du panier — REPLIABLE au chevron (É7). */}
+            <details className="group mt-5 border-t border-border pt-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                <span className="font-display text-base font-bold">
+                  Récapitulatif du panier ({count} article{count > 1 ? "s" : ""})
+                </span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="shrink-0 text-mute transition-transform group-open:rotate-180" aria-hidden>
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </summary>
+              <div className="mt-3 space-y-2">
+                {cart.map((item) => (
+                  <CartLineRow
+                    key={item.key}
+                    item={item}
+                    onIncr={() => updateQuantity(item.key, 1)}
+                    onDecr={() => updateQuantity(item.key, -1)}
+                  />
+                ))}
+              </div>
+            </details>
+
+            {/* Code promotionnel (déplacé de la colonne gauche, É7). */}
+          {housingType !== null && (
+              <Section title="Code promo" step="" optional>
+                {promo ? (
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-emerald-800">
+                        ✓ {promo.code}
+                      </div>
+                      <div className="text-xs text-emerald-700">
+                        {promo.message}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPromo(null);
+                        setPromoInput("");
+                      }}
+                      className="text-xs font-semibold text-emerald-800 underline"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                ) : promoOpen ? (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={promoInput}
+                        onChange={(e) =>
+                          setPromoInput(e.target.value.toUpperCase())
+                        }
+                        placeholder="RIA-XXXXX"
+                        className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                        autoCapitalize="characters"
+                        autoCorrect="off"
+                        spellCheck={false}
+                      />
+                      <button
+                        type="button"
+                        onClick={applyPromo}
+                        disabled={!promoInput.trim() || promoChecking}
+                        className="px-4 py-3 rounded-xl border-2 border-gray-200 text-sm font-semibold text-ink hover:border-[#C73E1D] disabled:opacity-50"
+                      >
+                        {promoChecking ? "…" : "Appliquer"}
+                      </button>
+                    </div>
+                    {promoError && (
+                      <p className="text-xs text-rialto">⚠️ {promoError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setPromoOpen(true)}
+                    className="text-sm font-medium text-rialto hover:underline"
+                  >
+                    + Saisir un code
+                  </button>
+                )}
+              </Section>
+            )}
+
+            <h3 className="mt-4 border-t border-border pt-4 font-display text-xl font-bold">Récapitulatif</h3>
             <dl className="mt-5 space-y-2 text-sm">
               <Row
                 label={`Sous-total (${count} article${count > 1 ? "s" : ""})`}

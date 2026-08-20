@@ -149,6 +149,19 @@
        runbook domaine — dernier geste, quand tout le reste est vert).
 10. [ ] **Monitor uptime re-pointé** sur le domaine final (point 3).
 
+## 🔴 BLOQUANT GO-LIVE — Planification des commandes (refonte UI 20.08)
+
+- [ ] Le checkout affiche depuis le 20.08 une « Option de livraison :
+      Standard / Planifié » (spec refonte Uber Eats). **« Planifié » ne
+      planifie RIEN aujourd'hui** : l'heure part dans
+      `requested_pickup_time` (champ existant, visible caisse) mais la
+      préparation démarre immédiatement et l'ETA reste ancré sur
+      l'acceptation — un client qui planifie 20h peut être livré 19h.
+      ASSUMÉ ET TEMPORAIRE (décision Augustin 20.08). Le chantier
+      « planification réelle » (colonne `scheduled_for` en navette,
+      logique caisse, ETA ancré sur le créneau) est OBLIGATOIRE AVANT LE
+      GO-LIVE — sinon retirer l'option du checkout avant l'ouverture.
+
 ## Moteur de statuts (livré 08.08 — QA fenêtre Studio)
 
 - [ ] QA des phases intermédiaires : Augustin bascule une commande test

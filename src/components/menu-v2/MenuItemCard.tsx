@@ -99,7 +99,8 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
             </span>
           </div>
         </div>
-        <div className="relative w-[34%] shrink-0 sm:w-[40%] md:w-[38%]">
+        {/* Correction de spec 20.08 : bandeau ~3:1, texte 2/3 — image 1/3. */}
+        <div className="relative w-1/3 shrink-0">
           <Image
             src={src}
             alt={item.name}

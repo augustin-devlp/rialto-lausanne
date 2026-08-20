@@ -23,6 +23,7 @@ import type {
 } from "@/lib/types";
 import DishModal from "./DishModal";
 import MenuItemCard from "./MenuItemCard";
+import OffresCarrousel from "./OffresCarrousel";
 import CartPanel from "./CartPanel";
 import SidebarMenu from "@/components/layout/SidebarMenu";
 import { formatCHF } from "@/lib/format";
@@ -126,26 +127,6 @@ export default function MenuClient({ categories, items, options }: Props) {
     };
   }, [router]);
 
-  // Scroll-spy : détecte la catégorie visible
-  useEffect(() => {
-    if (!categories.length) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible[0]) {
-          setActiveCategory(visible[0].target.id);
-        }
-      },
-      { rootMargin: "-120px 0px -70% 0px", threshold: [0, 0.25, 0.5, 1] },
-    );
-    for (const c of categories) {
-      const el = sectionRefs.current[c.id];
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, [categories]);
 
   // Scroll auto du nav catégories pour garder l'active visible
   useEffect(() => {
@@ -178,6 +159,16 @@ export default function MenuClient({ categories, items, options }: Props) {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "");
+
+  // Articles vedette (is_priority — « Coup de cœur » du dashboard) pour
+  // le carrousel « Des offres pour vous » (É5). Données déjà chargées.
+  const itemsVedette = useMemo(
+    () =>
+      items.filter(
+        (it) => it.is_priority && it.is_available && !it.is_out_of_stock,
+      ),
+    [items],
+  );
 
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
@@ -214,6 +205,65 @@ export default function MenuClient({ categories, items, options }: Props) {
     }
     return map;
   }, [items, activeFilters, excludedAllergens, categoryById, recherche]);
+
+  // Scroll-spy REFONDU (É5, 20.08 — bug constaté par Augustin : catégorie
+  // décalée d'une section sur entrées/softdrinks, « bières » affichée en
+  // bas alors qu'on est sur les vins). Règle : la catégorie active est
+  // celle dont la section occupe le HAUT de la zone de lecture (la
+  // DERNIÈRE section commencée au-dessus du seuil) ; en BAS de page, la
+  // dernière catégorie rendue devient active — sinon elle est
+  // inatteignable par construction dès que sa section est plus courte
+  // que le viewport. L'ancien IntersectionObserver au ratio dominant
+  // élisait la section la plus GRANDE à l'écran, pas celle qu'on lit.
+  useEffect(() => {
+    if (!categories.length) return;
+    let raf = 0;
+    const mesure = () => {
+      raf = 0;
+      const doc = document.documentElement;
+      const enBas =
+        window.innerHeight + window.scrollY >= doc.scrollHeight - 2;
+      // Seuil = hauteur du header collant + une marge de lecture.
+      const seuil = (window.innerWidth >= 1024 ? 72 : 120) + 40;
+      let courant: string | null = null;
+      let derniereRendue: string | null = null;
+      for (const c of categories) {
+        const el = sectionRefs.current[c.id];
+        if (!el) continue;
+        derniereRendue = c.id;
+        if (el.getBoundingClientRect().top <= seuil) courant = c.id;
+      }
+      if (enBas && derniereRendue) courant = derniereRendue;
+      if (!courant) {
+        courant = categories.find((c) => sectionRefs.current[c.id])?.id ?? null;
+      }
+      if (courant) setActiveCategory(courant);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(mesure);
+    };
+    mesure();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [categories, itemsByCategory]);
+
+  // Clic catégorie : pile en haut de la section, décalage du header
+  // collant compris (72 px desktop, 120 px mobile avec les chips).
+  const scrolleVersCategorie = (id: string) => {
+    setActiveCategory(id);
+    const el = sectionRefs.current[id];
+    if (!el) return;
+    const offset = window.innerWidth >= 1024 ? 72 : 120;
+    window.scrollTo({
+      top: el.getBoundingClientRect().top + window.scrollY - offset,
+      behavior: "smooth",
+    });
+  };
 
   // Compteur live pour le bouton "Appliquer (X résultats)" de la modale
   const countResults = (
@@ -356,13 +406,7 @@ export default function MenuClient({ categories, items, options }: Props) {
                 key={c.id}
                 data-cat={c.id}
                 type="button"
-                onClick={() => {
-                  const el = sectionRefs.current[c.id];
-                  if (el) {
-                    const y = el.getBoundingClientRect().top + window.scrollY - 130;
-                    window.scrollTo({ top: y, behavior: "smooth" });
-                  }
-                }}
+                onClick={() => scrolleVersCategorie(c.id)}
                 className={`chip ${activeCategory === c.id ? "chip-active" : ""}`}
               >
                 {c.icon && <span>{c.icon}</span>}
@@ -413,19 +457,20 @@ export default function MenuClient({ categories, items, options }: Props) {
             count: itemsByCategory[c.id]?.length ?? 0,
           }))}
           activeId={activeCategory ?? undefined}
-          onSelect={(id) => {
-            setActiveCategory(id);
-            const el = sectionRefs.current[id];
-            if (el) {
-              const y = el.getBoundingClientRect().top + window.scrollY - 130;
-              window.scrollTo({ top: y, behavior: "smooth" });
-            }
-          }}
+          onSelect={scrolleVersCategorie}
+          className="lg:w-1/5 lg:shrink-0 lg:pl-4"
         />
 
         {/* Content principal */}
         <div className="min-w-0 flex-1 px-3 sm:px-4 md:px-5 pt-4 md:pt-5 lg:flex lg:gap-5">
           <div className="min-w-0 flex-1">
+      {/* ─── Carrousel « Des offres pour vous » (É5) ─────────── */}
+      <OffresCarrousel
+        items={itemsVedette}
+        categoryNameById={categoryById}
+        onAdd={handleSelectItem}
+      />
+
       {/* ─── Intro compacte ──────────────────────────────────── */}
       <section className="pb-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
@@ -516,10 +561,8 @@ export default function MenuClient({ categories, items, options }: Props) {
                 }}
                 className="scroll-mt-[140px] pt-5 md:pt-7"
               >
-                <h2 className="mb-3 flex items-center gap-2 font-display text-lg sm:text-xl font-bold md:mb-4">
-                  {category.icon && (
-                    <span className="text-xl">{category.icon}</span>
-                  )}
+                {/* É5 : plus d'emoji de catégorie (spec 20.08). */}
+                <h2 className="mb-3 font-display text-lg sm:text-xl font-bold md:mb-4">
                   {category.name}
                 </h2>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">

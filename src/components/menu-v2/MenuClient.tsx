@@ -312,57 +312,13 @@ export default function MenuClient({ categories, items, options }: Props) {
 
   return (
     <main className="min-h-screen bg-white">
-      {/* ─── Header sticky ─────────────────────────────────────── */}
-      <header className="sticky top-0 z-30 border-b border-border bg-white/95 backdrop-blur-lg">
-        <div className="container-hero flex h-14 items-center gap-3 pl-[72px] pr-[56px] sm:h-16 sm:pl-[88px] sm:pr-[60px]">
-          {/* Logo retiré du header sticky — le logo global fixed top-left
-              (layout.tsx, Phase 7 FIX 3) prend le relais. On garde un
-              padding gauche pour réserver l'espace du logo et à droite
-              pour le hamburger. */}
-
-          {address && (
-            <Link
-              href="/"
-              className="group flex min-w-0 flex-1 items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs text-ink transition hover:shadow-card sm:text-sm"
-              title="Changer d'adresse"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="#C73E1D"
-                className="shrink-0"
-              >
-                <path d="M12 2C7.58 2 4 5.58 4 10c0 7 8 12 8 12s8-5 8-12c0-4.42-3.58-8-8-8zm0 11a3 3 0 110-6 3 3 0 010 6z" />
-              </svg>
-              <span className="truncate">
-                {address.address}, {address.postal_code}
-              </span>
-              <span className="ml-auto shrink-0 text-mute group-hover:text-ink">
-                ✎
-              </span>
-            </Link>
-          )}
-
-          <div className="hidden items-center gap-2 text-xs text-mute md:flex">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            {etaLive?.label ?? `~${address?.estimated_delivery_minutes ?? 30} min`}
-          </div>
-        </div>
-
-        {/* Nav catégories chips (mobile/tablet uniquement — la sidebar la remplace en lg+) + bouton Filtrer */}
-        <div className="container-hero flex items-center gap-2 pb-2 pt-1 lg:hidden">
+      {/* ─── L'adresse et le caddie vivent dans l'AppHeader global depuis
+          la refonte 20.08 — ce composant ne garde que la nav catégories
+          mobile (les chips, lg:hidden ; retravaillées au lot 2 mobile). */}
+      <header className="border-b border-border bg-white">
+        {/* Nav catégories chips (mobile/tablet uniquement — la colonne
+            catégories la remplace en lg+) + bouton Filtrer */}
+        <div className="container-hero flex items-center gap-2 pb-2 pt-2 lg:hidden">
           <div
             ref={categoryNavRef}
             className="scrollbar-none flex flex-1 gap-2 overflow-x-auto"
@@ -455,6 +411,17 @@ export default function MenuClient({ categories, items, options }: Props) {
           <p className="mt-1 text-sm text-mute">
             Pizzas Ø33&nbsp;cm, pâtes faites maison, spécialités anatoliennes.
           </p>
+          {/* ETA vivante (même moteur que checkout/suivi) — relogée ici
+              depuis l'ancien header sticky local (refonte 20.08). */}
+          {address && (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-mute">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              Livraison {etaLive?.label ?? `~${address.estimated_delivery_minutes ?? 30} min`}
+            </p>
+          )}
         </div>
         {/* Bouton filtrer visible en lg+ (sidebar a remplacé la nav chips) */}
         <button

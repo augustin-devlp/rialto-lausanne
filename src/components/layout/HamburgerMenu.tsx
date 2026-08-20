@@ -1,8 +1,13 @@
 "use client";
 
 /**
- * Menu sidebar global — bouton 3 barres en top-left, toujours visible.
- * Ouvre un panneau glissant de gauche avec la navigation complète.
+ * Menu sidebar global — refonte UI lot 1 (20.08) : le bouton vit
+ * désormais DANS l'AppHeader (prop `inline`), le panneau glisse depuis
+ * la GAUCHE (cohérent avec la position du burger, ordre Uber Eats), et
+ * le SÉLECTEUR DE LANGUES y est intégré (il flottait par-dessus le
+ * burger — littéralement incliquable). L'i18n arrive au lot 3 : seule
+ * la langue courante est active, les autres sont affichées « bientôt »
+ * et INACTIVES — le sélecteur ne promet rien qu'il ne tient pas.
  *
  * Détection "connecté" : lit rialto_customer_id/short_code en localStorage.
  */
@@ -18,11 +23,15 @@ import {
 } from "@/lib/customerSession";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import ManageCookiesButton from "@/components/analytics/ManageCookiesButton";
+import { useT } from "@/i18n/I18nProvider";
+import { LOCALE_META, LOCALES, type Locale } from "@/i18n/dictionaries";
 
-export default function HamburgerMenu() {
+export default function HamburgerMenu({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false);
   const [cartItems, setCartItems] = useState(0);
   const [session, setSession] = useState<CustomerSession | null>(null);
+  const [languesOuvertes, setLanguesOuvertes] = useState(false);
+  const { locale } = useT();
   const pathname = usePathname();
 
   // Ferme automatiquement quand on navigue
@@ -57,12 +66,16 @@ export default function HamburgerMenu() {
 
   return (
     <>
-      {/* Bouton hamburger fixé — top-right, z-index max pour toujours
-          rester au-dessus des autres headers (SiteHeader, menu sticky…) */}
+      {/* Bouton hamburger : inline (dans l'AppHeader — l'usage normal
+          depuis la refonte) ou l'ancien flottant fixed (compat). */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed right-4 top-4 z-[100] inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:right-5 md:top-5"
+        className={
+          inline
+            ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-btn text-ink transition hover:bg-neutral-100"
+            : "fixed right-4 top-4 z-[100] inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-card backdrop-blur-lg transition hover:scale-105 hover:bg-white md:right-5 md:top-5"
+        }
         aria-label="Ouvrir le menu"
       >
         <svg
@@ -89,10 +102,10 @@ export default function HamburgerMenu() {
         aria-hidden
       />
 
-      {/* Sidebar — glisse depuis la DROITE (right-0 + translate-x-full) */}
+      {/* Sidebar — glisse depuis la GAUCHE (côté du burger, refonte 20.08) */}
       <aside
-        className={`fixed inset-y-0 right-0 z-[95] flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "translate-x-full"
+        className={`fixed inset-y-0 left-0 z-[95] flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out ${
+          open ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-hidden={!open}
       >
@@ -246,6 +259,73 @@ export default function HamburgerMenu() {
               icon="📞"
               label={`Appeler ${RIALTO_INFO.phoneDisplay}`}
             />
+          </Section>
+
+          {/* ─── Langue (refonte 20.08 : le sélecteur vit ICI) ───────
+              i18n = lot 3 : la langue courante est la seule active, les
+              autres sont listées « bientôt » et INACTIVES — aucune
+              promesse non tenue. */}
+          <Section title="Langue">
+            <li>
+              <button
+                type="button"
+                onClick={() => setLanguesOuvertes((o) => !o)}
+                className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-ink transition hover:bg-neutral-50"
+                aria-expanded={languesOuvertes}
+              >
+                <span className="text-lg leading-none">
+                  {LOCALE_META[locale].flag}
+                </span>
+                <span className="flex-1 text-left">
+                  {LOCALE_META[locale].label}
+                </span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  className={`text-mute transition-transform ${languesOuvertes ? "rotate-180" : ""}`}
+                  aria-hidden
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {languesOuvertes && (
+                <ul className="mt-1 space-y-0.5 pl-2">
+                  {LOCALES.map((l: Locale) =>
+                    l === locale ? (
+                      <li
+                        key={l}
+                        className="flex items-center gap-3 rounded-xl bg-rialto/5 px-2.5 py-2 text-sm font-semibold text-rialto"
+                      >
+                        <span className="text-base leading-none">
+                          {LOCALE_META[l].flag}
+                        </span>
+                        <span className="flex-1">{LOCALE_META[l].label}</span>
+                        <span aria-hidden>✓</span>
+                      </li>
+                    ) : (
+                      <li
+                        key={l}
+                        className="flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-mute"
+                        aria-disabled
+                      >
+                        <span className="text-base leading-none opacity-50">
+                          {LOCALE_META[l].flag}
+                        </span>
+                        <span className="flex-1">{LOCALE_META[l].label}</span>
+                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                          bientôt
+                        </span>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              )}
+            </li>
           </Section>
 
           {/* ─── Légal (petit gris en bas) ──────────── */}

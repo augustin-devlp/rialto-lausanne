@@ -102,7 +102,7 @@ export default function MesCommandesClient() {
 
   return (
     <>
-      <main className="min-h-screen bg-white pb-12 pt-16 md:pt-20">
+      <main className="min-h-screen bg-white pb-12 pt-8">
         <div className="container-hero">
           <Link
             href="/"

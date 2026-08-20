@@ -1,11 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
-import HamburgerMenu from "@/components/layout/HamburgerMenu";
-import RialtoLogo from "@/components/brand/RialtoLogo";
+import AppHeader from "@/components/layout/AppHeader";
 import PwaRegister from "@/components/PwaRegister";
 import { I18nProvider } from "@/i18n/I18nProvider";
-import LanguageToggle from "@/components/LanguageToggle";
 import TrackingProvider from "@/components/analytics/TrackingProvider";
 import CookieBanner from "@/components/analytics/CookieBanner";
 
@@ -73,14 +71,12 @@ export default function RootLayout({
   return (
     <html lang="fr" className={`${fraunces.variable} ${inter.variable}`}>
       <body className="font-sans antialiased bg-white text-ink">
-        {/* Logo Rialto top-left fixed, cliquable -> / (Phase 7 FIX 3) */}
+        {/* Refonte UI lot 1 (20.08) : l'en-tête GLOBAL remplace les trois
+            éléments flottants historiques (logo fixed, burger fixed,
+            sélecteur de langue superposé au burger — incliquable). La
+            politique par route vit dans AppHeader. */}
         <I18nProvider>
-          <RialtoLogo variant="fixed" size="sm" />
-          <HamburgerMenu />
-          {/* Phase 11 C10 : sélecteur de langue flottant top-right */}
-          <div className="fixed right-3 top-3 z-40 md:right-6 md:top-5">
-            <LanguageToggle />
-          </div>
+          <AppHeader />
           {children}
           <PwaRegister />
           <TrackingProvider />

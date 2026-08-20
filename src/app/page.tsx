@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { supabaseServer, RESTAURANT_ID } from "@/lib/supabase";
-import SiteHeader from "@/components/home/SiteHeader";
 import HeroSection from "@/components/home/HeroSection";
 import SignatureDishes from "@/components/home/SignatureDishes";
 import WhyOrderDirect from "@/components/home/WhyOrderDirect";
@@ -39,7 +38,7 @@ export default async function HomePage() {
       <Suspense fallback={null}>
         <AddressRequiredToast />
       </Suspense>
-      <SiteHeader transparentOnTop />
+      {/* L'AppHeader global (layout) a remplacé le SiteHeader local (refonte 20.08). */}
       <HeroSection
         restaurantId={restaurantId}
         minOrderFallback={minOrderFallback}

@@ -27,7 +27,7 @@ export default function ClubPlaceholder({
 }: Props) {
   return (
     <>
-      <main className="flex min-h-screen flex-col bg-white pt-20 md:pt-24">
+      <main className="flex min-h-screen flex-col bg-white pt-8">
         <div className="container-hero flex flex-1 items-center justify-center pb-16">
           <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center shadow-card md:p-10">
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-rialto/10 text-4xl">

@@ -1,11 +1,18 @@
 "use client";
 
 /**
- * CartPanel — Phase 11 C4.
+ * CartPanel — refonte UI lot 1 (É4, 20.08.2026).
  *
  * Panier unifié :
- * - Desktop (lg+) : sidebar droite persistante 380px (toujours visible).
- * - Mobile : drawer bottom sheet qui slide up au click sur la sticky bar.
+ * - Desktop (lg+) : TIROIR qui glisse depuis la droite, ouvert par le
+ *   caddie badgé de l'AppHeader (event `rialto:cart-toggle`) ou par
+ *   /menu?panier=1 — le panneau permanent a disparu.
+ *   ⚠️ POINT CRITIQUE assumé : le bandeau « livraison offerte » vivait
+ *   dans le panneau permanent — il vit désormais dans le tiroir ET en
+ *   RAPPEL discret fixe en bas de page desktop tant que le palier n'est
+ *   pas atteint (cliquer le rappel ouvre le tiroir). Le levier d'upsell
+ *   de la grille par zone ne disparaît jamais de l'écran.
+ * - Mobile : sticky bar + bottom sheet inchangés (lot 2).
  *
  * Actions : +/- quantité, suppression, vue détaillée options,
  * progression minimum commande, bouton checkout.
@@ -42,6 +49,7 @@ export default function CartPanel({
   className = "",
 }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [desktopOpen, setDesktopOpen] = useState(false);
   const count = cartCount(cart);
   const subtotal = cartSubtotal(cart);
   const missing = Math.max(0, minOrderAmount - subtotal);
@@ -54,20 +62,33 @@ export default function CartPanel({
   const fdMilestone = getFreeDeliveryMilestone(subtotal, zone, fdRule);
   const progressPct = Math.min(100, (subtotal / minOrderAmount) * 100);
 
+  // Ouverture par le caddie de l'AppHeader (event) et par /menu?panier=1.
+  useEffect(() => {
+    const onToggle = () => {
+      if (window.innerWidth >= 1024) setDesktopOpen((o) => !o);
+      else setMobileOpen((o) => !o);
+    };
+    window.addEventListener("rialto:cart-toggle", onToggle);
+    if (new URLSearchParams(window.location.search).get("panier") === "1") {
+      onToggle();
+    }
+    return () => window.removeEventListener("rialto:cart-toggle", onToggle);
+  }, []);
+
   // Ferme drawer si panier vidé
   useEffect(() => {
     if (count === 0 && mobileOpen) setMobileOpen(false);
   }, [count, mobileOpen]);
 
-  // Lock body scroll sur mobile drawer
+  // Lock body scroll quand un tiroir est ouvert
   useEffect(() => {
-    if (!mobileOpen) return;
+    if (!mobileOpen && !desktopOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [mobileOpen]);
+  }, [mobileOpen, desktopOpen]);
 
   function handleQuantity(key: string, delta: number) {
     const line = cart.find((c) => c.key === key);
@@ -132,8 +153,11 @@ export default function CartPanel({
         </div>
         <button
           type="button"
-          onClick={() => setMobileOpen(false)}
-          className="rounded-full p-2 text-mute hover:bg-neutral-200 lg:hidden"
+          onClick={() => {
+            setMobileOpen(false);
+            setDesktopOpen(false);
+          }}
+          className="rounded-full p-2 text-mute hover:bg-neutral-200"
           aria-label="Fermer"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
@@ -281,7 +305,10 @@ export default function CartPanel({
             <Link
               href="/checkout"
               className="btn-primary-lg group flex w-full items-center justify-between"
-              onClick={() => setMobileOpen(false)}
+              onClick={() => {
+                setMobileOpen(false);
+                setDesktopOpen(false);
+              }}
             >
               <span>Passer la commande</span>
               <svg
@@ -305,12 +332,37 @@ export default function CartPanel({
 
   return (
     <>
-      {/* Desktop sidebar (lg+) — width adaptée iPad : 320 sur lg, 380 sur xl */}
+      {/* Desktop (lg+) : TIROIR droit — overlay + panneau glissant.
+          Toujours monté (transition), inerte quand fermé. */}
+      <div
+        className={`fixed inset-0 z-50 hidden bg-black/40 backdrop-blur-sm transition-opacity duration-300 lg:block ${
+          desktopOpen ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={() => setDesktopOpen(false)}
+        aria-hidden
+      />
       <aside
-        className={`hidden lg:sticky lg:top-[calc(var(--header-h,4rem)+0.75rem)] lg:flex lg:flex-col lg:h-[calc(100vh-var(--header-h,4rem)-1.5rem)] lg:w-[320px] xl:w-[360px] lg:flex-shrink-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border lg:bg-white lg:shadow-card ${className}`}
+        className={`fixed inset-y-0 right-0 z-[55] hidden w-[400px] flex-col overflow-hidden border-l border-border bg-white shadow-pop transition-transform duration-300 ease-out lg:flex ${
+          desktopOpen ? "translate-x-0" : "translate-x-full"
+        } ${className}`}
+        aria-hidden={!desktopOpen}
+        aria-label="Panier"
       >
         {CartContent}
       </aside>
+
+      {/* Rappel « livraison offerte » HORS tiroir (desktop) : le levier
+          d'upsell reste visible panier fermé — cliquer ouvre le tiroir. */}
+      {!desktopOpen && count > 0 && fdMilestone && !fdMilestone.reached && (
+        <button
+          type="button"
+          onClick={() => setDesktopOpen(true)}
+          className="fixed bottom-4 right-4 z-40 hidden items-center gap-2 rounded-btn border border-border bg-white px-4 py-2.5 text-xs font-medium text-ink shadow-pop transition hover:border-ink lg:inline-flex"
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+          {fdMilestone.labelPending}
+        </button>
+      )}
 
       {/* Mobile sticky bar */}
       {count > 0 && !mobileOpen && (

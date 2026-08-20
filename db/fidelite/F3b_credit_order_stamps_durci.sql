@@ -1,7 +1,24 @@
 -- ============================================================================
 -- F3b — credit_order_stamps DURCI : les 2 réserves de la navette F0
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE vers la review caisse.
+-- STATUT : ✅ EXÉCUTÉE le 22.07.2026 — migration `20260722123941
+--   f3b_credit_order_stamps_durci`. Le corps de `credit_order_stamps` EN
+--   PRODUCTION correspond à ce fichier (vérifié par pg_get_functiondef le
+--   20.08.2026).
+--   ⚠️ NE PAS REJOUER. L'en-tête indiquait « NON EXÉCUTÉE — en NAVETTE »
+--   jusqu'au 21.08.2026 : le statut n'avait jamais été mis à jour après
+--   l'exécution. Corrigé sur consigne d'Augustin (« une migration qui se
+--   déclare non exécutée alors qu'elle est en production, c'est la
+--   prochaine session qui la rejoue »).
+--
+-- ⚠️ AMENDEMENT 20.08.2026 : le tampon crédité par CETTE fonction se
+--   REPREND si la commande, après avoir été acceptée, est REFUSÉE
+--   (navette F7). Cette fonction reste INCHANGÉE — elle ne fait que
+--   créditer ; c'est rialto_sync_order_stamps qui aligne dans les deux
+--   sens. La ligne `transactions` qu'elle insère BASCULE alors vers
+--   type='stamp_reversed' (elle n'est jamais supprimée), ce qui libère au
+--   passage la clé d'idempotence transactions_order_stamp_uniq pour une
+--   éventuelle ré-acceptation.
 --
 -- Rappel des réserves émises lors de la review F0 (à corriger AVANT
 -- l'activation du killswitch, cf. F5) :

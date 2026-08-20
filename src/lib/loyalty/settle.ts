@@ -12,6 +12,18 @@
  *   - GET /api/rialto/loyalty/lookup → quand le client regarde sa fidélité
  *   - GET /api/cron/loyalty-settle   → filet pour les clients qui ont fermé
  *
+ * ⚠️ AMENDEMENT 20.08.2026 — LE TAMPON SOLIDIFIÉ SE REPREND DÉSORMAIS,
+ * dans UN cas et un seul : le RENVERSEMENT DE DÉCISION DU RESTAURATEUR
+ * (une commande ACCEPTÉE ensuite REFUSÉE). L'invariant « jamais reprendre »
+ * ne couvre plus ce cas. Raison : l'exploit est déclenché par le CLIENT
+ * (commander, attendre le crédit, faire annuler, garder le tampon) et
+ * était déjà matérialisé en base. Le retrait vit dans la navette F7
+ * (db/fidelite/F7_retrait_tampons_renversement.sql) : fonction de
+ * convergence en base + trigger non bloquant + filet dans le cron.
+ * CE FICHIER N'EN EST PAS RESPONSABLE : il ne fait que CRÉDITER. Voir
+ * CLAUDE.md pour le principe général (« le retrait ne touche qu'à ce que
+ * CETTE commande a apporté »).
+ *
  * RÈGLES :
  *   - JAMAIS bloquant : toute erreur est avalée et journalisée, la lecture
  *     appelante renvoie l'état non réglé ; le cron rattrape.

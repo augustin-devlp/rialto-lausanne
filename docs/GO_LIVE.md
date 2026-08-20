@@ -62,9 +62,22 @@
       (frais 5, min 25) pour une adresse de Morges (zone D : 12/55) ;
       données incohérentes, à purger impérativement. Ordre de purge
       (enfants d'abord, FK) :
-      1. `transactions` (crédits tampons de test — y c. le tampon 042,
-         intouchable AVANT le ménage par l'invariant « jamais reprendre »,
-         purgé AVEC tout le reste ici)
+      1. `transactions` (crédits tampons de test)
+         ⚠️ **AMENDEMENT 20.08.2026** — cette ligne disait auparavant que
+         le tampon de R-2026-042 était « intouchable par l'invariant
+         jamais reprendre ». **C'EST FAUX DEPUIS L'AMENDEMENT** (CLAUDE.md,
+         navette F7) : un tampon crédité par une commande ensuite REFUSÉE
+         se reprend désormais.
+         ⚠️ **LA PURGE DOIT AUSSI REMETTRE À ZÉRO LES CARTES CONCERNÉES**,
+         sinon les tampons survivront aux commandes qui les ont produits.
+         État au 20.08.2026 : **4 lignes `stamp_added` valant 5 tampons**
+         portent un `order_id` dont la commande est `cancelled`, sur les
+         DEUX cartes les plus avancées — `HTEF9Z5K` (9/10, 2 lignes valant
+         2) et `PSPVUQ7X` (9/10, 2 lignes valant 3). Après reprise elles
+         tomberaient à **7** et **6**. Décision Augustin 20.08 : **PAS de
+         rétroactif** — ces commandes sont des tests, le ménage les purge,
+         la question devient sans objet à condition de purger AUSSI les
+         soldes.
       2. `order_items` + `order_status_history` des commandes de test
       3. `orders` de test
       4. `lottery_participants` / `spin_entries` / `spin_results` de test
@@ -279,6 +292,22 @@
 
 ## Hors périmètre G (backlog v1.1, ne pas ouvrir pendant le gel)
 
+- **SMS `reward_unlocked` incohérent avec le flux réel** (relevé 21.08) :
+  il dit « Votre carte est complète : … **Présentez votre carte au
+  comptoir** pour en profiter ! » alors qu'il ne part QUE depuis
+  `/api/scan/credit`, c'est-à-dire quand le client vient de faire scanner
+  sa carte, est physiquement devant le caissier, et que l'écran caisse
+  affiche déjà « 🎉 Récompense gagnée ! ». Le texte promet un différé
+  dans un système qui n'en a pas. À reformuler (texte périmé = bug).
+  Hors du lot F7.
+- **Brèche ASSUMÉE du retrait de tampons** (décision Augustin 21.08) :
+  entre le crédit d'une commande acceptée et son refus, si le client fait
+  scanner sa carte au comptoir, le tampon devient une pizza. Le trigger
+  F7 réduit la fenêtre à quelques secondes ; il ne la ferme pas. La
+  fermer exigerait une « porte au comptoir » (vérification avant chaque
+  scan) — REFUSÉE : « refuser une pizza légitime devant un client à cause
+  d'un hoquet de verrou est un échec bien pire qu'une perte rare de
+  l'ordre du franc ».
 - Milestone fidélité (« plus que X CHF pour un tampon ») — re-généraliser
   milestones.ts (replié le 03.08).
 - ~~`referral_claim_reward` absent de la base~~ → seed porté par la

@@ -49,6 +49,19 @@
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- M1 — BARÈME sur loyalty_cards (table du site ; la caisse n'y touche pas)
+--
+-- ⚠️ LES DEFAULT CI-DESSOUS SONT LES VALEURS D'ORIGINE DE CETTE MIGRATION,
+--    PAS LE BARÈME COURANT. Le barème se règle au dashboard et a changé
+--    depuis. Valeurs LIVE relevées le 20.08.2026 :
+--      stamp_amount_step = 40.00  (et NON 50.00 — écart de 20 %)
+--      stamp_credit_mode = per_amount · basis = goods · max_per_order = 2
+--      stamps_required   = 10     · stamp_online_enabled = true
+--    Pour connaître le barème réel, TOUJOURS interroger la base ou passer
+--    par loadStampRule() (src/lib/loyalty/settle.ts) — jamais lire ce
+--    fichier. Note ajoutée le 21.08.2026 sur consigne d'Augustin : « un
+--    barème documenté à 50 quand le réel est 40, c'est un calcul faux qui
+--    attend son heure. » L'historique versionné n'est PAS réécrit (le
+--    DEFAULT 50.00 est bien ce qui a été exécuté le 22.07.2026).
 -- ─────────────────────────────────────────────────────────────────────────
 ALTER TABLE public.loyalty_cards
   ADD COLUMN stamp_credit_mode text NOT NULL DEFAULT 'per_amount'

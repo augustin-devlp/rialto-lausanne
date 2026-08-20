@@ -27,7 +27,14 @@
  */
 
 export type StampRowProps = {
-  /** Tampons ACQUIS (solidifiés). Jamais additionnés au pending. */
+  /**
+   * Tampons ACQUIS (solidifiés). Jamais additionnés au pending.
+   * ⚠️ AMENDEMENT 20.08.2026 : cette valeur peut désormais BAISSER — une
+   * commande acceptée puis REFUSÉE reprend ses tampons (navette F7). Ce
+   * n'est plus un compteur monotone. Le plancher zéro est garanti EN BASE
+   * (jamais ici) : un solde négatif afficherait « −1 tampon » et « Encore
+   * 11 tampons ». Ne JAMAIS déplacer ce garde-fou dans l'affichage.
+   */
   currentStamps: number;
   stampsRequired: number;
   /** Tampons en attente, valeur BRUTE : le clamp est fait ici. */

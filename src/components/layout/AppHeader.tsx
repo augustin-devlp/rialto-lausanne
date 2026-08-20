@@ -58,6 +58,14 @@ export default function AppHeader() {
 
   useEffect(() => {
     setMonte(true);
+    // Arrivée directe sur /menu?q=… : le champ reflète le filtre actif.
+    if (window.location.pathname === "/menu") {
+      const q0 = new URLSearchParams(window.location.search).get("q");
+      if (q0) setQ(q0);
+    }
+    // « Effacer la recherche » depuis l'état vide du menu.
+    const onClear = () => setQ("");
+    window.addEventListener("rialto:menu-search-clear", onClear);
     const syncAddr = () => setAdresse(readAddress());
     const syncCart = () => setNbArticles(cartCount(readCart()));
     const syncSession = () => setSession(readCustomerSession());
@@ -68,6 +76,7 @@ export default function AppHeader() {
     window.addEventListener("rialto:cart-updated", syncCart);
     window.addEventListener("rialto:session-updated", syncSession);
     return () => {
+      window.removeEventListener("rialto:menu-search-clear", onClear);
       window.removeEventListener("rialto:address-updated", syncAddr);
       window.removeEventListener("rialto:cart-updated", syncCart);
       window.removeEventListener("rialto:session-updated", syncSession);

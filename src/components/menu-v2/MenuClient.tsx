@@ -74,8 +74,22 @@ export default function MenuClient({ categories, items, options }: Props) {
     new Set(),
   );
   const [filterModalOpen, setFilterModalOpen] = useState(false);
+  // Recherche dans le menu (É3 refonte 20.08) : alimentée par l'AppHeader
+  // (event `rialto:menu-search` à chaque frappe) et par ?q= à l'arrivée
+  // depuis une autre page. Filtre PUR sur les articles déjà chargés
+  // (nom + description) — aucun appel réseau.
+  const [recherche, setRecherche] = useState("");
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryNavRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setRecherche(q);
+    const onSearch = (e: Event) =>
+      setRecherche(String((e as CustomEvent).detail ?? ""));
+    window.addEventListener("rialto:menu-search", onSearch);
+    return () => window.removeEventListener("rialto:menu-search", onSearch);
+  }, []);
 
   // Restore filters + exclusions depuis localStorage au mount
   useEffect(() => {
@@ -158,11 +172,25 @@ export default function MenuClient({ categories, items, options }: Props) {
     return map;
   }, [categories]);
 
+  // Insensible casse ET accents (« margherita » trouve « Margheritä »).
+  const normalise = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "");
+
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
     const today = new Date();
     const todayKey = today.toISOString().slice(0, 10);
+    const terme = normalise(recherche.trim());
     for (const it of items) {
+      if (
+        terme &&
+        !normalise(it.name ?? "").includes(terme) &&
+        !normalise(it.description ?? "").includes(terme)
+      )
+        continue;
       // Phase 11 C13 : filtre saisonnier hors de la fenêtre de saison
       if (it.is_seasonal) {
         const start = it.season_start ? String(it.season_start).slice(0, 10) : null;
@@ -185,7 +213,7 @@ export default function MenuClient({ categories, items, options }: Props) {
       });
     }
     return map;
-  }, [items, activeFilters, excludedAllergens, categoryById]);
+  }, [items, activeFilters, excludedAllergens, categoryById, recherche]);
 
   // Compteur live pour le bouton "Appliquer (X résultats)" de la modale
   const countResults = (
@@ -451,20 +479,28 @@ export default function MenuClient({ categories, items, options }: Props) {
           <div className="mx-auto max-w-md rounded-3xl border border-border bg-white p-8 text-center">
             <div className="mb-3 text-4xl">🤔</div>
             <h3 className="font-display text-lg font-bold">
-              Aucun plat ne correspond
+              {recherche.trim()
+                ? `Aucun résultat pour « ${recherche.trim()} »`
+                : "Aucun plat ne correspond"}
             </h3>
             <p className="mt-1 text-sm text-mute">
-              Essayez de désactiver quelques filtres.
+              {recherche.trim()
+                ? "Vérifiez l'orthographe ou essayez un autre mot."
+                : "Essayez de désactiver quelques filtres."}
             </p>
             <button
               type="button"
               onClick={() => {
                 setActiveFilters(new Set());
                 setExcludedAllergens(new Set());
+                setRecherche("");
+                window.dispatchEvent(
+                  new CustomEvent("rialto:menu-search-clear"),
+                );
               }}
               className="btn-ghost mt-4"
             >
-              Effacer les filtres
+              {recherche.trim() ? "Effacer la recherche" : "Effacer les filtres"}
             </button>
           </div>
         ) : (

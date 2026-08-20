@@ -96,9 +96,7 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
             <span className="tabular whitespace-nowrap flex-shrink-0 font-display text-sm font-semibold text-rialto-dark md:text-base">
               {formatCHF(Number(item.price))}
             </span>
-            <span className="text-[10px] font-medium text-mute underline underline-offset-2 group-hover:text-rialto truncate">
-              Voir détail
-            </span>
+
           </div>
         </div>
         {/* Correction de spec 20.08 : bandeau ~3:1, texte 2/3 — image 1/3. */}

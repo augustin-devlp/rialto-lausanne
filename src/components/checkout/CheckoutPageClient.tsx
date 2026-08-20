@@ -48,7 +48,6 @@ import {
   termineOperationCritique,
 } from "@/lib/operationCritique";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
-import UpsellPanel from "./UpsellPanel";
 import WheelTimePicker from "./WheelTimePicker";
 import RialtoLogo from "@/components/brand/RialtoLogo";
 import {
@@ -74,9 +73,6 @@ type Props = {
 };
 
 const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
-
-// TODO: numéro Mehmet — Augustin remplace ce placeholder
-const PHONE_OF_MEHMET = "+41 XX XXX XX XX";
 
 const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
 
@@ -151,21 +147,24 @@ export default function CheckoutPageClient({
   const [editionLivraison, setEditionLivraison] = useState(false);
   const [panneauInstructions, setPanneauInstructions] = useState(false);
 
-  // Panneau instructions : verrou du scroll body + fermeture Escape
-  // (pattern FilterModal — relecture 20.08).
+  // Pop-ups (instructions livreur + détails de la livraison) : verrou du
+  // scroll body + fermeture Escape (pattern FilterModal).
   useEffect(() => {
-    if (!panneauInstructions) return;
+    if (!panneauInstructions && !editionLivraison) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPanneauInstructions(false);
+      if (e.key === "Escape") {
+        setPanneauInstructions(false);
+        setEditionLivraison(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
-  }, [panneauInstructions]);
+  }, [panneauInstructions, editionLivraison]);
 
   // Section 2 : adresse + apt fields
   const [street, setStreet] = useState("");
@@ -500,42 +499,6 @@ export default function CheckoutPageClient({
     writeCart(next);
   }
 
-  async function addUpsellItem(menuItemId: string) {
-    try {
-      const res = await fetch(`/api/rialto/menu-item/${menuItemId}`);
-      let item: {
-        id: string;
-        name: string;
-        price: number;
-        category?: string | null;
-      } | null = null;
-      if (res.ok) {
-        item = (await res.json()).item ?? null;
-      }
-      if (!item) return;
-      // Helper unique Lot D (remplace aussi l'ancienne clé construite à la
-      // main `${id}::::`, fragile si cartLineKey change de format).
-      const next = addLinesToCart([
-        {
-          key: cartLineKey(item.id, [], ""),
-          menu_item_id: item.id,
-          name: item.name,
-          base_price: item.price,
-          quantity: 1,
-          options: [],
-          notes: "",
-          unit_price: item.price,
-          subtotal: item.price,
-          // Catégorie désormais renvoyée par l'API menu-item (compte de
-          // pizzas ETA + item_category tracking, refonte 18.08).
-          category: item.category ?? null,
-        },
-      ]);
-      setCart(next);
-    } catch (err) {
-      console.error("[upsell] add failed", err);
-    }
-  }
 
   async function applyPromo() {
     const code = promoInput.trim().toUpperCase();
@@ -861,6 +824,25 @@ export default function CheckoutPageClient({
                 </button>
               </div>
             ) : null}
+            {housingType === null && (
+              <button
+                type="button"
+                onClick={() => setEditionLivraison(true)}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4 text-left transition hover:border-ink"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="shrink-0 text-rialto">
+                    <PictoMaison size={26} />
+                  </span>
+                  <span className="font-bold text-ink">
+                    Renseigner l&apos;adresse de livraison
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-btn border border-border px-3.5 py-2 text-sm font-semibold text-ink">
+                  Choisir
+                </span>
+              </button>
+            )}
             {/* L'erreur de zone et l'adresse incomplète doivent rester
                 VISIBLES en vue compacte (relecture 20.08 — bloquant :
                 le CTA se grisait sans plus aucun message à l'écran,
@@ -873,154 +855,6 @@ export default function CheckoutPageClient({
                     "Adresse incomplète — cliquez Modifier pour la corriger."}
                 </p>
               )}
-            {editionLivraison || housingType === null ? (
-              <div
-                className="space-y-3 transition-all duration-200"
-                // Entrée dans un champ d'adresse = valider l'ÉDITION,
-                // jamais la commande (relecture 20.08 : la soumission
-                // implicite du form partait avec l'adresse à moitié
-                // corrigée chez un habitué).
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    (e.target as HTMLElement).tagName === "INPUT"
-                  ) {
-                    e.preventDefault();
-                    if (street.trim().length >= 3) setEditionLivraison(false);
-                  }
-                }}
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setHousingType("house")}
-                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      housingType === "house"
-                        ? "border-[#C73E1D] bg-white shadow-card"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="shrink-0 text-rialto">
-                      <PictoMaison size={26} />
-                    </span>
-                    <span className="font-bold text-ink">Maison</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setHousingType("apartment")}
-                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      housingType === "apartment"
-                        ? "border-[#C73E1D] bg-white shadow-card"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="shrink-0 text-rialto">
-                      <PictoImmeuble size={26} />
-                    </span>
-                    <span className="font-bold text-ink">Appartement</span>
-                  </button>
-                </div>
-
-                {housingType !== null && (
-                  <>
-                    <input
-                      type="text"
-                      value={street}
-                      onChange={(e) => setStreet(e.target.value)}
-                      placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
-                      aria-label="Rue et numéro"
-                      required
-                      className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                    />
-                    <div className="grid grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        value={postalCode}
-                        onChange={(e) => setPostalCode(e.target.value)}
-                        placeholder="NPA"
-                        aria-label="NPA"
-                        className="col-span-1 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="Ville"
-                        aria-label="Ville"
-                        className="col-span-2 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                      />
-                    </div>
-
-                    {cpZoneError && (
-                      <p className="text-xs font-medium text-rialto">
-                        {cpZoneError}
-                      </p>
-                    )}
-
-                    {housingType === "apartment" && (
-                      <div className="space-y-3 rounded-2xl border border-border bg-neutral-50 p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-ink">
-                          Pour que le livreur trouve facilement
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            value={entryCode1}
-                            onChange={(e) => setEntryCode1(e.target.value)}
-                            placeholder="Code entrée 1"
-                            aria-label="Code entrée 1"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            value={entryCode2}
-                            onChange={(e) => setEntryCode2(e.target.value)}
-                            placeholder="Code entrée 2 (si nécessaire)"
-                            aria-label="Code entrée 2"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            value={floor}
-                            onChange={(e) => setFloor(e.target.value)}
-                            placeholder="Étage (ex: 3, RDC)"
-                            aria-label="Étage"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            value={apartmentNumber}
-                            onChange={(e) => setApartmentNumber(e.target.value)}
-                            placeholder="N° appartement / Porte"
-                            aria-label="N° appartement / Porte"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                        </div>
-                        <input
-                          type="text"
-                          value={doorbellName}
-                          onChange={(e) => setDoorbellName(e.target.value)}
-                          placeholder="Nom sur la sonnette / interphone"
-                          aria-label="Nom sur la sonnette / interphone"
-                          className="w-full rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                        />
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setEditionLivraison(false)}
-                      disabled={street.trim().length < 3}
-                      className="rounded-btn border border-border px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink disabled:opacity-40"
-                    >
-                      OK
-                    </button>
-                  </>
-                )}
-              </div>
-            ) : null}
 
             {/* UN SEUL bouton « Instructions pour le livreur » — ouvre le
                 panneau des choix au lieu de tout déplier (spec 20.08). */}
@@ -1204,9 +1038,8 @@ export default function CheckoutPageClient({
                   </div>
                   {cardTiming === "remote" && (
                     <div className="mt-3 p-3 rounded-xl bg-[#E6A12C]/10 border border-[#E6A12C]/30 text-sm text-[#9A2E14]">
-                      Mehmet vous appellera au{" "}
-                      <strong>{PHONE_OF_MEHMET}</strong> pour vous envoyer
-                      le lien de paiement par WhatsApp ou SMS dans les 5
+                      Rialto vous enverra un lien de paiement par
+                      WhatsApp ou SMS sur votre numéro, dans les 5
                       minutes.
                     </div>
                   )}
@@ -1240,7 +1073,7 @@ export default function CheckoutPageClient({
 
           {/* ───────────── SECTION 4 — COORDONNÉES ─────────────── */}
           {housingType !== null && (
-            <Section title="Vos coordonnées" step="4">
+            <Section title="Vos coordonnées — prénom et numéro de téléphone" step="4">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -1258,39 +1091,34 @@ export default function CheckoutPageClient({
                     inputMode="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+41 XX XXX XX XX"
-                    aria-label="+41 XX XXX XX XX"
+                    placeholder="Numéro de téléphone (+41…)"
+                    aria-label="Numéro de téléphone"
                     required
                     autoComplete="tel"
                     className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>
-                {/* PROMESSE DE MARQUE (décision Augustin 20.08, à ne
-                    JAMAIS contredire) : l'email ne sert QU'AU REÇU — la
-                    confirmation passe par le téléphone, et le marketing
-                    Rialto est exclusivement SMS. Aucune campagne email,
-                    jamais. Le sous-texte ci-dessous est cette promesse,
-                    affichée au client. */}
+                {/* ⚠️ JURIDIQUE (correction Augustin 20.08) : la promesse
+                    « jamais de publicité » ne vaut QUE POUR L'EMAIL — le
+                    marketing Rialto passe activement par SMS sur le
+                    numéro de téléphone. Elle est donc portée par le champ
+                    email LUI-MÊME et ne doit JAMAIS apparaître sous le
+                    champ téléphone ni en pied de section (elle
+                    engloberait le numéro et nous ferait promettre par
+                    écrit l'inverse de ce que nous faisons). */}
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email (optionnel — pour recevoir votre reçu)"
-                  aria-label="Email — pour recevoir votre reçu"
+                  placeholder="Email — uniquement pour votre reçu, jamais de publicité"
+                  aria-label="Email — uniquement pour votre reçu, jamais de publicité"
                   autoComplete="email"
                   className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                 />
-                <p className="text-xs text-mute">
-                  Uniquement pour votre reçu — jamais de publicité.
-                </p>
               </div>
             </Section>
           )}
 
-          {/* Upsell conservé en bas de colonne (levier métier) — rendu
-              INCONDITIONNEL comme avant É7 : le gate housingType retardait
-              le fetch des suggestions (relecture 20.08). */}
-          <UpsellPanel cart={cart} onAdd={addUpsellItem} />
         </div>
 
         {/* ─── Colonne droite : récap + CTA ────────────────── */}
@@ -1490,6 +1318,190 @@ export default function CheckoutPageClient({
               : `Confirmer — ${total.toFixed(2)} CHF`}
           </button>
         </div>
+        {/* ─── Pop-up « Détails de la livraison » (correction 20.08) :
+            MÊME modèle que le panneau instructions — ouverture au clic,
+            fermeture Échap/backdrop, verrou scroll. Permet de changer
+            l'adresse ET le type de logement. */}
+        {editionLivraison && (
+          <div
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm md:items-center md:p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setEditionLivraison(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Détails de la livraison"
+              className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-pop md:rounded-3xl"
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="font-display text-lg font-bold text-ink">
+                  Détails de la livraison
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setEditionLivraison(false)}
+                  className="rounded-full p-2 text-mute hover:bg-neutral-100"
+                  aria-label="Fermer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="6" y1="18" x2="18" y2="6" />
+                  </svg>
+                </button>
+              </div>
+              <div
+                className="space-y-3 transition-all duration-200"
+                // Entrée dans un champ d'adresse = valider l'ÉDITION,
+                // jamais la commande (relecture 20.08 : la soumission
+                // implicite du form partait avec l'adresse à moitié
+                // corrigée chez un habitué).
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    (e.target as HTMLElement).tagName === "INPUT"
+                  ) {
+                    e.preventDefault();
+                    if (street.trim().length >= 3) setEditionLivraison(false);
+                  }
+                }}
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("house")}
+                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
+                      housingType === "house"
+                        ? "border-[#C73E1D] bg-white shadow-card"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="shrink-0 text-rialto">
+                      <PictoMaison size={26} />
+                    </span>
+                    <span className="font-bold text-ink">Maison</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("apartment")}
+                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
+                      housingType === "apartment"
+                        ? "border-[#C73E1D] bg-white shadow-card"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="shrink-0 text-rialto">
+                      <PictoImmeuble size={26} />
+                    </span>
+                    <span className="font-bold text-ink">Appartement</span>
+                  </button>
+                </div>
+
+                {housingType !== null && (
+                  <>
+                    <input
+                      type="text"
+                      value={street}
+                      onChange={(e) => setStreet(e.target.value)}
+                      placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
+                      aria-label="Rue et numéro"
+                      required
+                      className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                    />
+                    <div className="grid grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="NPA"
+                        aria-label="NPA"
+                        className="col-span-1 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="Ville"
+                        aria-label="Ville"
+                        className="col-span-2 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                      />
+                    </div>
+
+                    {cpZoneError && (
+                      <p className="text-xs font-medium text-rialto">
+                        {cpZoneError}
+                      </p>
+                    )}
+
+                    {housingType === "apartment" && (
+                      <div className="space-y-3 rounded-2xl border border-border bg-neutral-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wide text-ink">
+                          Pour que le livreur trouve facilement
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={entryCode1}
+                            onChange={(e) => setEntryCode1(e.target.value)}
+                            placeholder="Code entrée 1"
+                            aria-label="Code entrée 1"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={entryCode2}
+                            onChange={(e) => setEntryCode2(e.target.value)}
+                            placeholder="Code entrée 2 (si nécessaire)"
+                            aria-label="Code entrée 2"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={floor}
+                            onChange={(e) => setFloor(e.target.value)}
+                            placeholder="Étage (ex: 3, RDC)"
+                            aria-label="Étage"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={apartmentNumber}
+                            onChange={(e) => setApartmentNumber(e.target.value)}
+                            placeholder="N° appartement / Porte"
+                            aria-label="N° appartement / Porte"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={doorbellName}
+                          onChange={(e) => setDoorbellName(e.target.value)}
+                          placeholder="Nom sur la sonnette / interphone"
+                          aria-label="Nom sur la sonnette / interphone"
+                          className="w-full rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                        />
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setEditionLivraison(false)}
+                      disabled={street.trim().length < 3}
+                      className="btn-primary mt-1 w-full disabled:opacity-40"
+                    >
+                      Enregistrer
+                    </button>
+                  </>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
+
         {/* ─── Panneau « Instructions pour le livreur » (spec 20.08) ───
             Deux familles MUTUELLEMENT EXCLUSIVES — les options de l'une
             ne s'affichent jamais sous l'autre — + champ libre.

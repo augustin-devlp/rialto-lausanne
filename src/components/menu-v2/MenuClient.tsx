@@ -561,15 +561,11 @@ export default function MenuClient({ categories, items, options, restaurantId }:
       {/* ─── Intro compacte ──────────────────────────────────── */}
       <section className="pb-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <span className="eyebrow">Menu</span>
-          <h1 className="mt-2 font-display text-2xl sm:text-3xl font-bold">
-            {categories.length > 0 ? categories.length : 11} catégories,{" "}
-            <em className="italic text-rialto">
-              {items.length > 0 ? items.length : 106} plats.
-            </em>
-          </h1>
-          <p className="mt-1 text-sm text-mute">
-            Pizzas Ø33&nbsp;cm, pâtes faites maison, spécialités anatoliennes.
+          {/* Intro réduite à UNE ligne discrète (retour Augustin 20.08 :
+              le premier écran montre des plats, pas des statistiques). */}
+          <p className="text-sm text-mute">
+            {items.length} plats · {categories.length} catégories — pizzas
+            Ø33&nbsp;cm, pâtes maison, spécialités anatoliennes.
           </p>
           {/* ETA vivante (même moteur que checkout/suivi) — relogée ici
               depuis l'ancien header sticky local (refonte 20.08). */}

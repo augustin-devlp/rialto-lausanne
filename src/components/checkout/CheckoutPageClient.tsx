@@ -676,10 +676,9 @@ export default function CheckoutPageClient({
         firstName: firstName.trim(),
         phone: cleanPhone,
         email: email.trim() || undefined,
-      ,
-      remiseMode,
-      remiseOption,
-    });
+        remiseMode,
+        remiseOption,
+      });
 
       const res = await fetch("/api/orders", {
         method: "POST",

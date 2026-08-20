@@ -1,21 +1,17 @@
 "use client";
 
 /**
- * RetourClient — É8 refonte UI lot 1 (20.08.2026).
+ * RetourClient — É8, réduit au FILET DE TRANSITION (finitions 20.08).
  *
- * L'adresse n'est demandée qu'à la PREMIÈRE visite : un client qui
- * revient avec une adresse qualifiée en localStorage arrive directement
- * sur le menu. GARDE-FOU (spec Augustin) : RE-QUALIFICATION SILENCIEUSE
- * avant toute redirection — les valeurs de zone (frais/minimum/ETA)
- * sont relues en base via l'API de check existante :
- *   - zone couverte  → valeurs FRAÎCHES écrites puis /menu (jamais de
- *     frais ou minimum périmés à l'écran) ;
- *   - zone disparue/po_box → adresse purgée, le gate reprend la main ;
- *   - erreur réseau  → AUCUNE redirection (le gate reste, prérempli) —
- *     on ne redirige jamais sur des valeurs qu'on n'a pas pu vérifier.
+ * Le raccourci nominal est désormais SERVEUR (cookie-drapeau
+ * rialto_adresse → redirect /menu avant tout rendu : plus de flash).
+ * Ce composant ne sert plus qu'aux clients qualifiés AVANT l'ère du
+ * cookie (adresse en localStorage, cookie absent) : il re-qualifie une
+ * fois, POSE le cookie via writeAddress, et redirige — le flash ne peut
+ * les concerner qu'une seule fois. La re-qualification récurrente vit
+ * sur /menu (MenuClient).
  *
- * ?need_address=1 (demande explicite de modification depuis le header ou
- * le menu) désactive la redirection.
+ * ?need_address=1 (demande explicite de modification) désactive tout.
  */
 
 import { useEffect } from "react";

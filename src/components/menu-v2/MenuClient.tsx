@@ -32,8 +32,10 @@ import {
   cartCount,
   cartLineKey,
   cartSubtotal,
+  clearAddress,
   readAddress,
   readCart,
+  writeAddress,
   type QualifiedAddress,
 } from "@/lib/clientStore";
 import { RIALTO_INFO } from "@/lib/rialto-data";
@@ -45,6 +47,7 @@ type Props = {
   categories: MenuCategory[];
   items: MenuItem[];
   options: MenuItemOption[];
+  restaurantId: string;
 };
 
 import FilterModal, {
@@ -56,7 +59,7 @@ import FilterModal, {
   type FilterKey,
 } from "./FilterModal";
 
-export default function MenuClient({ categories, items, options }: Props) {
+export default function MenuClient({ categories, items, options, restaurantId }: Props) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string | null>(
     categories[0]?.id ?? null,
@@ -128,6 +131,68 @@ export default function MenuClient({ categories, items, options }: Props) {
       window.removeEventListener("rialto:address-updated", onAddrUpdate);
     };
   }, [router]);
+
+  // RE-QUALIFICATION SILENCIEUSE (finitions 20.08 — déplacée de la home,
+  // le raccourci serveur au cookie ne passe plus par elle) : une fois par
+  // session, les valeurs de zone (frais/minimum/ETA) sont relues en base.
+  // Zone changée → adresse réécrite fraîche (le tiroir/bandeau suivent
+  // par l'event address-updated) ; zone disparue → purge + retour au
+  // gate ; erreur réseau → on ne casse rien.
+  useEffect(() => {
+    const a = readAddress();
+    if (!a) return;
+    try {
+      if (sessionStorage.getItem("RIALTO:REQUALIF_FAITE") === "1") return;
+    } catch {
+      /* Safari privé : on re-qualifie à chaque montage, sans gravité. */
+    }
+    let annule = false;
+    (async () => {
+      try {
+        const url = new URL("/api/delivery-zones/check", window.location.origin);
+        url.searchParams.set("restaurant_id", restaurantId);
+        url.searchParams.set("postal_code", a.postal_code);
+        const res = await fetch(url.toString());
+        if (annule || !res.ok) return;
+        const body = (await res.json()) as {
+          covered: boolean;
+          zone?: {
+            id: string;
+            postal_code: string;
+            city: string | null;
+            delivery_fee: number;
+            min_order_amount: number;
+            estimated_delivery_minutes: number;
+          };
+        };
+        if (annule) return;
+        try {
+          sessionStorage.setItem("RIALTO:REQUALIF_FAITE", "1");
+        } catch {
+          /* ignore */
+        }
+        if (body.covered && body.zone) {
+          writeAddress({
+            address: a.address,
+            postal_code: body.zone.postal_code,
+            city: body.zone.city,
+            zone_id: body.zone.id,
+            delivery_fee: Number(body.zone.delivery_fee),
+            min_order_amount: Number(body.zone.min_order_amount),
+            estimated_delivery_minutes: body.zone.estimated_delivery_minutes,
+          });
+        } else {
+          clearAddress();
+          router.replace("/?need_address=1");
+        }
+      } catch {
+        /* erreur réseau : valeurs existantes conservées, pas de blocage */
+      }
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [router, restaurantId]);
 
 
   // Scroll auto du nav catégories pour garder l'active visible.
@@ -203,7 +268,7 @@ export default function MenuClient({ categories, items, options }: Props) {
   }, [items, activeFilters, excludedAllergens, categoryById, recherche]);
 
   // Articles vedette (is_priority — « Coup de cœur » du dashboard) pour
-  // le carrousel « Des offres pour vous » (É5). Dérivés d'itemsByCategory
+  // le carrousel « Nos plats en vedette » (É5). Dérivés d'itemsByCategory
   // (relecture 20.08) : la fenêtre saisonnière, les filtres et les
   // EXCLUSIONS D'ALLERGÈNES s'appliquent aussi aux vedettes — et le
   // carrousel disparaît pendant une recherche (un état « aucun résultat »
@@ -481,7 +546,7 @@ export default function MenuClient({ categories, items, options }: Props) {
         {/* Content principal */}
         <div className="min-w-0 flex-1 px-3 sm:px-4 md:px-5 pt-4 md:pt-5 lg:flex lg:gap-5">
           <div className="min-w-0 flex-1">
-      {/* ─── Carrousel « Des offres pour vous » (É5) ─────────── */}
+      {/* ─── Carrousel « Nos plats en vedette » (É5) ─────────── */}
       <OffresCarrousel
         items={itemsVedette}
         categoryNameById={categoryById}

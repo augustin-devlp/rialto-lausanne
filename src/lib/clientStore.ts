@@ -159,14 +159,27 @@ export function readAddress(): QualifiedAddress | null {
   }
 }
 
+/**
+ * Cookie-drapeau « adresse qualifiée » (finitions 20.08, anti-flash) :
+ * la home est rendue SERVEUR — sans indice côté serveur, un client
+ * qualifié voyait ~1 s de page d'adresse avant la redirection client
+ * vers /menu. Le cookie ne porte AUCUNE donnée (valeur « 1 ») : il dit
+ * seulement « ce navigateur a une adresse en localStorage », et la home
+ * serveur redirige alors vers /menu avant tout rendu. La vérité reste
+ * le localStorage ; la re-qualification silencieuse vit sur /menu.
+ */
+const ADDRESS_COOKIE = "rialto_adresse";
+
 export function writeAddress(addr: QualifiedAddress): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(ADDRESS_KEY, JSON.stringify(addr));
+  document.cookie = `${ADDRESS_COOKIE}=1; path=/; max-age=15552000; SameSite=Lax`;
   window.dispatchEvent(new CustomEvent("rialto:address-updated"));
 }
 
 export function clearAddress(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ADDRESS_KEY);
+  document.cookie = `${ADDRESS_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
   window.dispatchEvent(new CustomEvent("rialto:address-updated"));
 }

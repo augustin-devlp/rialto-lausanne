@@ -48,6 +48,7 @@ import {
 } from "@/lib/operationCritique";
 import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
+import WheelTimePicker from "./WheelTimePicker";
 import RialtoLogo from "@/components/brand/RialtoLogo";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
@@ -988,13 +989,13 @@ export default function CheckoutPageClient({
                 </button>
               </div>
               {!asap && (
-                <input
-                  type="time"
+                // Roues défilantes style iOS (décision 20.08) — remonte
+                // « HH:MM » comme l'ancien input time, s'initialise au
+                // premier créneau valide (ouverture + délai minimum ≈ ETA).
+                <WheelTimePicker
                   value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  step={900}
-                  required
-                  className="mt-3 w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                  onChange={setPickupTime}
+                  minLeadMinutes={Math.max(45, etaLive?.min_minutes ?? 0)}
                 />
               )}
             </Section>

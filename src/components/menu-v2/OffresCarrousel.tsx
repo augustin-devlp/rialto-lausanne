@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * OffresCarrousel — « Des offres pour vous » (É5 refonte UI lot 1,
+ * OffresCarrousel — « Nos plats en vedette » (É5 refonte UI lot 1,
  * 20.08.2026). Le module de suggestions du menu remis en forme carrousel :
  * les articles VEDETTE (is_priority — le concept « Coup de cœur » seedé
  * au dashboard) du menu déjà chargé. Zéro appel réseau.
@@ -42,10 +42,10 @@ export default function OffresCarrousel({
   };
 
   return (
-    <section className="pt-4" aria-label="Des offres pour vous">
+    <section className="pt-4" aria-label="Nos plats en vedette">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold text-ink md:text-xl">
-          Des offres pour vous
+          Nos plats en vedette
         </h2>
         <div className="flex gap-1.5">
           <button

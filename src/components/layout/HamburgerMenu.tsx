@@ -26,6 +26,16 @@ import ManageCookiesButton from "@/components/analytics/ManageCookiesButton";
 import { useT } from "@/i18n/I18nProvider";
 import { LOCALE_META, LOCALES, type Locale } from "@/i18n/dictionaries";
 
+// Langues ANNONCÉES mais pas encore dans l'i18n (décision 20.08 : six
+// langues au total). Elles rejoindront Locale au lot 3 — d'ici là elles
+// ne sont que listées « bientôt », inactives comme les autres.
+// ⚠️ L'arabe imposera un chantier RTL entier (mise en page miroir) —
+// chiffré séparément, cf. rapport 20.08.
+const LANGUES_A_VENIR: ReadonlyArray<{ code: string; label: string; flag: string }> = [
+  { code: "tr", label: "Türkçe", flag: "🇹🇷" },
+  { code: "ar", label: "العربية", flag: "🇸🇦" },
+];
+
 export default function HamburgerMenu({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false);
   const [cartItems, setCartItems] = useState(0);
@@ -323,6 +333,21 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
                       </li>
                     ),
                   )}
+                  {LANGUES_A_VENIR.map((l) => (
+                    <li
+                      key={l.code}
+                      className="flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm text-mute"
+                      aria-disabled
+                    >
+                      <span className="text-base leading-none opacity-50">
+                        {l.flag}
+                      </span>
+                      <span className="flex-1">{l.label}</span>
+                      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                        bientôt
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               )}
             </li>

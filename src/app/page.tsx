@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { supabaseServer, RESTAURANT_ID } from "@/lib/supabase";
 import HeroSection from "@/components/home/HeroSection";
 import SignatureDishes from "@/components/home/SignatureDishes";
@@ -27,7 +29,23 @@ async function loadRestaurant() {
   } | null;
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: { [key: string]: string | string[] | undefined };
+}) {
+  // ANTI-FLASH (finitions 20.08) : un client déjà qualifié (cookie-drapeau
+  // posé par writeAddress) est redirigé vers /menu AVANT tout rendu — il
+  // ne voit plus jamais l'écran d'adresse par accident. ?need_address=1
+  // (demande explicite de modification) désactive le raccourci. La
+  // re-qualification silencieuse des valeurs de zone vit sur /menu.
+  if (
+    searchParams?.need_address !== "1" &&
+    cookies().get("rialto_adresse")?.value === "1"
+  ) {
+    redirect("/menu");
+  }
+
   const restaurant = await loadRestaurant();
   const minOrderFallback = restaurant?.order_min_amount ?? 25;
   const restaurantId = restaurant?.id ?? RESTAURANT_ID;

@@ -49,5 +49,12 @@ async function loadMenu() {
 
 export default async function MenuPage() {
   const { categories, items, options } = await loadMenu();
-  return <MenuClient categories={categories} items={items} options={options} />;
+  return (
+    <MenuClient
+      categories={categories}
+      items={items}
+      options={options}
+      restaurantId={RESTAURANT_ID}
+    />
+  );
 }

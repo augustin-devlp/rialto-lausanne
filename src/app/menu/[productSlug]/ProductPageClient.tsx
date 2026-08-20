@@ -50,39 +50,39 @@ const ALLERGEN_LABELS: Record<string, string> = {
   molluscs: "Mollusques",
 };
 
-type DietTag = { icon: string; label: string; bg: string; fg: string };
+type DietTag = { label: string; bg: string; fg: string };
 
 function dietTags(item: EnrichedItem): DietTag[] {
   const tags: DietTag[] = [];
   if (item.is_vegetarian) {
-    tags.push({ icon: "🌱", label: "Végétarien", bg: "bg-emerald-50", fg: "text-emerald-700" });
+    tags.push({ label: "Végétarien", bg: "bg-emerald-50", fg: "text-emerald-700" });
   }
   if (item.is_vegan) {
-    tags.push({ icon: "🥬", label: "Vegan", bg: "bg-emerald-100", fg: "text-emerald-800" });
+    tags.push({ label: "Vegan", bg: "bg-emerald-100", fg: "text-emerald-800" });
   }
   if (item.is_lactose_free) {
-    tags.push({ icon: "🥛", label: "Sans lactose", bg: "bg-blue-50", fg: "text-blue-800" });
+    tags.push({ label: "Sans lactose", bg: "bg-blue-50", fg: "text-blue-800" });
   }
   if (item.is_gluten_free) {
-    tags.push({ icon: "🌾", label: "Sans gluten", bg: "bg-amber-50", fg: "text-amber-800" });
+    tags.push({ label: "Sans gluten", bg: "bg-amber-50", fg: "text-amber-800" });
   }
   if (item.is_halal) {
-    tags.push({ icon: "🕌", label: "Halal", bg: "bg-teal-50", fg: "text-teal-800" });
+    tags.push({ label: "Halal", bg: "bg-teal-50", fg: "text-teal-800" });
   }
   if (item.is_spicy) {
-    tags.push({ icon: "🌶", label: "Piquant", bg: "bg-rialto/10", fg: "text-rialto" });
+    tags.push({ label: "Piquant", bg: "bg-rialto/10", fg: "text-rialto" });
   }
   if (item.is_kids_friendly) {
-    tags.push({ icon: "👶", label: "Adapté aux enfants", bg: "bg-pink-50", fg: "text-pink-800" });
+    tags.push({ label: "Adapté aux enfants", bg: "bg-pink-50", fg: "text-pink-800" });
   }
   if (item.tags?.includes("seafood")) {
-    tags.push({ icon: "🐟", label: "Fruits de mer", bg: "bg-sky-50", fg: "text-sky-800" });
+    tags.push({ label: "Fruits de mer", bg: "bg-sky-50", fg: "text-sky-800" });
   }
   if (item.tags?.includes("meat")) {
-    tags.push({ icon: "🥩", label: "Viande", bg: "bg-rose-50", fg: "text-rose-800" });
+    tags.push({ label: "Viande", bg: "bg-rose-50", fg: "text-rose-800" });
   }
   if (item.tags?.includes("anatolian")) {
-    tags.push({ icon: "🇹🇷", label: "Anatolien", bg: "bg-saffron/15", fg: "text-saffron-dark" });
+    tags.push({ label: "Anatolien", bg: "bg-saffron/15", fg: "text-saffron-dark" });
   }
   return tags;
 }
@@ -262,7 +262,6 @@ export default function ProductPageClient({
                   key={t.label}
                   className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${t.bg} ${t.fg}`}
                 >
-                  <span className="text-sm leading-none">{t.icon}</span>
                   {t.label}
                 </span>
               ))}

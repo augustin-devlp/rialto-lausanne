@@ -48,35 +48,35 @@ export const ALLERGEN_LABELS_FR: Record<string, string> = {
 
 type FilterSection = {
   title: string;
-  filters: { key: FilterKey; icon: string; label: string }[];
+  filters: { key: FilterKey; label: string }[];
 };
 
 export const FILTER_SECTIONS: FilterSection[] = [
   {
     title: "Régime alimentaire",
     filters: [
-      { key: "vegetarian", icon: "🌱", label: "Végétarien" },
-      { key: "vegan", icon: "🥬", label: "Vegan" },
-      { key: "lactose_free", icon: "🥛", label: "Sans lactose" },
-      { key: "gluten_free", icon: "🌾", label: "Sans gluten" },
-      { key: "halal", icon: "🕌", label: "Halal" },
+      { key: "vegetarian", label: "Végétarien" },
+      { key: "vegan", label: "Vegan" },
+      { key: "lactose_free", label: "Sans lactose" },
+      { key: "gluten_free", label: "Sans gluten" },
+      { key: "halal", label: "Halal" },
     ],
   },
   {
     title: "Caractéristiques",
     filters: [
-      { key: "spicy", icon: "🌶", label: "Piquant" },
-      { key: "kids_friendly", icon: "👶", label: "Adapté aux enfants" },
+      { key: "spicy", label: "Piquant" },
+      { key: "kids_friendly", label: "Adapté aux enfants" },
     ],
   },
   {
     title: "Type de cuisine",
     filters: [
-      { key: "seafood", icon: "🐟", label: "Fruits de mer" },
-      { key: "meat", icon: "🥩", label: "Viande" },
-      { key: "anatolian", icon: "🇹🇷", label: "Anatolien" },
-      { key: "pizza", icon: "🍕", label: "Pizzas" },
-      { key: "pasta", icon: "🍝", label: "Pâtes" },
+      { key: "seafood", label: "Fruits de mer" },
+      { key: "meat", label: "Viande" },
+      { key: "anatolian", label: "Anatolien" },
+      { key: "pizza", label: "Pizzas" },
+      { key: "pasta", label: "Pâtes" },
     ],
   },
 ];
@@ -356,7 +356,8 @@ export default function FilterModal({
                           onChange={() => toggle(f.key)}
                           className="accent-rialto"
                         />
-                        <span className="text-lg leading-none">{f.icon}</span>
+                        {/* Émojis retirés (retour Augustin 20.08) —
+                            libellés textuels seuls. */}
                         <span className="font-medium">{f.label}</span>
                       </label>
                     );

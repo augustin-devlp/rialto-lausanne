@@ -29,7 +29,12 @@ export default function RetourClient({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // ?need_address=1 (modifier l'adresse) ET ?infos=1 (« Nous trouver » :
+    // consultation volontaire de la home) désactivent la redirection —
+    // le bug du 20.08 : l'exemption infos n'existait que côté serveur,
+    // ce filet client renvoyait quand même au menu.
     if (params.get("need_address") === "1") return;
+    if (params.get("infos") === "1") return;
     const a = readAddress();
     if (!a) return;
 

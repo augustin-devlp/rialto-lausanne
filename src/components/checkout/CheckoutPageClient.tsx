@@ -51,6 +51,16 @@ import { RIALTO_INFO, matchDishImage } from "@/lib/rialto-data";
 import UpsellPanel from "./UpsellPanel";
 import WheelTimePicker from "./WheelTimePicker";
 import RialtoLogo from "@/components/brand/RialtoLogo";
+import {
+  PictoBillet,
+  PictoCalendrier,
+  PictoCarte,
+  PictoHorloge,
+  PictoImmeuble,
+  PictoLivreur,
+  PictoMaison,
+  PictoTelephone,
+} from "@/components/ui/Pictos";
 import { effectiveDeliveryFee } from "@/lib/delivery/rule";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { comptePizzasPanier } from "@/lib/eta/pizzas";
@@ -122,11 +132,17 @@ export default function CheckoutPageClient({
 
   // Section 1 : logement
   const [housingType, setHousingType] = useState<HousingType | null>(null);
-  // É7 : mode de remise (présentation pure — se matérialise en préfixe de
-  // delivery_instructions au submit, aucun champ métier nouveau).
+  // Refonte 20.08 : mode + sous-option de remise (présentation pure — se
+  // matérialise en préfixe de delivery_instructions au submit, aucun
+  // champ métier nouveau). Familles MUTUELLEMENT EXCLUSIVES.
   const [remiseMode, setRemiseMode] = useState<"main_propre" | "laisser_porte">(
     "main_propre",
   );
+  const [remiseOption, setRemiseOption] = useState("porte");
+  // Édition des détails de livraison (compact par défaut si prefill) et
+  // panneau des instructions livreur.
+  const [editionLivraison, setEditionLivraison] = useState(false);
+  const [panneauInstructions, setPanneauInstructions] = useState(false);
 
   // Section 2 : adresse + apt fields
   const [street, setStreet] = useState("");
@@ -211,6 +227,7 @@ export default function CheckoutPageClient({
     setPostalCode(a.postal_code ?? p.postalCode ?? "");
     setCity(a.city ?? p.city ?? "");
     setHousingType(p.housingType ?? null);
+    if (!p.housingType) setEditionLivraison(true);
     setEntryCode1(p.entryCode1 ?? "");
     setEntryCode2(p.entryCode2 ?? "");
     setFloor(p.floor ?? "");
@@ -562,6 +579,28 @@ export default function CheckoutPageClient({
     !!address &&
     accepting;
 
+  const OPTIONS_REMISE: Record<
+    "main_propre" | "laisser_porte",
+    { cle: string; label: string }[]
+  > = {
+    main_propre: [
+      { cle: "porte", label: "À ma porte" },
+      { cle: "exterieur", label: "À l'extérieur" },
+      { cle: "hall", label: "Dans le hall d'entrée" },
+    ],
+    laisser_porte: [
+      { cle: "porte", label: "Devant ma porte" },
+      { cle: "accueil", label: "À l'accueil" },
+    ],
+  };
+  const libelleOptionRemise =
+    OPTIONS_REMISE[remiseMode].find((o) => o.cle === remiseOption)?.label ??
+    OPTIONS_REMISE[remiseMode][0].label;
+  const resumeRemise =
+    remiseMode === "main_propre"
+      ? `Remise en mains propres — ${libelleOptionRemise.toLowerCase()}`
+      : `Laisser sur place — ${libelleOptionRemise.toLowerCase()}`;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !address) return;
@@ -626,9 +665,7 @@ export default function CheckoutPageClient({
           // historique, aucun préfixe (statu quo exact).
           delivery_instructions:
             [
-              remiseMode === "laisser_porte"
-                ? "REMISE : laisser devant la porte"
-                : null,
+              `REMISE : ${resumeRemise.toLowerCase()}`,
               instructions.trim() || null,
             ]
               .filter(Boolean)
@@ -746,213 +783,205 @@ export default function CheckoutPageClient({
         {/* ─── Colonne gauche (É7 : le récap panier a déménagé dans la
             colonne droite, repliable — l'upsell reste ici en bas) ──── */}
         <div className="space-y-8">
-          {/* ───────────── SECTION 1 — TYPE DE LOGEMENT ───────────── */}
-          <Section title="Type de logement" step="1">
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setHousingType("house")}
-                className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                  housingType === "house"
-                    ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-3xl mb-2">🏠</div>
-                <div className="font-bold text-[#9A2E14]">Maison</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Maison individuelle, villa
+          {/* ─────── SECTION 1 — DÉTAILS DE LA LIVRAISON (refonte 20.08) ──
+              Vue COMPACTE (logement en gras + adresse + Modifier) quand
+              tout est connu ; l'édition (cartes logement SANS
+              sous-description + champs) ne se déplie qu'au premier
+              passage ou au clic sur Modifier — qui permet de changer
+              l'adresse ET le type de logement. Sélection : fond blanc,
+              contour rouge Rialto + ombre légère (les fonds beiges de
+              sélection sont bannis du checkout). */}
+          <Section title="Détails de la livraison" step="1">
+            {!editionLivraison && housingType !== null ? (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-rialto">
+                    {housingType === "house" ? (
+                      <PictoMaison size={26} />
+                    ) : (
+                      <PictoImmeuble size={26} />
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-bold text-ink">
+                      {housingType === "house" ? "Maison" : "Appartement"}
+                    </div>
+                    <div className="truncate text-sm text-mute">
+                      {street}
+                      {postalCode || city ? ` — ${postalCode} ${city}` : ""}
+                    </div>
+                  </div>
                 </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setHousingType("apartment")}
-                className={`p-5 rounded-2xl border-2 transition-all text-left ${
-                  housingType === "apartment"
-                    ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-              >
-                <div className="text-3xl mb-2">🏢</div>
-                <div className="font-bold text-[#9A2E14]">Appartement</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Immeuble, résidence
-                </div>
-              </button>
-            </div>
-          </Section>
-
-          {/* ───────────── SECTION 2 — DÉTAILS DE LA LIVRAISON ───── */}
-          {housingType !== null && (
-            <Section title="Détails de la livraison" step="2">
+                <button
+                  type="button"
+                  onClick={() => setEditionLivraison(true)}
+                  className="shrink-0 rounded-btn border border-border px-3.5 py-2 text-sm font-semibold text-ink transition hover:border-ink"
+                >
+                  Modifier
+                </button>
+              </div>
+            ) : (
               <div className="space-y-3 transition-all duration-200">
-                <input
-                  type="text"
-                  value={street}
-                  onChange={(e) => setStreet(e.target.value)}
-                  placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
-                  aria-label="Rue et numéro"
-                  required
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                />
-                <div className="grid grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="NPA"
-                    aria-label="NPA"
-                    className="col-span-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
-                  <input
-                    type="text"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="Ville"
-                    aria-label="Ville"
-                    className="col-span-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("house")}
+                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
+                      housingType === "house"
+                        ? "border-[#C73E1D] bg-white shadow-card"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="shrink-0 text-rialto">
+                      <PictoMaison size={26} />
+                    </span>
+                    <span className="font-bold text-ink">Maison</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHousingType("apartment")}
+                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
+                      housingType === "apartment"
+                        ? "border-[#C73E1D] bg-white shadow-card"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="shrink-0 text-rialto">
+                      <PictoImmeuble size={26} />
+                    </span>
+                    <span className="font-bold text-ink">Appartement</span>
+                  </button>
                 </div>
 
-                {cpZoneError && (
-                  <p className="text-xs font-medium text-rialto">
-                    ⚠️ {cpZoneError}
-                  </p>
-                )}
-
-                {housingType === "apartment" && (
-                  <div className="space-y-3 bg-[#F9F1E4]/40 p-4 rounded-2xl border border-[#E6A12C]/20">
-                    <p className="text-xs font-bold text-[#9A2E14] uppercase tracking-wide">
-                      🔑 Pour que le livreur trouve facilement
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={entryCode1}
-                        onChange={(e) => setEntryCode1(e.target.value)}
-                        placeholder="Code entrée 1"
-                        aria-label="Code entrée 1"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                      <input
-                        type="text"
-                        value={entryCode2}
-                        onChange={(e) => setEntryCode2(e.target.value)}
-                        placeholder="Code entrée 2 (si nécessaire)"
-                        aria-label="Code entrée 2"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={floor}
-                        onChange={(e) => setFloor(e.target.value)}
-                        placeholder="Étage (ex: 3, RDC)"
-                        aria-label="Étage"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                      <input
-                        type="text"
-                        value={apartmentNumber}
-                        onChange={(e) => setApartmentNumber(e.target.value)}
-                        placeholder="N° appartement / Porte"
-                        aria-label="N° appartement / Porte"
-                        className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
-                      />
-                    </div>
-
+                {housingType !== null && (
+                  <>
                     <input
                       type="text"
-                      value={doorbellName}
-                      onChange={(e) => setDoorbellName(e.target.value)}
-                      placeholder="Nom sur la sonnette / interphone"
-                      aria-label="Nom sur la sonnette / interphone"
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                      value={street}
+                      onChange={(e) => setStreet(e.target.value)}
+                      placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
+                      aria-label="Rue et numéro"
+                      required
+                      className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
                     />
+                    <div className="grid grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={postalCode}
+                        onChange={(e) => setPostalCode(e.target.value)}
+                        placeholder="NPA"
+                        aria-label="NPA"
+                        className="col-span-1 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="Ville"
+                        aria-label="Ville"
+                        className="col-span-2 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                      />
+                    </div>
 
-                    <textarea
-                      value={instructions}
-                      onChange={(e) => setInstructions(e.target.value)}
-                      placeholder="Autres infos (ascenseur, sonnette HS, etc.)"
-                      aria-label="Autres infos"
-                      rows={2}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
-                    />
-                  </div>
-                )}
+                    {cpZoneError && (
+                      <p className="text-xs font-medium text-rialto">
+                        {cpZoneError}
+                      </p>
+                    )}
 
-                {housingType === "house" && (
-                  <textarea
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    placeholder="Instructions livreur (optionnel) — portail, chien, sonnette, etc."
-                    aria-label="Instructions livreur"
-                    rows={2}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
-                  />
-                )}
+                    {housingType === "apartment" && (
+                      <div className="space-y-3 rounded-2xl border border-border bg-neutral-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wide text-ink">
+                          Pour que le livreur trouve facilement
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={entryCode1}
+                            onChange={(e) => setEntryCode1(e.target.value)}
+                            placeholder="Code entrée 1"
+                            aria-label="Code entrée 1"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={entryCode2}
+                            onChange={(e) => setEntryCode2(e.target.value)}
+                            placeholder="Code entrée 2 (si nécessaire)"
+                            aria-label="Code entrée 2"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={floor}
+                            onChange={(e) => setFloor(e.target.value)}
+                            placeholder="Étage (ex: 3, RDC)"
+                            aria-label="Étage"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={apartmentNumber}
+                            onChange={(e) => setApartmentNumber(e.target.value)}
+                            placeholder="N° appartement / Porte"
+                            aria-label="N° appartement / Porte"
+                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={doorbellName}
+                          onChange={(e) => setDoorbellName(e.target.value)}
+                          placeholder="Nom sur la sonnette / interphone"
+                          aria-label="Nom sur la sonnette / interphone"
+                          className="w-full rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                        />
+                      </div>
+                    )}
 
-                {/* MODE DE REMISE (É7, pattern Uber Eats) : deux modes
-                    MUTUELLEMENT EXCLUSIFS — les options de l'un ne
-                    s'affichent jamais sous l'autre. AUCUN champ métier
-                    nouveau : le choix se matérialise en préfixe de
-                    delivery_instructions au submit (le client pouvait déjà
-                    l'écrire en texte libre — statu quo métier exact).
-                    ⚠️ Interaction assumée : le paiement Rialto est À LA
-                    REMISE (espèces/TWINT/carte livreur) — « laisser devant
-                    la porte » n'est réaliste qu'avec la carte à distance ;
-                    note affichée, jamais bloquant (canSubmit intouché). */}
-                <div className="pt-1">
-                  <p className="mb-2 text-sm font-medium text-gray-700">
-                    Mode de remise
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setRemiseMode("main_propre")}
-                      className={`p-3 rounded-xl border-2 text-left transition-all ${
-                        remiseMode === "main_propre"
-                          ? "border-[#C73E1D] bg-rialto/5"
-                          : "border-gray-200 bg-white"
-                      }`}
+                      onClick={() => setEditionLivraison(false)}
+                      className="rounded-btn border border-border px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink"
                     >
-                      <div className="text-sm font-bold">
-                        Remettre en main propre
-                      </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Le livreur vous remet la commande
-                      </div>
+                      OK
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setRemiseMode("laisser_porte")}
-                      className={`p-3 rounded-xl border-2 text-left transition-all ${
-                        remiseMode === "laisser_porte"
-                          ? "border-[#C73E1D] bg-rialto/5"
-                          : "border-gray-200 bg-white"
-                      }`}
-                    >
-                      <div className="text-sm font-bold">Laisser sur place</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Déposée devant votre porte
-                      </div>
-                    </button>
-                  </div>
-                  {remiseMode === "laisser_porte" && (
-                    <p className="mt-2 rounded-xl bg-neutral-50 border border-border p-3 text-xs text-gray-700">
-                      Le paiement se fait à la remise chez Rialto : pour un
-                      dépôt sans contact, choisissez « Carte — à distance »
-                      comme moyen de paiement, sinon le livreur devra tout de
-                      même vous rencontrer pour encaisser.
-                    </p>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
-            </Section>
-          )}
+            )}
+
+            {/* UN SEUL bouton « Instructions pour le livreur » — ouvre le
+                panneau des choix au lieu de tout déplier (spec 20.08). */}
+            {housingType !== null && (
+              <button
+                type="button"
+                onClick={() => setPanneauInstructions(true)}
+                className="mt-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4 text-left transition hover:border-ink"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 text-rialto">
+                    <PictoLivreur size={26} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-bold text-ink">
+                      {resumeRemise}
+                    </span>
+                    <span className="block truncate text-sm text-mute">
+                      {instructions.trim()
+                        ? instructions.trim()
+                        : "Instructions pour le livreur"}
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-btn border border-border px-3.5 py-2 text-sm font-semibold text-ink">
+                  Modifier
+                </span>
+              </button>
+            )}
+          </Section>
 
           {/* ───────── SECTION 3 — OPTION DE LIVRAISON (É7) ─────────
               « Planifié » rhabille le sélecteur d'heure EXISTANT :
@@ -964,17 +993,18 @@ export default function CheckoutPageClient({
               ETA ancré sur le créneau) est un chantier à part,
               OBLIGATOIRE avant le go-live — point bloquant GO_LIVE.md. */}
           {housingType !== null && (
-            <Section title="Option de livraison" step="3">
+            <Section title="Option de livraison" step="2">
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setAsap(true)}
                   className={`p-3 rounded-xl border-2 text-left transition-all ${
                     asap
-                      ? "border-[#C73E1D] bg-rialto/5"
+                      ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white"
                   }`}
                 >
+                  <div className="mb-1 text-rialto"><PictoHorloge size={22} /></div>
                   <div className="text-sm font-bold">Standard</div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {etaLive?.label ??
@@ -986,10 +1016,11 @@ export default function CheckoutPageClient({
                   onClick={() => setAsap(false)}
                   className={`p-3 rounded-xl border-2 text-left transition-all ${
                     !asap
-                      ? "border-[#C73E1D] bg-rialto/5"
+                      ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white"
                   }`}
                 >
+                  <div className="mb-1 text-rialto"><PictoCalendrier size={22} /></div>
                   <div className="text-sm font-bold">Planifié</div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     Choisir un créneau
@@ -1011,18 +1042,18 @@ export default function CheckoutPageClient({
 
           {/* ───────────── SECTION 4 — MOYEN DE PAIEMENT ───────── */}
           {housingType !== null && (
-            <Section title="Moyen de paiement" step="4">
+            <Section title="Moyen de paiement" step="3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("card")}
                   className={`p-5 rounded-2xl border-2 transition-all text-left ${
                     paymentMethod === "card"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
+                      ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
-                  <div className="text-2xl mb-2">💳</div>
+                  <div className="mb-2 text-rialto"><PictoCarte size={26} /></div>
                   <div className="font-bold text-[#9A2E14]">Carte</div>
                   <div className="text-xs text-gray-500 mt-1">
                     Au livreur ou à distance
@@ -1036,11 +1067,11 @@ export default function CheckoutPageClient({
                   }}
                   className={`p-5 rounded-2xl border-2 transition-all text-left ${
                     paymentMethod === "cash"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
+                      ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
-                  <div className="text-2xl mb-2">💵</div>
+                  <div className="mb-2 text-rialto"><PictoBillet size={26} /></div>
                   <div className="font-bold text-[#9A2E14]">Espèces</div>
                   <div className="text-xs text-gray-500 mt-1">
                     À régler au livreur
@@ -1054,11 +1085,11 @@ export default function CheckoutPageClient({
                   }}
                   className={`p-5 rounded-2xl border-2 transition-all text-left ${
                     paymentMethod === "twint"
-                      ? "border-[#C73E1D] bg-[#F9F1E4] shadow-md"
+                      ? "border-[#C73E1D] bg-white shadow-card"
                       : "border-gray-200 bg-white hover:border-gray-300"
                   }`}
                 >
-                  <div className="text-2xl mb-2">📱</div>
+                  <div className="mb-2 text-rialto"><PictoTelephone size={26} /></div>
                   <div className="font-bold text-[#9A2E14]">Twint</div>
                   <div className="text-xs text-gray-500 mt-1">
                     Au livreur, en 1 scan
@@ -1078,7 +1109,7 @@ export default function CheckoutPageClient({
                       onClick={() => setCardTiming("on_delivery")}
                       className={`p-4 rounded-xl border-2 transition-all text-sm text-left ${
                         cardTiming === "on_delivery"
-                          ? "border-[#C73E1D] bg-[#F9F1E4]"
+                          ? "border-[#C73E1D] bg-white shadow-card"
                           : "border-gray-200 bg-white"
                       }`}
                     >
@@ -1092,7 +1123,7 @@ export default function CheckoutPageClient({
                       onClick={() => setCardTiming("remote")}
                       className={`p-4 rounded-xl border-2 transition-all text-sm text-left ${
                         cardTiming === "remote"
-                          ? "border-[#C73E1D] bg-[#F9F1E4]"
+                          ? "border-[#C73E1D] bg-white shadow-card"
                           : "border-gray-200 bg-white"
                       }`}
                     >
@@ -1104,7 +1135,7 @@ export default function CheckoutPageClient({
                   </div>
                   {cardTiming === "remote" && (
                     <div className="mt-3 p-3 rounded-xl bg-[#E6A12C]/10 border border-[#E6A12C]/30 text-sm text-[#9A2E14]">
-                      💬 Mehmet vous appellera au{" "}
+                      Mehmet vous appellera au{" "}
                       <strong>{PHONE_OF_MEHMET}</strong> pour vous envoyer
                       le lien de paiement par WhatsApp ou SMS dans les 5
                       minutes.
@@ -1112,7 +1143,7 @@ export default function CheckoutPageClient({
                   )}
                   {cardTiming === "on_delivery" && (
                     <div className="mt-3 p-3 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700">
-                      ✅ Le livreur arrivera avec le terminal de paiement.
+                      Le livreur arrivera avec le terminal de paiement.
                     </div>
                   )}
                 </div>
@@ -1124,14 +1155,14 @@ export default function CheckoutPageClient({
                   notes carte/Twint. */}
               {paymentMethod === "cash" && (
                 <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 transition-all duration-200">
-                  💵 Vous paierez en espèces au livreur, à la livraison.
+                  Vous paierez en espèces au livreur, à la livraison.
                 </div>
               )}
 
               {/* Twint message */}
               {paymentMethod === "twint" && (
                 <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-700 transition-all duration-200">
-                  📱 Le livreur vous montrera le QR code Twint à l&apos;arrivée.
+                  Le livreur vous montrera le QR code Twint à l&apos;arrivée.
                   Vous payerez directement sur place.
                 </div>
               )}
@@ -1140,7 +1171,7 @@ export default function CheckoutPageClient({
 
           {/* ───────────── SECTION 4 — COORDONNÉES ─────────────── */}
           {housingType !== null && (
-            <Section title="Vos coordonnées" step="5">
+            <Section title="Vos coordonnées" step="4">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -1165,15 +1196,24 @@ export default function CheckoutPageClient({
                     className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>
+                {/* PROMESSE DE MARQUE (décision Augustin 20.08, à ne
+                    JAMAIS contredire) : l'email ne sert QU'AU REÇU — la
+                    confirmation passe par le téléphone, et le marketing
+                    Rialto est exclusivement SMS. Aucune campagne email,
+                    jamais. Le sous-texte ci-dessous est cette promesse,
+                    affichée au client. */}
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email (optionnel — pour la confirmation)"
-                  aria-label="Email"
+                  placeholder="Email (optionnel — pour recevoir votre reçu)"
+                  aria-label="Email — pour recevoir votre reçu"
                   autoComplete="email"
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
+                  className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                 />
+                <p className="text-xs text-mute">
+                  Uniquement pour votre reçu — jamais de publicité.
+                </p>
               </div>
             </Section>
           )}
@@ -1277,7 +1317,7 @@ export default function CheckoutPageClient({
                       </button>
                     </div>
                     {promoError && (
-                      <p className="text-xs text-rialto">⚠️ {promoError}</p>
+                      <p className="text-xs text-rialto">{promoError}</p>
                     )}
                   </div>
                 ) : (
@@ -1381,6 +1421,126 @@ export default function CheckoutPageClient({
               : `Confirmer — ${total.toFixed(2)} CHF`}
           </button>
         </div>
+        {/* ─── Panneau « Instructions pour le livreur » (spec 20.08) ───
+            Deux familles MUTUELLEMENT EXCLUSIVES — les options de l'une
+            ne s'affichent jamais sous l'autre — + champ libre.
+            Formulations maison, aucun texte copié d'Uber Eats. */}
+        {panneauInstructions && (
+          <div
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm md:items-center md:p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setPanneauInstructions(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-label="Instructions pour le livreur"
+              className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-pop md:rounded-3xl"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-display text-lg font-bold text-ink">
+                  Instructions pour le livreur
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPanneauInstructions(false)}
+                  className="rounded-full p-2 text-mute hover:bg-neutral-100"
+                  aria-label="Fermer"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="6" y1="18" x2="18" y2="6" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemiseMode("main_propre");
+                    setRemiseOption("porte");
+                  }}
+                  className={`rounded-2xl border-2 p-3 text-left transition-all ${
+                    remiseMode === "main_propre"
+                      ? "border-[#C73E1D] bg-white shadow-card"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="text-sm font-bold text-ink">
+                    Remise en mains propres
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemiseMode("laisser_porte");
+                    setRemiseOption("porte");
+                  }}
+                  className={`rounded-2xl border-2 p-3 text-left transition-all ${
+                    remiseMode === "laisser_porte"
+                      ? "border-[#C73E1D] bg-white shadow-card"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div className="text-sm font-bold text-ink">
+                    Laisser sur place
+                  </div>
+                </button>
+              </div>
+
+              {/* Sous-options DE LA FAMILLE CHOISIE uniquement. */}
+              <div className="mt-3 space-y-1.5">
+                {OPTIONS_REMISE[remiseMode].map((o) => (
+                  <button
+                    key={o.cle}
+                    type="button"
+                    onClick={() => setRemiseOption(o.cle)}
+                    className={`flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-sm transition ${
+                      remiseOption === o.cle
+                        ? "border-[#C73E1D] font-semibold text-ink shadow-card"
+                        : "border-border text-ink hover:border-ink"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        remiseOption === o.cle ? "bg-rialto" : "bg-border"
+                      }`}
+                      aria-hidden
+                    />
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+
+              {remiseMode === "laisser_porte" && (
+                <p className="mt-3 rounded-xl border border-border bg-neutral-50 p-3 text-xs text-gray-700">
+                  Le paiement se fait à la remise chez Rialto : pour un
+                  dépôt sans contact, choisissez « Carte — à distance »
+                  comme moyen de paiement, sinon le livreur devra tout de
+                  même vous rencontrer pour encaisser.
+                </p>
+              )}
+
+              <textarea
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="Instructions libres — portail, chien, sonnette, etc."
+                aria-label="Instructions libres"
+                rows={2}
+                className="mt-3 w-full resize-none rounded-xl border border-border px-4 py-3 text-sm focus:border-[#C73E1D] focus:outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={() => setPanneauInstructions(false)}
+                className="btn-primary mt-4 w-full"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        )}
       </form>
     </main>
   );

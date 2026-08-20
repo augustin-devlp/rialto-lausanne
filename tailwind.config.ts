@@ -9,16 +9,20 @@ const config: Config = {
     // `btn` = token dédié aux boutons d'action (léger surplus de rayon,
     // proposition acceptée par Augustin — à trancher visuellement).
     // `full` conservé : pastilles, badges et points de statut restent ronds.
+    // Recalibrage 20.08 (retour Augustin, mesuré sur les captures Uber
+    // Eats) : le quasi-carré initial était trop sec — boutons ~8 px,
+    // conteneurs 12-16 px. Toujours UN SEUL jeu de tokens, jamais du cas
+    // par cas.
     borderRadius: {
       none: "0",
-      sm: "2px",
-      DEFAULT: "4px",
-      md: "4px",
-      lg: "4px",
-      xl: "4px",
-      "2xl": "6px",
-      "3xl": "6px",
-      btn: "10px",
+      sm: "4px",
+      DEFAULT: "6px",
+      md: "6px",
+      lg: "8px",
+      xl: "8px",
+      "2xl": "12px",
+      "3xl": "16px",
+      btn: "8px",
       full: "9999px",
     },
     extend: {

@@ -82,6 +82,8 @@ export default function MenuClient({ categories, items, options }: Props) {
   const [recherche, setRecherche] = useState("");
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const categoryNavRef = useRef<HTMLDivElement | null>(null);
+  // Fenêtre de suspension du scroll-spy (clic catégorie → smooth scroll).
+  const suspenduJusquaRef = useRef(0);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("q");
@@ -128,7 +130,11 @@ export default function MenuClient({ categories, items, options }: Props) {
   }, [router]);
 
 
-  // Scroll auto du nav catégories pour garder l'active visible
+  // Scroll auto du nav catégories pour garder l'active visible.
+  // ⚠️ scroll HORIZONTAL du conteneur UNIQUEMENT — l'ancien
+  // scrollIntoView scrollait AUSSI la fenêtre vers la rangée de chips :
+  // depuis qu'elle peut sortir du viewport, chaque changement du
+  // scroll-spy REMONTAIT la page toute seule (bloquant relecture 20.08).
   useEffect(() => {
     if (!activeCategory) return;
     const nav = categoryNavRef.current;
@@ -137,9 +143,9 @@ export default function MenuClient({ categories, items, options }: Props) {
       `[data-cat="${activeCategory}"]`,
     );
     if (activeEl) {
-      activeEl.scrollIntoView({
-        block: "nearest",
-        inline: "center",
+      nav.scrollTo({
+        left:
+          activeEl.offsetLeft - nav.clientWidth / 2 + activeEl.clientWidth / 2,
         behavior: "smooth",
       });
     }
@@ -159,16 +165,6 @@ export default function MenuClient({ categories, items, options }: Props) {
       .toLowerCase()
       .normalize("NFD")
       .replace(/[̀-ͯ]/g, "");
-
-  // Articles vedette (is_priority — « Coup de cœur » du dashboard) pour
-  // le carrousel « Des offres pour vous » (É5). Données déjà chargées.
-  const itemsVedette = useMemo(
-    () =>
-      items.filter(
-        (it) => it.is_priority && it.is_available && !it.is_out_of_stock,
-      ),
-    [items],
-  );
 
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
@@ -206,6 +202,19 @@ export default function MenuClient({ categories, items, options }: Props) {
     return map;
   }, [items, activeFilters, excludedAllergens, categoryById, recherche]);
 
+  // Articles vedette (is_priority — « Coup de cœur » du dashboard) pour
+  // le carrousel « Des offres pour vous » (É5). Dérivés d'itemsByCategory
+  // (relecture 20.08) : la fenêtre saisonnière, les filtres et les
+  // EXCLUSIONS D'ALLERGÈNES s'appliquent aussi aux vedettes — et le
+  // carrousel disparaît pendant une recherche (un état « aucun résultat »
+  // surmonté d'offres pleines serait contradictoire).
+  const itemsVedette = useMemo(() => {
+    if (recherche.trim()) return [];
+    return Object.values(itemsByCategory)
+      .flat()
+      .filter((it) => it.is_priority && it.is_available && !it.is_out_of_stock);
+  }, [itemsByCategory, recherche]);
+
   // Scroll-spy REFONDU (É5, 20.08 — bug constaté par Augustin : catégorie
   // décalée d'une section sur entrées/softdrinks, « bières » affichée en
   // bas alors qu'on est sur les vins). Règle : la catégorie active est
@@ -220,6 +229,7 @@ export default function MenuClient({ categories, items, options }: Props) {
     let raf = 0;
     const mesure = () => {
       raf = 0;
+      if (Date.now() < suspenduJusquaRef.current) return;
       const doc = document.documentElement;
       const enBas =
         window.innerHeight + window.scrollY >= doc.scrollHeight - 2;
@@ -258,7 +268,11 @@ export default function MenuClient({ categories, items, options }: Props) {
     setActiveCategory(id);
     const el = sectionRefs.current[id];
     if (!el) return;
-    const offset = window.innerWidth >= 1024 ? 72 : 120;
+    // Suspend la mesure du scroll-spy pendant l'animation : sans ça,
+    // l'état actif cascadait par toutes les catégories intermédiaires
+    // du trajet (relecture 20.08).
+    suspenduJusquaRef.current = Date.now() + 900;
+    const offset = window.innerWidth >= 1024 ? 72 : 148;
     window.scrollTo({
       top: el.getBoundingClientRect().top + window.scrollY - offset,
       behavior: "smooth",
@@ -393,7 +407,10 @@ export default function MenuClient({ categories, items, options }: Props) {
       {/* ─── L'adresse et le caddie vivent dans l'AppHeader global depuis
           la refonte 20.08 — ce composant ne garde que la nav catégories
           mobile (les chips, lg:hidden ; retravaillées au lot 2 mobile). */}
-      <header className="border-b border-border bg-white">
+      {/* Chips STICKY (relecture 20.08 : leur perte de sticky cassait la
+          nav mobile mid-scroll) — top-[100px] = barre AppHeader 56px +
+          ligne adresse mobile ~44px ; passe sous le header en lg (colonne). */}
+      <header className="sticky top-[100px] z-30 border-b border-border bg-white lg:static">
         {/* Nav catégories chips (mobile/tablet uniquement — la colonne
             catégories la remplace en lg+) + bouton Filtrer */}
         <div className="container-hero flex items-center gap-2 pb-2 pt-2 lg:hidden">
@@ -559,7 +576,7 @@ export default function MenuClient({ categories, items, options }: Props) {
                 ref={(el) => {
                   sectionRefs.current[category.id] = el;
                 }}
-                className="scroll-mt-[140px] pt-5 md:pt-7"
+                className="scroll-mt-20 pt-5 md:pt-7"
               >
                 {/* É5 : plus d'emoji de catégorie (spec 20.08). */}
                 <h2 className="mb-3 font-display text-lg sm:text-xl font-bold md:mb-4">
@@ -634,7 +651,7 @@ export default function MenuClient({ categories, items, options }: Props) {
       {/* pb-28 mobile : la barre panier fixe (CartPanel, ~70 px) recouvrait
           la mention en bas de page dès qu'un article était au panier —
           précisément le parcours de commande (relecture 19.08). */}
-      <p className="container-hero pb-28 pt-2 text-center text-xs text-mute lg:pb-8">
+      <p className="container-hero pb-28 pt-2 text-center text-xs text-mute lg:pb-16">
         Informations sur les allergènes disponibles sur demande —{" "}
         <a href={`tel:${RIALTO_INFO.phoneTel}`} className="underline">
           {RIALTO_INFO.phoneDisplay}

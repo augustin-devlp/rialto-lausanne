@@ -782,6 +782,7 @@ export default function CheckoutPageClient({
                   value={street}
                   onChange={(e) => setStreet(e.target.value)}
                   placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
+                  aria-label="Rue et numéro"
                   required
                   className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                 />
@@ -791,6 +792,7 @@ export default function CheckoutPageClient({
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     placeholder="NPA"
+                    aria-label="NPA"
                     className="col-span-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                   <input
@@ -798,6 +800,7 @@ export default function CheckoutPageClient({
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Ville"
+                    aria-label="Ville"
                     className="col-span-2 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>
@@ -820,6 +823,7 @@ export default function CheckoutPageClient({
                         value={entryCode1}
                         onChange={(e) => setEntryCode1(e.target.value)}
                         placeholder="Code entrée 1"
+                        aria-label="Code entrée 1"
                         className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                       />
                       <input
@@ -827,6 +831,7 @@ export default function CheckoutPageClient({
                         value={entryCode2}
                         onChange={(e) => setEntryCode2(e.target.value)}
                         placeholder="Code entrée 2 (si nécessaire)"
+                        aria-label="Code entrée 2"
                         className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                       />
                     </div>
@@ -837,6 +842,7 @@ export default function CheckoutPageClient({
                         value={floor}
                         onChange={(e) => setFloor(e.target.value)}
                         placeholder="Étage (ex: 3, RDC)"
+                        aria-label="Étage"
                         className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                       />
                       <input
@@ -844,6 +850,7 @@ export default function CheckoutPageClient({
                         value={apartmentNumber}
                         onChange={(e) => setApartmentNumber(e.target.value)}
                         placeholder="N° appartement / Porte"
+                        aria-label="N° appartement / Porte"
                         className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                       />
                     </div>
@@ -853,6 +860,7 @@ export default function CheckoutPageClient({
                       value={doorbellName}
                       onChange={(e) => setDoorbellName(e.target.value)}
                       placeholder="Nom sur la sonnette / interphone"
+                      aria-label="Nom sur la sonnette / interphone"
                       className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                     />
 
@@ -860,6 +868,7 @@ export default function CheckoutPageClient({
                       value={instructions}
                       onChange={(e) => setInstructions(e.target.value)}
                       placeholder="Autres infos (ascenseur, sonnette HS, etc.)"
+                      aria-label="Autres infos"
                       rows={2}
                       className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
                     />
@@ -871,6 +880,7 @@ export default function CheckoutPageClient({
                     value={instructions}
                     onChange={(e) => setInstructions(e.target.value)}
                     placeholder="Instructions livreur (optionnel) — portail, chien, sonnette, etc."
+                    aria-label="Instructions livreur"
                     rows={2}
                     className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-sm resize-none"
                   />
@@ -1129,6 +1139,7 @@ export default function CheckoutPageClient({
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="Prénom"
+                    aria-label="Prénom"
                     required
                     autoComplete="given-name"
                     className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
@@ -1139,6 +1150,7 @@ export default function CheckoutPageClient({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+41 XX XXX XX XX"
+                    aria-label="+41 XX XXX XX XX"
                     required
                     autoComplete="tel"
                     className="px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
@@ -1149,6 +1161,7 @@ export default function CheckoutPageClient({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email (optionnel — pour la confirmation)"
+                  aria-label="Email"
                   autoComplete="email"
                   className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                 />
@@ -1156,8 +1169,10 @@ export default function CheckoutPageClient({
             </Section>
           )}
 
-          {/* Upsell conservé en bas de colonne (levier métier). */}
-          {housingType !== null && <UpsellPanel cart={cart} onAdd={addUpsellItem} />}
+          {/* Upsell conservé en bas de colonne (levier métier) — rendu
+              INCONDITIONNEL comme avant É7 : le gate housingType retardait
+              le fetch des suggestions (relecture 20.08). */}
+          <UpsellPanel cart={cart} onAdd={addUpsellItem} />
         </div>
 
         {/* ─── Colonne droite : récap + CTA ────────────────── */}
@@ -1237,6 +1252,7 @@ export default function CheckoutPageClient({
                           setPromoInput(e.target.value.toUpperCase())
                         }
                         placeholder="RIA-XXXXX"
+                        aria-label="RIA-XXXXX"
                         className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#C73E1D] focus:outline-none text-base"
                         autoCapitalize="characters"
                         autoCorrect="off"

@@ -55,6 +55,15 @@ export default function RetourClient({
           };
         };
         if (annule) return;
+        // Le client a commencé à saisir dans le gate (réseau lent, il veut
+        // probablement CHANGER d'adresse) : on ne l'arrache pas en pleine
+        // frappe (relecture 20.08).
+        if (
+          document.activeElement instanceof HTMLInputElement ||
+          document.activeElement instanceof HTMLTextAreaElement
+        ) {
+          return;
+        }
         if (body.covered && body.zone) {
           writeAddress({
             address: a.address,

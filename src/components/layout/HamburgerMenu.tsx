@@ -104,8 +104,8 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
 
       {/* Sidebar — glisse depuis la GAUCHE (côté du burger, refonte 20.08) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-[95] flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "-translate-x-full"
+        className={`fixed inset-y-0 left-0 z-[95] flex w-[85vw] max-w-[340px] flex-col overflow-y-auto bg-white shadow-2xl transition-[transform,visibility] duration-300 ease-out ${
+          open ? "translate-x-0" : "invisible -translate-x-full"
         }`}
         aria-hidden={!open}
       >
@@ -136,7 +136,7 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-white"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-ink hover:bg-neutral-100"
             aria-label="Fermer"
           >
             <svg
@@ -210,7 +210,7 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
                       setSession(null);
                       setOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-mute transition hover:bg-white hover:text-rialto"
+                    className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-mute transition hover:bg-neutral-100 hover:text-rialto"
                   >
                     <span className="text-lg leading-none">🔓</span>
                     <span>Se déconnecter</span>
@@ -396,7 +396,7 @@ function Item({
         className={`flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium transition ${
           highlight
             ? "bg-rialto text-white shadow-card hover:bg-rialto-dark"
-            : "text-ink hover:bg-white"
+            : "text-ink hover:bg-neutral-100"
         }`}
       >
         <span className="text-lg leading-none">{icon}</span>
@@ -430,7 +430,7 @@ function ExternalItem({
         href={href}
         target={href.startsWith("http") ? "_blank" : undefined}
         rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
-        className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-ink transition hover:bg-white"
+        className="flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium text-ink transition hover:bg-neutral-100"
       >
         <span className="text-lg leading-none">{icon}</span>
         <span className="flex-1">{label}</span>

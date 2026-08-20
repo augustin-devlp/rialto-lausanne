@@ -84,9 +84,18 @@ export default function AppHeader() {
   }, []);
 
   // Ferme le panneau livraison à la navigation et au clic extérieur.
+  // SYNCHRONISATION RECHERCHE (relecture 20.08) : à chaque navigation, le
+  // champ s'aligne sur la vérité de l'URL — ?q= sur /menu, vide ailleurs.
+  // Sans ça, un q périmé restait affiché avec un menu non filtré (l'event
+  // de re-dispatch partait avant que MenuClient n'écoute).
   useEffect(() => {
     setPanneauLivraison(false);
     setRechercheMobile(false);
+    if (pathname === "/menu") {
+      setQ(new URLSearchParams(window.location.search).get("q") ?? "");
+    } else {
+      setQ("");
+    }
   }, [pathname]);
   useEffect(() => {
     if (!panneauLivraison) return;
@@ -95,8 +104,15 @@ export default function AppHeader() {
         setPanneauLivraison(false);
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanneauLivraison(false);
+    };
     document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("click", handler);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [panneauLivraison]);
 
   const surMenu = pathname === "/menu";
@@ -140,8 +156,14 @@ export default function AppHeader() {
         {/* Burger (le panneau vit dans HamburgerMenu, glisse de gauche) */}
         <HamburgerMenu inline />
 
-        {/* Logo cliquable → accueil */}
-        <Link href="/" className="shrink-0" aria-label="Rialto — accueil">
+        {/* Logo cliquable — un client QUALIFIÉ va au menu (la home le
+            re-redirigerait aussitôt via RetourClient : un logo qui flashe
+            est un logo cassé — relecture 20.08) ; sans adresse → accueil. */}
+        <Link
+          href={monte && adresse ? "/menu" : "/"}
+          className="shrink-0"
+          aria-label="Rialto"
+        >
           <RialtoLogo size="sm" asStatic />
         </Link>
 
@@ -171,7 +193,11 @@ export default function AppHeader() {
               <div
                 role="dialog"
                 aria-label="Détails de la livraison"
-                className="absolute left-0 top-full z-50 mt-2 w-80 rounded-2xl border border-border bg-white p-4 shadow-pop"
+                // Mobile : FIXE sous la barre, pleine largeur moins les
+                // marges — l'ancrage absolute au bouton desktop (hidden en
+                // <md) plaçait le panneau à moitié hors écran, « Modifier »
+                // intouchable (relecture 20.08). Desktop : popover ancré.
+                className="fixed inset-x-3 top-16 z-50 rounded-2xl border border-border bg-white p-4 shadow-pop md:absolute md:inset-x-auto md:left-0 md:top-full md:mt-2 md:w-80"
               >
                 <div className="text-sm font-semibold text-ink">
                   Détails de la livraison
@@ -313,6 +339,8 @@ export default function AppHeader() {
             <button
               type="button"
               onClick={() => setPanneauLivraison((o) => !o)}
+              aria-expanded={panneauLivraison}
+              aria-haspopup="dialog"
               className="flex w-full items-center gap-2 rounded-btn bg-neutral-100 px-3 py-2 text-left text-xs font-medium text-ink"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="#C73E1D" className="shrink-0" aria-hidden>

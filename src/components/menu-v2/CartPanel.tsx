@@ -69,10 +69,32 @@ export default function CartPanel({
       else setMobileOpen((o) => !o);
     };
     window.addEventListener("rialto:cart-toggle", onToggle);
-    if (new URLSearchParams(window.location.search).get("panier") === "1") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("panier") === "1") {
       onToggle();
+      // Nettoie ?panier=1 : sans ça, fermer le tiroir puis F5/retour
+      // arrière le rouvrait tout seul (relecture 20.08).
+      params.delete("panier");
+      const reste = params.toString();
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + (reste ? `?${reste}` : ""),
+      );
     }
-    return () => window.removeEventListener("rialto:cart-toggle", onToggle);
+    // Rotation iPad / redimensionnement à cheval sur lg (1024px) : l'état
+    // du côté quitté doit se fermer, sinon le body reste verrouillé sur
+    // un tiroir passé en display:none (relecture 20.08 — gel dur).
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onBreakpoint = () => {
+      if (mq.matches) setMobileOpen(false);
+      else setDesktopOpen(false);
+    };
+    mq.addEventListener("change", onBreakpoint);
+    return () => {
+      window.removeEventListener("rialto:cart-toggle", onToggle);
+      mq.removeEventListener("change", onBreakpoint);
+    };
   }, []);
 
   // Ferme drawer si panier vidé
@@ -342,8 +364,8 @@ export default function CartPanel({
         aria-hidden
       />
       <aside
-        className={`fixed inset-y-0 right-0 z-[55] hidden w-[400px] flex-col overflow-hidden border-l border-border bg-white shadow-pop transition-transform duration-300 ease-out lg:flex ${
-          desktopOpen ? "translate-x-0" : "translate-x-full"
+        className={`fixed inset-y-0 right-0 z-[55] hidden w-[400px] flex-col overflow-hidden border-l border-border bg-white shadow-pop transition-[transform,visibility] duration-300 ease-out lg:flex ${
+          desktopOpen ? "translate-x-0" : "invisible translate-x-full"
         } ${className}`}
         aria-hidden={!desktopOpen}
         aria-label="Panier"

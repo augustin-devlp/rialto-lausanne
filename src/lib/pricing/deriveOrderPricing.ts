@@ -29,6 +29,25 @@
 export const TOLERANCE_CHF = 0.01;
 export const MAX_LIGNES = 50;
 export const MAX_QUANTITE = 30;
+/** Bornes des libellés d'options CONSERVÉS quand l'option est inconnue
+ *  (relecture 20.08 : seul champ client encore libre dans order_items —
+ *  300 options de 5 000 caractères passaient jusqu'au jsonb, à
+ *  l'étiquette cuisine et au reçu). */
+export const MAX_OPTIONS_LIGNE = 20;
+export const MAX_LABEL_OPTION = 60;
+
+/** Neutralise toute mention « LOT OFFERT » d'origine CLIENT : la seule
+ *  qui vaille est générée par le serveur après validation d'un code
+ *  free_item (la cuisine lit ces textes comme SEULE surface du lot —
+ *  décision 20.08). Appliqué aux notes ET aux libellés d'options. */
+export function stripLotOffert(texte: string): string {
+  return texte.replace(/lot\s+offert/gi, "").replace(/\s{2,}/g, " ").trim();
+}
+
+/** Centimes entiers : toute comparaison monétaire passe par là — la
+ *  soustraction flottante faisait mordre le seuil sur un écart
+ *  d'exactement 1 centime (2.01 + 0.01 < 2.02 en IEEE 754). */
+const cents = (x: number) => Math.round(x * 100);
 
 /** Ligne telle que postée par le client (montants NON fiables). */
 export type LigneClient = {
@@ -104,6 +123,14 @@ export type Derivation =
 
 const arrondi = (x: number) => Math.round(x * 100) / 100;
 
+/** Montant client SÛR : tout ce qui n'est pas un nombre fini (string
+ *  forgée, null, NaN, Infinity) vaut 0 — un NaN se propageait en
+ *  comparaisons toujours fausses, donc ni hausse ni journal. */
+function montantClient(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? arrondi(n) : 0;
+}
+
 /** Nom affichable dans un message d'erreur pour un id inconnu : le
  *  libellé CLIENT, tronqué — jamais inséré nulle part. */
 function nomClient(l: LigneClient): string {
@@ -137,13 +164,20 @@ export function deriveOrderPricing(
       m = new Map();
       optionsParItem.set(o.item_id, m);
     }
-    m.set(`${o.option_group}\u0000${o.option_name}`, Number(o.extra_price));
+    // Clé TRIMÉE des DEUX côtés (relecture 20.08 : un espace parasite
+    // saisi au dashboard faisait rater le lookup — extra facturé 0 en
+    // silence sur une commande légitime, journalisé « option_inconnue »).
+    m.set(
+      `${(o.option_group ?? "").trim()}\u0000${(o.option_name ?? "").trim()}`,
+      Number(o.extra_price),
+    );
   }
 
   const lignes: LigneDerivee[] = [];
   const ajustements: AjustementLigne[] = [];
   let totalClient = 0;
   let totalServeur = 0;
+  let hausseLigne = false;
 
   for (const it of items) {
     const qty = it.quantity ?? 0;
@@ -186,31 +220,51 @@ export function deriveOrderPricing(
     const optionsDerivees: LigneDerivee["selected_options"] = [];
     let optionInconnue = false;
     let extras = 0;
-    for (const o of it.selected_options ?? []) {
-      const groupe = (o.group ?? "").trim();
-      const nom = (o.name ?? "").trim();
+    const optionsClient = Array.isArray(it.selected_options)
+      ? it.selected_options.slice(0, MAX_OPTIONS_LIGNE)
+      : [];
+    for (const o of optionsClient) {
+      const groupe = String(o?.group ?? "").trim();
+      const nom = String(o?.name ?? "").trim();
       if (!groupe && !nom) continue;
       const extra = optionsItem?.get(`${groupe}\u0000${nom}`);
       if (extra === undefined) {
         // Option introuvable (renommée, fantôme de re-commande, forgée) :
         // le LIBELLÉ reste (la cuisine doit le lire), l'extra est 0 —
         // jamais le montant client — et l'écart est journalisé.
+        // Libellé CLIENT conservé (la cuisine doit le lire) mais BORNÉ
+        // et nettoyé de toute mention « LOT OFFERT » forgée.
         optionInconnue = true;
-        optionsDerivees.push({ group: groupe, name: nom, extra_price: 0 });
+        optionsDerivees.push({
+          group: stripLotOffert(groupe).slice(0, MAX_LABEL_OPTION),
+          name: stripLotOffert(nom).slice(0, MAX_LABEL_OPTION),
+          extra_price: 0,
+        });
       } else {
-        extras += extra;
-        optionsDerivees.push({ group: groupe, name: nom, extra_price: extra });
+        // Libellé CATALOGUE (l'option existe) — jamais la chaîne client.
+        extras += Number.isFinite(extra) ? extra : 0;
+        optionsDerivees.push({
+          group: groupe,
+          name: nom,
+          extra_price: Number.isFinite(extra) ? extra : 0,
+        });
       }
     }
 
     const unitaire = arrondi(Number(article.price) + extras);
     const subtotalServeur = arrondi(unitaire * qty);
-    const subtotalClient = arrondi(Number(it.subtotal ?? 0));
+    const subtotalClient = montantClient(it.subtotal);
     totalClient += subtotalClient;
     totalServeur += subtotalServeur;
 
+    // HAUSSE PAR LIGNE (relecture 20.08) : une hausse compensée par une
+    // baisse ailleurs laissait facturer UNE ligne au-dessus de son prix
+    // affiché sans re-confirmation. La règle actée — « le prix affiché
+    // engage » — vaut ligne à ligne, pas seulement sur le total.
+    if (cents(subtotalServeur) > cents(subtotalClient) + 1) hausseLigne = true;
+
     if (
-      Math.abs(subtotalServeur - subtotalClient) > TOLERANCE_CHF ||
+      Math.abs(cents(subtotalServeur) - cents(subtotalClient)) > 1 ||
       optionInconnue
     ) {
       ajustements.push({
@@ -231,7 +285,11 @@ export function deriveOrderPricing(
       quantity: qty,
       selected_options: optionsDerivees,
       subtotal: subtotalServeur,
-      notes: (it.notes ?? "").trim().slice(0, 200) || null,
+      // Note de LIGNE : cappée ET strippée (relecture 20.08 — la mention
+      // « LOT OFFERT » forgée passait par ici, la note de commande
+      // n'étant pas la seule surface lue par la cuisine).
+      notes:
+        stripLotOffert(String(it.notes ?? "").trim()).slice(0, 200) || null,
     });
   }
 
@@ -250,6 +308,8 @@ export function deriveOrderPricing(
             lignes: ajustements,
           }
         : null,
-    hausse: totalServeur > totalClient + TOLERANCE_CHF,
+    // Hausse = au moins UNE ligne au-dessus de l'affiché, OU le total
+    // (garde de ceinture : lignes vides, arrondis d'agrégat).
+    hausse: hausseLigne || cents(totalServeur) > cents(totalClient) + 1,
   };
 }

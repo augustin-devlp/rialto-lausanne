@@ -602,6 +602,10 @@ export default function CheckoutPageClient({
           // Fix total_amount 23.07.2026 : le code entre dans le POST — le
           // serveur valide, consomme et insère le total déjà remisé.
           promo_code: promo?.code ?? null,
+          // Le total EXACT sous les yeux du client : le serveur refuse de
+          // facturer au-dessus (409) — le prix affiché engage, frais
+          // compris (décision Augustin 20.08).
+          expected_total: total,
           // Lot F : snapshot d'attribution last-touch (UTM/referrer),
           // capté par TrackingProvider, null si provenance inconnue.
           attribution: readAttribution(),
@@ -618,6 +622,75 @@ export default function CheckoutPageClient({
         }),
       });
       const body = await res.json();
+      // Prix de la carte changés pendant la session (409 prix_changes,
+      // décision Augustin 20.08 : le prix affiché ENGAGE — jamais de
+      // facturation silencieuse au-dessus de l'affiché). Le serveur
+      // renvoie les lignes RE-DÉRIVÉES dans l'ordre du payload = l'ordre
+      // du panier : on resynchronise les montants, le client relit le
+      // nouveau total et re-confirme en connaissance de cause.
+      if (
+        res.status === 409 &&
+        body?.code === "prix_changes" &&
+        Array.isArray(body.lignes)
+      ) {
+        // Resynchronisation par INDEX (les lignes reviennent dans
+        // l'ordre du payload = l'ordre du panier), gardée par
+        // menu_item_id. Le panier COURANT est relu du storage : les
+        // boutons +/− du récap restent actifs pendant le POST, une
+        // édition concurrente ne doit pas être écrasée (relecture 20.08).
+        const courant = readCart();
+        const memeStructure =
+          courant.length === cart.length &&
+          courant.every((c, i) => c.key === cart[i]?.key);
+        const base = memeStructure ? courant : cart;
+        const next = base.map((c, i) => {
+          const l = body.lignes[i];
+          if (!l || l.menu_item_id !== c.menu_item_id) return c;
+          return {
+            ...c,
+            name: String(l.item_name_snapshot ?? c.name),
+            base_price: Number(l.item_price_snapshot),
+            unit_price: Number(l.unit_price),
+            // subtotal recalculé sur la quantité COURANTE (elle peut
+            // avoir changé pendant le vol du POST).
+            subtotal:
+              Math.round(Number(l.unit_price) * c.quantity * 100) / 100,
+            // extra_price des options re-dérivés : sans ça le détail du
+            // panier affichait des extras périmés sous un total corrigé.
+            options: Array.isArray(l.selected_options)
+              ? l.selected_options.map(
+                  (o: { group: string; name: string; extra_price: number }) => ({
+                    group: o.group,
+                    name: o.name,
+                    extra_price: Number(o.extra_price),
+                  }),
+                )
+              : c.options,
+          };
+        });
+        setCart(next);
+        writeCart(next);
+        setError(
+          String(
+            body.error ??
+              "Les prix de la carte ont été mis à jour — vérifiez votre panier puis confirmez à nouveau.",
+          ),
+        );
+        setLoading(false);
+        // Le message vit dans la colonne de droite, SOUS toutes les
+        // sections en mobile : sans ça le client re-confirmait à
+        // l'aveugle (relecture 20.08). On déplie le récap (les nouveaux
+        // prix y sont) et on amène le message à l'écran.
+        requestAnimationFrame(() => {
+          document
+            .querySelector<HTMLDetailsElement>("details#recap-panier")
+            ?.setAttribute("open", "");
+          document
+            .getElementById("checkout-erreur")
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+        return;
+      }
       if (!res.ok || !body?.order?.id || !body?.order?.order_number) {
         throw new Error(body?.error ?? "Erreur lors de la commande");
       }
@@ -1066,7 +1139,10 @@ export default function CheckoutPageClient({
             </button>
 
             {/* Récapitulatif du panier — REPLIABLE au chevron (É7). */}
-            <details className="group mt-5 border-t border-border pt-4">
+            <details
+              id="recap-panier"
+              className="group mt-5 border-t border-border pt-4"
+            >
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
                 <span className="font-display text-base font-bold">
                   Récapitulatif du panier ({count} article{count > 1 ? "s" : ""})
@@ -1207,7 +1283,12 @@ export default function CheckoutPageClient({
               </div>
             )}
             {error && (
-              <div className="mt-4 rounded-xl border border-rialto/30 bg-rialto/10 p-3 text-sm text-rialto">
+              <div
+                id="checkout-erreur"
+                role="alert"
+                aria-live="assertive"
+                className="mt-4 rounded-xl border border-rialto/30 bg-rialto/10 p-3 text-sm text-rialto"
+              >
                 {error}
               </div>
             )}

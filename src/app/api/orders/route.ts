@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseService } from "@/lib/supabase";
+import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
+import {
+  deriveOrderPricing,
+  stripLotOffert,
+} from "@/lib/pricing/deriveOrderPricing";
 import { sendEmail } from "@/lib/brevo";
 import { buildCustomerOrderEmail } from "@/lib/orderEmail";
 import {
@@ -65,6 +69,11 @@ type Payload = {
   // (l'ancien flux en deux temps — POST /api/orders puis
   // /api/promo-codes/apply côté client — laissait total_amount brut).
   promo_code?: string | null;
+  /** Total EXACT affiché au client au moment du clic (articles + frais −
+   *  remise). Le serveur refuse de facturer au-dessus (409) — le prix
+   *  affiché engage, frais de livraison compris. Optionnel : un client en
+   *  cache ancien ne l'envoie pas, la garde ne s'applique alors pas. */
+  expected_total?: number | null;
   // Lot F : snapshot d'attribution last-touch (UTM/referrer/landing),
   // capté côté client — re-filtré en liste blanche avant écriture.
   attribution?: Record<string, unknown> | null;
@@ -108,7 +117,133 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const subtotal = body.items.reduce((s, it) => s + Number(it.subtotal), 0);
+  // ═══ RE-DÉRIVATION DES PRIX SERVEUR (lot bloquant go-live, GO Augustin
+  // 20.08.2026 — invariant restauré : le POST recalcule TOUT). Le serveur
+  // ne croit du client que les ARTICLES et les QUANTITÉS : prix, extras
+  // et subtotals sont relus du CATALOGUE, frais (jamais le cache upsell
+  // 30 s), scopé sur LE restaurant (pinning constante, comme reorder —
+  // un menu_item_id étranger ne se résout pas). Les montants du payload
+  // ne servent qu'à mesurer l'écart (journal pricing_adjustments).
+  if (body.items.length > 50) {
+    // Cap AVANT les SELECT catalogue (relecture 20.08) : la garde de la
+    // fonction pure arrivait après deux requêtes .in() géantes.
+    return NextResponse.json(
+      { error: "Panier trop volumineux (50 lignes maximum)." },
+      { status: 400 },
+    );
+  }
+  const idsItems = [
+    ...new Set(
+      body.items
+        .map((it) => it.menu_item_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+  const [catRes, optRes] = await Promise.all([
+    sb
+      .from("menu_items")
+      .select(
+        "id, name, price, is_available, is_out_of_stock, is_seasonal, season_start, season_end",
+      )
+      .eq("restaurant_id", RESTAURANT_ID)
+      .in("id", idsItems.length > 0 ? idsItems : ["00000000-0000-0000-0000-000000000000"]),
+    sb
+      .from("menu_item_options")
+      .select("item_id, option_group, option_name, extra_price")
+      .in("item_id", idsItems.length > 0 ? idsItems : ["00000000-0000-0000-0000-000000000000"]),
+  ]);
+  if (catRes.error || optRes.error) {
+    // Panne DB ≠ panier invalide (même règle que la zone) : jamais un
+    // refus mensonger sur une erreur transitoire.
+    return NextResponse.json(
+      {
+        error:
+          "Vérification du menu momentanément indisponible — réessayez dans un instant.",
+      },
+      { status: 503 },
+    );
+  }
+  const derivation = deriveOrderPricing(
+    body.items,
+    catRes.data ?? [],
+    optRes.data ?? [],
+    toZurichDate(new Date()),
+  );
+  if (!derivation.ok) {
+    return NextResponse.json(
+      { error: derivation.message },
+      { status: derivation.status },
+    );
+  }
+  // Le total AFFICHÉ engage, frais compris (relecture 20.08 : la
+  // re-dérivation ne couvrait que les articles — un frais de zone monté
+  // au dashboard pendant la session, ou une gratuité perdue, se facturait
+  // en silence au-dessus de l'affiché). `expected_total` est le total que
+  // le client a EU SOUS LES YEUX ; absent (client en cache ancien) → la
+  // garde ne s'applique pas, jamais de refus sur son absence.
+  const totalAttendu =
+    typeof body.expected_total === "number" &&
+    Number.isFinite(body.expected_total)
+      ? Math.round(body.expected_total * 100)
+      : null;
+  /** Lignes re-dérivées telles que renvoyées au client pour qu'il
+   *  resynchronise son panier (ordre du payload = ordre du panier). */
+  const lignesPourClient = () =>
+    derivation.ok
+      ? derivation.lignes.map((l) => ({
+          menu_item_id: l.menu_item_id,
+          item_name_snapshot: l.item_name_snapshot,
+          item_price_snapshot: l.item_price_snapshot,
+          unit_price:
+            Math.round(
+              (l.item_price_snapshot +
+                l.selected_options.reduce((x, o) => x + o.extra_price, 0)) *
+                100,
+            ) / 100,
+          quantity: l.quantity,
+          // selected_options RE-DÉRIVÉES : sans elles le panier client
+          // gardait des extra_price périmés (relecture 20.08).
+          selected_options: l.selected_options,
+          subtotal: l.subtotal,
+        }))
+      : [];
+
+  if (derivation.hausse) {
+    // Décision Augustin 20.08 : TOUTE hausse au-delà de ±0.01 déclenche
+    // la re-confirmation — le prix affiché engage, JAMAIS de facturation
+    // silencieuse au-dessus de l'affiché (une bande de tolérance en
+    // francs n'achète presque rien et nous expose). Les lignes re-
+    // dérivées partent DANS L'ORDRE du payload : le checkout resynchronise
+    // son panier et ré-affiche le vrai total avant re-confirmation.
+    // AUCUNE commande créée. (Le POST forgé à la baisse — fraude —
+    // atterrit ici aussi : refusé, pas corrigé.)
+    console.warn(
+      "[orders] 409 prix_changes (articles)",
+      JSON.stringify(derivation.ajustements),
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Les prix de la carte ont été mis à jour — vérifiez votre panier puis confirmez à nouveau.",
+        code: "prix_changes",
+        lignes: lignesPourClient(),
+      },
+      { status: 409 },
+    );
+  }
+  // À partir d'ici : lignes et assiette 100 % SERVEUR (baisse éventuelle
+  // silencieuse, journalisée via pricing_adjustments après l'INSERT).
+  const lignesDerivees = derivation.lignes;
+  const subtotal = derivation.subtotal;
+  // Strip anti-forge (décision 20.08) : toute mention « LOT OFFERT »
+  // d'origine CLIENT est neutralisée — la seule qui compte est générée
+  // plus bas, après validation RÉELLE d'un code free_item (la cuisine
+  // lit la note de commande comme seule surface du lot). Cap 200.
+  if (body.notes != null) {
+    // String() : un payload forgé avec notes non-string levait un
+    // TypeError → 500 brut (relecture 20.08).
+    body.notes = stripLotOffert(String(body.notes)).slice(0, 200) || null;
+  }
   const fulfillmentType: "pickup" | "delivery" = body.fulfillment_type ?? "pickup";
 
   // --- Validation delivery ---
@@ -183,6 +318,12 @@ export async function POST(req: NextRequest) {
           error: `Commande minimum pour la livraison : ${Number(
             zone.min_order_amount,
           ).toFixed(2)} CHF.`,
+          // Le minimum est évalué sur l'assiette RE-DÉRIVÉE : si un prix
+          // a baissé, le client voit un montant qu'il n'a pas à l'écran.
+          // On renvoie les lignes pour qu'il resynchronise (relecture
+          // 20.08) — la garde reste bloquante (condition de service).
+          code: "prix_changes",
+          lignes: lignesPourClient(),
         },
         { status: 400 },
       );
@@ -262,6 +403,35 @@ export async function POST(req: NextRequest) {
   }
 
   const total = Math.max(0, subtotal + deliveryFee - promoDiscount);
+
+  // GARDE DU TOTAL AFFICHÉ (relecture 20.08) : la re-dérivation ne
+  // couvrait que les ARTICLES — un frais de zone monté au dashboard, une
+  // gratuité perdue de justesse ou une remise recalculée pouvaient encore
+  // facturer au-dessus de ce que le client a vu. Ici la comparaison porte
+  // sur le TOTAL FINAL, en centimes entiers. Jamais bloquant à la baisse.
+  if (totalAttendu !== null && Math.round(total * 100) > totalAttendu + 1) {
+    console.warn(
+      "[orders] 409 total_change",
+      JSON.stringify({
+        attendu: totalAttendu / 100,
+        serveur: total,
+        subtotal,
+        deliveryFee,
+        promoDiscount,
+      }),
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Le montant de votre commande a changé (prix ou frais de livraison) — vérifiez le récapitulatif puis confirmez à nouveau.",
+        code: "prix_changes",
+        lignes: lignesPourClient(),
+        total_serveur: total,
+        delivery_fee_serveur: deliveryFee,
+      },
+      { status: 409 },
+    );
+  }
 
   // --- Heure de retrait / livraison ---
   // Pickup : obligatoire. Delivery : optionnelle (asap possible).
@@ -375,7 +545,16 @@ export async function POST(req: NextRequest) {
       doorbell_name: body.doorbell_name ?? null,
       payment_method: body.payment_method ?? null,
       payment_card_timing: body.payment_card_timing ?? null,
-      payment_cash_bills: body.payment_cash_bills ?? null,
+      // Clampé, jamais bloquant (décision 20.08) : une valeur forgée ou
+      // hors bornes numeric(6,2) devient null au lieu de casser l'INSERT
+      // ou de polluer la caisse.
+      payment_cash_bills:
+        typeof body.payment_cash_bills === "number" &&
+        Number.isFinite(body.payment_cash_bills) &&
+        body.payment_cash_bills >= 0 &&
+        body.payment_cash_bills <= 9999.99
+          ? body.payment_cash_bills
+          : null,
     })
     // total_amount renvoyé pour le tracking purchase (Lot E) : la valeur
     // trackée doit être le montant AUTORITAIRE en base, pas le total
@@ -398,15 +577,18 @@ export async function POST(req: NextRequest) {
     void markPromoCodeUsedOnOrder(promoCodeId, order.id as string);
   }
 
-  const rows = body.items.map((it) => ({
+  // Lignes RE-DÉRIVÉES uniquement (jamais body.items) : nom, prix,
+  // extras et subtotal viennent du catalogue — l'étiquette cuisine ne
+  // vient jamais du client.
+  const rows = lignesDerivees.map((l) => ({
     order_id: order.id,
-    menu_item_id: it.menu_item_id,
-    item_name_snapshot: it.item_name_snapshot,
-    item_price_snapshot: it.item_price_snapshot,
-    quantity: it.quantity,
-    selected_options: it.selected_options,
-    subtotal: it.subtotal,
-    notes: it.notes,
+    menu_item_id: l.menu_item_id,
+    item_name_snapshot: l.item_name_snapshot,
+    item_price_snapshot: l.item_price_snapshot,
+    quantity: l.quantity,
+    selected_options: l.selected_options,
+    subtotal: l.subtotal,
+    notes: l.notes,
   }));
 
   const { error: iErr } = await sb.from("order_items").insert(rows);
@@ -441,6 +623,22 @@ export async function POST(req: NextRequest) {
       .eq("id", order.id);
     if (attrErr && attrErr.code !== "PGRST204" && attrErr.code !== "42703") {
       console.error("[orders] attribution non écrite", attrErr.code);
+    }
+  }
+
+  // Journal des écarts prix client/serveur (navette PR1) : UPDATE
+  // best-effort SÉPARÉ, pattern attribution — tant que la colonne
+  // pricing_adjustments n'existe pas, l'erreur « colonne inconnue » est
+  // avalée et le journal est simplement muet ; la création de commande
+  // ne peut JAMAIS en souffrir. N'arrive ici que pour les BAISSES et les
+  // options inconnues (une hausse a répondu 409 avant l'INSERT).
+  if (derivation.ajustements) {
+    const { error: adjErr } = await sb
+      .from("orders")
+      .update({ pricing_adjustments: derivation.ajustements })
+      .eq("id", order.id);
+    if (adjErr && adjErr.code !== "PGRST204" && adjErr.code !== "42703") {
+      console.error("[orders] pricing_adjustments non écrit", adjErr.code);
     }
   }
 
@@ -639,12 +837,14 @@ export async function POST(req: NextRequest) {
             promo_code: promoCodeLabel,
             notes: body.notes,
           },
-          items: body.items.map((it) => ({
-            item_name_snapshot: it.item_name_snapshot,
-            quantity: it.quantity,
-            selected_options: it.selected_options,
-            subtotal: it.subtotal,
-            notes: it.notes,
+          // Lignes RE-DÉRIVÉES : le reçu somme exactement au total
+          // facturé (body.items pouvait diverger — relecture 20.08).
+          items: lignesDerivees.map((l) => ({
+            item_name_snapshot: l.item_name_snapshot,
+            quantity: l.quantity,
+            selected_options: l.selected_options,
+            subtotal: l.subtotal,
+            notes: l.notes,
           })),
           restaurant: {
             name: restaurant.name,

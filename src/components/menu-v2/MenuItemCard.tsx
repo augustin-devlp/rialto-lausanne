@@ -92,12 +92,9 @@ export default function MenuItemCard({ item, categoryName, onAdd }: Props) {
               </p>
             )}
           </div>
-          <div className="flex items-end justify-between gap-2">
-            <span className="tabular whitespace-nowrap flex-shrink-0 font-display text-sm font-semibold text-rialto-dark md:text-base">
-              {formatCHF(Number(item.price))}
-            </span>
-
-          </div>
+          <span className="tabular whitespace-nowrap font-display text-sm font-semibold text-rialto-dark md:text-base">
+            {formatCHF(Number(item.price))}
+          </span>
         </div>
         {/* Correction de spec 20.08 : bandeau ~3:1, texte 2/3 — image 1/3. */}
         <div className="relative w-1/3 shrink-0">

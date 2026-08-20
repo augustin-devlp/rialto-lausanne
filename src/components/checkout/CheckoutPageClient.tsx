@@ -7,8 +7,8 @@
  * d'autre — l'AppHeader global est null sur cette route : zéro fuite).
  * Colonne GAUCHE (2/3) : 1. Logement · 2. Détails de la livraison
  * (adresse, champs adaptatifs, MODE DE REMISE exclusif) · 3. Option de
- * livraison (Standard / Planifié) · 4. Moyen de paiement · 5. Coordonnées
- * · upsell. Colonne DROITE (1/3, sticky) : établissement + CTA principal
+ * livraison (Standard / Planifié) · 4. Moyen de paiement · 5. Coordonnées.
+ * Colonne DROITE (1/3, sticky) : établissement + CTA principal
  * sans scroll, récapitulatif du panier REPLIABLE, code promotionnel,
  * totaux, second CTA.
  *
@@ -19,7 +19,6 @@
  * planification réelle est un point BLOQUANT go-live (GO_LIVE.md).
  *
  * Préremplissage silencieux via localStorage RIALTO:CHECKOUT_PREFILL:V1.
- * Numéro WhatsApp Mehmet en placeholder — Augustin remplace.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,9 +29,7 @@ import type { CartItem } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { normalizePhone } from "@/lib/phone";
 import {
-  addLinesToCart,
   cartCount,
-  cartLineKey,
   cartSubtotal,
   clearAddress,
   clearCart,
@@ -499,7 +496,6 @@ export default function CheckoutPageClient({
     writeCart(next);
   }
 
-
   async function applyPromo() {
     const code = promoInput.trim().toUpperCase();
     if (!code) return;
@@ -783,8 +779,9 @@ export default function CheckoutPageClient({
         onSubmit={handleSubmit}
         className="container-hero grid grid-cols-1 gap-5 py-5 lg:grid-cols-[minmax(0,1fr),380px] lg:gap-6 lg:py-6"
       >
-        {/* ─── Colonne gauche (É7 : le récap panier a déménagé dans la
-            colonne droite, repliable — l'upsell reste ici en bas) ──── */}
+        {/* ─── Colonne gauche (le récap panier vit dans la colonne
+            droite, repliable ; les suggestions vivent dans le tiroir
+            panier — plus d'upsell au checkout, décision 20.08) ──── */}
         <div className="space-y-8">
           {/* ─────── SECTION 1 — DÉTAILS DE LA LIVRAISON (refonte 20.08) ──
               Vue COMPACTE (logement en gras + adresse + Modifier) quand
@@ -795,7 +792,7 @@ export default function CheckoutPageClient({
               contour rouge Rialto + ombre légère (les fonds beiges de
               sélection sont bannis du checkout). */}
           <Section title="Détails de la livraison" step="1">
-            {!editionLivraison && housingType !== null ? (
+            {housingType !== null ? (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <span className="shrink-0 text-rialto">
@@ -810,8 +807,9 @@ export default function CheckoutPageClient({
                       {housingType === "house" ? "Maison" : "Appartement"}
                     </div>
                     <div className="truncate text-sm text-mute">
-                      {street}
-                      {postalCode || city ? ` — ${postalCode} ${city}` : ""}
+                      {[street, [postalCode, city].filter(Boolean).join(" ")]
+                        .filter((x) => x && x.trim())
+                        .join(" — ")}
                     </div>
                   </div>
                 </div>
@@ -848,7 +846,7 @@ export default function CheckoutPageClient({
                 le CTA se grisait sans plus aucun message à l'écran,
                 y compris quand l'erreur arrivait après le repli via le
                 debounce du re-check de CP). */}
-            {!editionLivraison && housingType !== null &&
+            {housingType !== null &&
               (cpZoneError || street.trim().length < 3) && (
                 <p className="mt-2 text-xs font-medium text-rialto">
                   {cpZoneError ??
@@ -1091,7 +1089,7 @@ export default function CheckoutPageClient({
                     inputMode="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Numéro de téléphone (+41…)"
+                    placeholder="Téléphone (+41…)"
                     aria-label="Numéro de téléphone"
                     required
                     autoComplete="tel"
@@ -1106,15 +1104,25 @@ export default function CheckoutPageClient({
                     champ téléphone ni en pied de section (elle
                     engloberait le numéro et nous ferait promettre par
                     écrit l'inverse de ce que nous faisons). */}
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email — uniquement pour votre reçu, jamais de publicité"
-                  aria-label="Email — uniquement pour votre reçu, jamais de publicité"
-                  autoComplete="email"
-                  className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
-                />
+                <div>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email (optionnel)"
+                    aria-label="Email"
+                    aria-describedby="promesse-email"
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
+                  />
+                  {/* Visible en permanence (un placeholder disparaît à la
+                      saisie et se tronque sur mobile — relecture 20.08),
+                      collé au champ email et lié par aria-describedby :
+                      la promesse ne couvre QUE l'email. */}
+                  <p id="promesse-email" className="mt-1 text-xs text-mute">
+                    Uniquement pour votre reçu — jamais de publicité.
+                  </p>
+                </div>
               </div>
             </Section>
           )}

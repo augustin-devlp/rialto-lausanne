@@ -562,11 +562,16 @@ export default function MenuClient({ categories, items, options, restaurantId }:
       <section className="pb-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           {/* Intro réduite à UNE ligne discrète (retour Augustin 20.08 :
-              le premier écran montre des plats, pas des statistiques). */}
-          <p className="text-sm text-mute">
-            {items.length} plats · {categories.length} catégories — pizzas
-            Ø33&nbsp;cm, pâtes maison, spécialités anatoliennes.
-          </p>
+              le premier écran montre des plats, pas des statistiques).
+              Le h1 reste pour le SEO et la hiérarchie de titres — c'était
+              le SEUL h1 de la route (relecture 20.08) — mais invisible. */}
+          <h1 className="sr-only">Menu Rialto — pizzeria à Lausanne</h1>
+          {items.length > 0 && (
+            <p className="text-sm text-mute">
+              {items.length} plats · {categories.length} catégories — pizzas
+              Ø33&nbsp;cm, pâtes maison, spécialités anatoliennes.
+            </p>
+          )}
           {/* ETA vivante (même moteur que checkout/suivi) — relogée ici
               depuis l'ancien header sticky local (refonte 20.08). */}
           {address && (

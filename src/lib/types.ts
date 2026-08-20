@@ -21,6 +21,9 @@ export type Restaurant = {
 
 export type FulfillmentType = "pickup" | "delivery";
 
+/** Type de logement de l'adresse de livraison (pop-up partagé 20.08). */
+export type HousingType = "house" | "apartment";
+
 export type DeliveryZone = {
   id: string;
   postal_code: string;

@@ -6,7 +6,7 @@
  * localStorage avec une clé versionnée pour pouvoir invalider en cas de
  * migration de schéma.
  */
-import type { CartItem, CartOptionSelection } from "./types";
+import type { CartItem, CartOptionSelection, HousingType } from "./types";
 import { track } from "./tracking";
 
 const CART_KEY = "RIALTO:CART:V2";
@@ -147,6 +147,81 @@ export function cartLineKey(
     .sort()
     .join("|");
   return `${itemId}::${opt}::${notes}`;
+}
+
+/* ─── Prefill checkout (déplacé de CheckoutPageClient, pop-up partagé
+   20.08 : l'en-tête doit pouvoir lire/fusionner les détails de logement
+   sans passer par la page checkout) ─────────────────────────────────── */
+
+const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
+
+export type Prefill = {
+  housingType?: HousingType;
+  street?: string;
+  postalCode?: string;
+  city?: string;
+  entryCode1?: string;
+  entryCode2?: string;
+  floor?: string;
+  apartmentNumber?: string;
+  doorbellName?: string;
+  instructions?: string;
+  remiseMode?: "main_propre" | "laisser_porte";
+  remiseOption?: string;
+  firstName?: string;
+  phone?: string;
+  email?: string;
+};
+
+export function readPrefill(): Prefill {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PREFILL_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Prefill;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writePrefill(p: Prefill): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PREFILL_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Fusionne les champs D'ADRESSE dans le prefill existant (prénom,
+ *  téléphone, email, remise… préservés). Utilisé par le pop-up partagé :
+ *  une adresse enregistrée depuis l'EN-TÊTE doit être retrouvée intacte
+ *  au checkout — codes d'entrée compris —, sinon le garde du mount
+ *  (prefill au NPA divergent = intrus) jetterait la moitié des champs. */
+export function mergePrefillAdresse(champs: {
+  housingType: HousingType;
+  street: string;
+  postalCode: string;
+  city: string;
+  entryCode1: string;
+  entryCode2: string;
+  floor: string;
+  apartmentNumber: string;
+  doorbellName: string;
+}): void {
+  writePrefill({
+    ...readPrefill(),
+    housingType: champs.housingType,
+    street: champs.street,
+    postalCode: champs.postalCode,
+    city: champs.city,
+    entryCode1: champs.entryCode1 || undefined,
+    entryCode2: champs.entryCode2 || undefined,
+    floor: champs.floor || undefined,
+    apartmentNumber: champs.apartmentNumber || undefined,
+    doorbellName: champs.doorbellName || undefined,
+  });
 }
 
 /** Libellé de zone utilisable comme « ville » d'une adresse client :

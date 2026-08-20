@@ -177,6 +177,12 @@ export default function MenuClient({ categories, items, options, restaurantId }:
         } catch {
           /* ignore */
         }
+        // Garde anti-course (relecture 20.08) : le pop-up de l'en-tête
+        // permet désormais de changer d'adresse SANS quitter /menu — si
+        // l'adresse en storage n'est plus celle de l'instantané du
+        // montage, cette re-qualification est périmée : on la jette.
+        const courante = readAddress();
+        if (!courante || courante.postal_code !== a.postal_code) return;
         if (body.covered && body.zone) {
           writeAddress({
             address: a.address,

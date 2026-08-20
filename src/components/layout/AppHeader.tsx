@@ -36,8 +36,14 @@ import {
   cartCount,
   readAddress,
   readCart,
+  readPrefill,
+  villeSeedable,
   type QualifiedAddress,
 } from "@/lib/clientStore";
+import AdresseLivraisonPopup, {
+  type GraineAdresse,
+} from "@/components/address/AdresseLivraisonPopup";
+import { RESTAURANT_ID_CLIENT } from "@/lib/rialto-data";
 import {
   readCustomerSession,
   type CustomerSession,
@@ -52,6 +58,13 @@ export default function AppHeader() {
   const [nbArticles, setNbArticles] = useState(0);
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [panneauLivraison, setPanneauLivraison] = useState(false);
+  // Pop-up d'adresse PARTAGÉ (même composant que le checkout — décision
+  // Augustin 20.08 : une seule voie de modification d'adresse, plus
+  // jamais de détour par la home qui rebondissait au menu).
+  const [editionAdresse, setEditionAdresse] = useState(false);
+  const [graineAdresse, setGraineAdresse] = useState<GraineAdresse | null>(
+    null,
+  );
   const [q, setQ] = useState("");
   const [rechercheMobile, setRechercheMobile] = useState(false);
   const panneauRef = useRef<HTMLDivElement>(null);
@@ -91,6 +104,7 @@ export default function AppHeader() {
   useEffect(() => {
     setPanneauLivraison(false);
     setRechercheMobile(false);
+    setEditionAdresse(false);
     if (pathname === "/menu") {
       setQ(new URLSearchParams(window.location.search).get("q") ?? "");
     } else {
@@ -140,6 +154,31 @@ export default function AppHeader() {
     if (!surMenu) {
       router.push(q.trim() ? `/menu?q=${encodeURIComponent(q.trim())}` : "/menu");
     }
+  };
+
+  // Graine du pop-up : adresse qualifiée + détails logement du prefill —
+  // le prefill n'est digne de confiance que s'il porte le MÊME NPA que
+  // l'adresse (même garde que le mount du checkout, relecture 20.08).
+  const ouvrirEditionAdresse = () => {
+    const a = readAddress();
+    if (!a) return;
+    const p = readPrefill();
+    const coherent = !!p.postalCode && p.postalCode === a.postal_code;
+    setGraineAdresse({
+      housingType: p.housingType ?? null,
+      street:
+        (a.address ?? "").trim() ||
+        (coherent ? (p.street ?? "").trim() : ""),
+      npa: a.postal_code ?? "",
+      ville: villeSeedable(a.city) ?? (coherent ? p.city ?? "" : ""),
+      entryCode1: coherent ? p.entryCode1 ?? "" : "",
+      entryCode2: coherent ? p.entryCode2 ?? "" : "",
+      floor: coherent ? p.floor ?? "" : "",
+      apartmentNumber: coherent ? p.apartmentNumber ?? "" : "",
+      doorbellName: coherent ? p.doorbellName ?? "" : "",
+    });
+    setPanneauLivraison(false);
+    setEditionAdresse(true);
   };
 
   const clicCaddie = () => {
@@ -209,12 +248,13 @@ export default function AppHeader() {
                       {adresse.postal_code} {adresse.city ?? ""}
                     </div>
                   </div>
-                  <Link
-                    href="/?need_address=1"
+                  <button
+                    type="button"
+                    onClick={ouvrirEditionAdresse}
                     className="shrink-0 rounded-btn border border-border px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-ink"
                   >
                     Modifier
-                  </Link>
+                  </button>
                 </div>
                 <div className="my-3 border-t border-border" />
                 <div className="space-y-1.5">
@@ -374,6 +414,24 @@ export default function AppHeader() {
             </form>
           )}
         </div>
+      )}
+      {/* Pop-up d'adresse partagé — l'affichage de l'en-tête suit via
+          rialto:address-updated (writeAddress du composant). */}
+      {graineAdresse && (
+        <AdresseLivraisonPopup
+          restaurantId={RESTAURANT_ID_CLIENT}
+          ouvert={editionAdresse}
+          graine={graineAdresse}
+          onAnnuler={() => setEditionAdresse(false)}
+          // Le commit est gardé en MÉMOIRE (pas seulement relu du
+          // storage) : en dégradé writeAddress (Safari privé, quota),
+          // l'affichage suit quand même l'adresse enregistrée
+          // (relecture 20.08).
+          onEnregistre={(c) => {
+            setAdresse(c.adresse);
+            setEditionAdresse(false);
+          }}
+        />
       )}
     </header>
   );

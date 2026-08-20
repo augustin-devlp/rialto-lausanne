@@ -25,7 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { CartItem } from "@/lib/types";
+import type { CartItem, HousingType } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
 import { normalizePhone } from "@/lib/phone";
 import {
@@ -35,11 +35,13 @@ import {
   clearCart,
   readAddress,
   readCart,
+  readPrefill,
   villeSeedable,
-  writeAddress,
   writeCart,
+  writePrefill,
   type QualifiedAddress,
 } from "@/lib/clientStore";
+import AdresseLivraisonPopup from "@/components/address/AdresseLivraisonPopup";
 import { track } from "@/lib/tracking";
 import {
   debuteOperationCritique,
@@ -72,74 +74,9 @@ type Props = {
 
 const STAMPIFY_BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
 
-const PREFILL_KEY = "RIALTO:CHECKOUT_PREFILL:V1";
-
-/** Vrai si la ville saisie recoupe la commune de la zone. Jetons ≥ 3
- *  caractères, normalisés NFD sans accents ; les libellés multi-communes
- *  « A / B / C » de la grille ZL1 acceptent chacune de leurs parties ;
- *  comparaison par préfixe pour absorber les petites fautes de frappe.
- *  Ville vide ou zone sans libellé → toujours vrai (autofill). */
-function villeCompatibleZone(
-  saisie: string,
-  zoneCity: string | null,
-): boolean {
-  if (!zoneCity) return true;
-  const jetons = (t: string) =>
-    t
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .split(/[^a-z0-9]+/)
-      .filter((x) => x.length >= 3);
-  const js = jetons(saisie);
-  if (js.length === 0) return true;
-  const jz = zoneCity.split("/").flatMap(jetons);
-  if (jz.length === 0) return true;
-  return js.some((a) => jz.some((b) => a.startsWith(b) || b.startsWith(a)));
-}
-
-type HousingType = "house" | "apartment";
 type PaymentMethod = "card" | "cash" | "twint";
 type CardTiming = "on_delivery" | "remote";
 
-type Prefill = {
-  housingType?: HousingType;
-  street?: string;
-  postalCode?: string;
-  city?: string;
-  entryCode1?: string;
-  entryCode2?: string;
-  floor?: string;
-  apartmentNumber?: string;
-  doorbellName?: string;
-  instructions?: string;
-  remiseMode?: "main_propre" | "laisser_porte";
-  remiseOption?: string;
-  firstName?: string;
-  phone?: string;
-  email?: string;
-};
-
-function readPrefill(): Prefill {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(PREFILL_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Prefill;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writePrefill(p: Prefill): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PREFILL_KEY, JSON.stringify(p));
-  } catch {
-    /* ignore */
-  }
-}
 
 export default function CheckoutPageClient({
   restaurantId,
@@ -169,27 +106,9 @@ export default function CheckoutPageClient({
   const [editionLivraison, setEditionLivraison] = useState(false);
   const [panneauInstructions, setPanneauInstructions] = useState(false);
 
-  // BROUILLONS des pop-ups (correctif bug zone 20.08 + règle « fermer =
-  // annuler ») : les pop-ups n'écrivent JAMAIS les états réels pendant la
-  // saisie. Ouvrir copie réel → brouillon ; seul « Enregistrer » committe
-  // (pour la livraison : APRÈS vérification synchrone de la zone) ; croix,
-  // voile et Échap jettent le brouillon.
-  const [dHousingType, setDHousingType] = useState<HousingType | null>(null);
-  const [dStreet, setDStreet] = useState("");
-  const [dNpa, setDNpa] = useState("");
-  const [dVille, setDVille] = useState("");
-  const [dEntryCode1, setDEntryCode1] = useState("");
-  const [dEntryCode2, setDEntryCode2] = useState("");
-  const [dFloor, setDFloor] = useState("");
-  const [dApptNum, setDApptNum] = useState("");
-  const [dDoorbell, setDDoorbell] = useState("");
-  const [dZoneError, setDZoneError] = useState<string | null>(null);
-  const [dSaving, setDSaving] = useState(false);
-  // Jeton de génération du pop-up livraison : incrémenté à CHAQUE
-  // ouverture et fermeture-annulation — un commit dont le fetch était en
-  // vol au moment d'une fermeture s'abandonne (relecture 20.08 : sans ce
-  // jeton, Échap pendant « Vérification… » n'annulait pas vraiment).
-  const editionGenRef = useRef(0);
+  // BROUILLON du panneau instructions (correctif « fermer = annuler »
+  // 20.08). Le brouillon du pop-up LIVRAISON vit désormais dans le
+  // composant PARTAGÉ AdresseLivraisonPopup (même voie que l'en-tête).
   const [dRemiseMode, setDRemiseMode] = useState<
     "main_propre" | "laisser_porte"
   >("main_propre");
@@ -201,24 +120,22 @@ export default function CheckoutPageClient({
   // « le défaut intouché n'écrit rien », relecture 20.08).
   const [dRemiseTouchee, setDRemiseTouchee] = useState(false);
 
-  // Pop-ups (instructions livreur + détails de la livraison) : verrou du
-  // scroll body + fermeture Escape (pattern FilterModal).
+  // Panneau instructions : verrou du scroll body + fermeture Escape
+  // (pattern FilterModal). Le pop-up livraison gère les siens dans le
+  // composant partagé.
   useEffect(() => {
-    if (!panneauInstructions && !editionLivraison) return;
+    if (!panneauInstructions) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setPanneauInstructions(false);
-        fermerEditionLivraison();
-      }
+      if (e.key === "Escape") setPanneauInstructions(false);
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", onKey);
     };
-  }, [panneauInstructions, editionLivraison]);
+  }, [panneauInstructions]);
 
   // Section 2 : adresse + apt fields
   const [street, setStreet] = useState("");
@@ -301,29 +218,32 @@ export default function CheckoutPageClient({
     // sa ville sont mariées à un autre NPA (relecture 20.08).
     const prefillCoherent =
       !!p.postalCode && p.postalCode === a.postal_code;
-    const rue0 = prefillCoherent
-      ? p.street ?? a.address ?? ""
-      : a.address ?? "";
+    // La rue de l'adresse QUALIFIÉE prime toujours : re-saisie au gate ou
+    // au pop-up, elle est au moins aussi fraîche que le prefill de la
+    // dernière commande (relecture 20.08 — l'ordre inverse renvoyait la
+    // commande à l'ancienne rue après un re-gate à NPA identique).
+    const rueGate = (a.address ?? "").trim();
+    const rue0 = rueGate || (prefillCoherent ? (p.street ?? "").trim() : "");
     const npa0 = a.postal_code ?? "";
-    const ville0 = a.city ?? (prefillCoherent ? p.city ?? "" : "");
+    // Ville : jamais un libellé multi-communes « A / B / C » de la grille
+    // en guise de « ville saisie » (relecture 20.08).
+    const ville0 =
+      villeSeedable(a.city) ?? (prefillCoherent ? p.city ?? "" : "");
     setStreet(rue0);
     setPostalCode(npa0);
     setCity(ville0);
     setHousingType(p.housingType ?? null);
-    if (!p.housingType) {
-      // Première visite : le pop-up s'ouvre — on seed son BROUILLON avec
-      // les valeurs du gate (le pop-up n'écrit plus les états réels).
-      setDHousingType(null);
-      setDStreet(rue0);
-      setDNpa(npa0);
-      setDVille(ville0);
-      setEditionLivraison(true);
-    }
-    setEntryCode1(p.entryCode1 ?? "");
-    setEntryCode2(p.entryCode2 ?? "");
-    setFloor(p.floor ?? "");
-    setApartmentNumber(p.apartmentNumber ?? "");
-    setDoorbellName(p.doorbellName ?? "");
+    // Première visite (aucun logement connu) : le pop-up partagé s'ouvre
+    // — il se seede lui-même depuis la graine (les états posés ci-dessus).
+    if (!p.housingType) setEditionLivraison(true);
+    // Détails de logement : MÊME garde de cohérence que la rue et la
+    // ville (relecture 20.08) — un prefill au NPA divergent porte les
+    // codes d'entrée/étage/sonnette d'une AUTRE adresse.
+    setEntryCode1(prefillCoherent ? p.entryCode1 ?? "" : "");
+    setEntryCode2(prefillCoherent ? p.entryCode2 ?? "" : "");
+    setFloor(prefillCoherent ? p.floor ?? "" : "");
+    setApartmentNumber(prefillCoherent ? p.apartmentNumber ?? "" : "");
+    setDoorbellName(prefillCoherent ? p.doorbellName ?? "" : "");
     setInstructions(p.instructions ?? "");
     setRemiseMode(p.remiseMode ?? "main_propre");
     setRemiseOption(p.remiseOption ?? "porte");
@@ -457,143 +377,6 @@ export default function CheckoutPageClient({
       controller.abort();
     };
   }, [subtotal, promo]);
-
-  /** Ouvre le pop-up « Détails de la livraison » en copiant les valeurs
-   *  réelles dans le BROUILLON. Bug 20.08 (commande R-2026-044) : le
-   *  pop-up écrivait les états réels à la frappe, un NPA vidé passait
-   *  « Enregistrer » sans erreur, la re-qualification débouncée se
-   *  court-circuitait en silence et le POST retombait sur l'ANCIEN code
-   *  postal — rue et ville neuves, zone de l'ancienne adresse. */
-  function ouvrirEditionLivraison() {
-    editionGenRef.current += 1;
-    setDHousingType(housingType);
-    setDStreet(street);
-    setDNpa(postalCode);
-    setDVille(city);
-    setDEntryCode1(entryCode1);
-    setDEntryCode2(entryCode2);
-    setDFloor(floor);
-    setDApptNum(apartmentNumber);
-    setDDoorbell(doorbellName);
-    setDZoneError(null);
-    setDSaving(false);
-    setEditionLivraison(true);
-  }
-
-  /** Fermeture-ANNULATION du pop-up livraison (croix, voile, Échap) :
-   *  invalide par jeton tout enregistrement dont le fetch est en vol —
-   *  son commit s'abandonnera au retour. */
-  function fermerEditionLivraison() {
-    editionGenRef.current += 1;
-    setEditionLivraison(false);
-  }
-
-  const npaBrouillonValide = /^\d{4}$/.test(dNpa.trim());
-  const livraisonBrouillonValide =
-    dHousingType !== null && dStreet.trim().length >= 3 && npaBrouillonValide;
-
-  /** Commit ATOMIQUE du pop-up livraison : la zone du NPA saisi est
-   *  vérifiée de façon SYNCHRONE avant toute écriture — zone non
-   *  desservie ou réseau en échec → RIEN n'est committé, le pop-up reste
-   *  ouvert avec l'erreur. Aucun repli silencieux : c'est le repli
-   *  « le POST re-vérifiera » qui a produit la commande chimère. */
-  async function enregistrerLivraison() {
-    if (dSaving || !address || !livraisonBrouillonValide) return;
-    const rue = dStreet.trim();
-    const npa = dNpa.trim();
-    // Jeton capturé AVANT le fetch : si le pop-up est fermé (annulation)
-    // ou rouvert pendant le vol, le commit ci-dessous s'abandonne.
-    const gen = editionGenRef.current;
-    setDSaving(true);
-    setDZoneError(null);
-    try {
-      // TOUJOURS re-vérifier la zone, même à NPA inchangé (relecture
-      // 20.08) : le raccourci « NPA identique » re-committait un zone_id
-      // et des tarifs potentiellement périmés (zone recréée, frais édités
-      // au dashboard) — et le remède affiché par le 409 serveur
-      // (« bouton Modifier ») ne pouvait alors jamais réparer.
-      const res = await fetch(
-        `/api/delivery-zones/check?restaurant_id=${encodeURIComponent(
-          restaurantId,
-        )}&postal_code=${encodeURIComponent(npa)}`,
-      );
-      if (!res.ok) throw new Error(`check ${res.status}`);
-      const body = (await res.json()) as {
-        covered: boolean;
-        reason?: "po_box" | "not_covered";
-        zone?: {
-          id: string;
-          city: string | null;
-          delivery_fee: number | string;
-          min_order_amount: number | string;
-          estimated_delivery_minutes: number | null;
-        };
-      };
-      if (gen !== editionGenRef.current) return;
-      if (!body.covered || !body.zone) {
-        setDZoneError(
-          body.reason === "po_box"
-            ? "1001 et 1002 sont des cases postales — indiquez le NPA de votre adresse de rue."
-            : `Nous ne livrons pas au ${npa}. Corrigez le code postal ou choisissez une adresse desservie.`,
-        );
-        return;
-      }
-      const zone = {
-        id: body.zone.id,
-        city: body.zone.city,
-        delivery_fee: Number(body.zone.delivery_fee),
-        min_order_amount: Number(body.zone.min_order_amount),
-        estimated_delivery_minutes:
-          body.zone.estimated_delivery_minutes ??
-          address.estimated_delivery_minutes,
-      };
-      // Cohérence ville ↔ zone (variante « NPA laissé tel quel » du bug
-      // R-2026-044) : une ville qui ne recoupe pas la commune de la zone
-      // signifie que le client a changé de localité SANS changer le NPA —
-      // exactement la chimère « Grand-Rue 54 / 1010 / Morges ». On refuse
-      // avec un message qui nomme la commune attendue.
-      if (!villeCompatibleZone(dVille.trim(), zone.city)) {
-        setDZoneError(
-          `Le NPA ${npa} correspond à ${zone.city} — vérifiez le code postal ou la localité.`,
-        );
-        return;
-      }
-      const ville = dVille.trim() || zone.city || "";
-      const next: QualifiedAddress = {
-        address: rue,
-        postal_code: npa,
-        city: ville || null,
-        zone_id: zone.id,
-        delivery_fee: zone.delivery_fee,
-        min_order_amount: zone.min_order_amount,
-        estimated_delivery_minutes: zone.estimated_delivery_minutes,
-      };
-      // Écritures React d'abord, localStorage en DERNIER : un setItem qui
-      // lève ne peut plus scinder states/address (relecture 20.08).
-      setHousingType(dHousingType);
-      setStreet(rue);
-      setPostalCode(npa);
-      setCity(ville);
-      setEntryCode1(dEntryCode1);
-      setEntryCode2(dEntryCode2);
-      setFloor(dFloor);
-      setApartmentNumber(dApptNum);
-      setDoorbellName(dDoorbell);
-      setAddress(next);
-      writeAddress(next);
-      setEditionLivraison(false);
-    } catch {
-      // Jeton : ne pas afficher l'erreur d'un fetch fantôme dans un
-      // pop-up rouvert entre-temps.
-      if (gen === editionGenRef.current) {
-        setDZoneError(
-          "Impossible de vérifier votre zone de livraison — réessayez dans un instant.",
-        );
-      }
-    } finally {
-      setDSaving(false);
-    }
-  }
 
   /** Même règle pour le panneau instructions : brouillon, fermer =
    *  annuler, « Enregistrer » = committer. */
@@ -952,7 +735,7 @@ export default function CheckoutPageClient({
                 </div>
                 <button
                   type="button"
-                  onClick={ouvrirEditionLivraison}
+                  onClick={() => setEditionLivraison(true)}
                   className="shrink-0 rounded-btn border border-border px-3.5 py-2 text-sm font-semibold text-ink transition hover:border-ink"
                 >
                   Modifier
@@ -962,7 +745,7 @@ export default function CheckoutPageClient({
             {housingType === null && (
               <button
                 type="button"
-                onClick={ouvrirEditionLivraison}
+                onClick={() => setEditionLivraison(true)}
                 className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-white p-4 text-left transition hover:border-ink"
               >
                 <span className="flex items-center gap-3">
@@ -1458,192 +1241,39 @@ export default function CheckoutPageClient({
               : `Confirmer — ${total.toFixed(2)} CHF`}
           </button>
         </div>
-        {/* ─── Pop-up « Détails de la livraison » ─── BROUILLON : croix,
-            voile et Échap ANNULENT (retour aux valeurs d'ouverture) ;
-            « Enregistrer » vérifie la zone du NPA de façon synchrone puis
-            committe tout d'un bloc (correctif bug zone 20.08). */}
-        {editionLivraison && (
-          <div
-            className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm md:items-center md:p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) fermerEditionLivraison();
-            }}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label="Détails de la livraison"
-              className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-pop md:rounded-3xl"
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="font-display text-lg font-bold text-ink">
-                  Détails de la livraison
-                </h3>
-                <button
-                  type="button"
-                  onClick={fermerEditionLivraison}
-                  className="rounded-full p-2 text-mute hover:bg-neutral-100"
-                  aria-label="Fermer"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                    <line x1="6" y1="18" x2="18" y2="6" />
-                  </svg>
-                </button>
-              </div>
-              <div
-                className="space-y-3 transition-all duration-200"
-                // Entrée dans un champ d'adresse = tenter l'ENREGISTREMENT
-                // (avec sa vérification de zone), jamais la commande.
-                onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    (e.target as HTMLElement).tagName === "INPUT"
-                  ) {
-                    e.preventDefault();
-                    void enregistrerLivraison();
-                  }
-                }}
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setDHousingType("house")}
-                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      dHousingType === "house"
-                        ? "border-[#C73E1D] bg-white shadow-card"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="shrink-0 text-rialto">
-                      <PictoMaison size={26} />
-                    </span>
-                    <span className="font-bold text-ink">Maison</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDHousingType("apartment")}
-                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition-all ${
-                      dHousingType === "apartment"
-                        ? "border-[#C73E1D] bg-white shadow-card"
-                        : "border-gray-200 bg-white hover:border-gray-300"
-                    }`}
-                  >
-                    <span className="shrink-0 text-rialto">
-                      <PictoImmeuble size={26} />
-                    </span>
-                    <span className="font-bold text-ink">Appartement</span>
-                  </button>
-                </div>
-
-                {dHousingType !== null && (
-                  <>
-                    <input
-                      type="text"
-                      value={dStreet}
-                      onChange={(e) => setDStreet(e.target.value)}
-                      placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
-                      aria-label="Rue et numéro"
-                      required
-                      className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                    />
-                    <div className="grid grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        value={dNpa}
-                        onChange={(e) => setDNpa(e.target.value)}
-                        placeholder="NPA"
-                        aria-label="NPA"
-                        className="col-span-1 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        value={dVille}
-                        onChange={(e) => setDVille(e.target.value)}
-                        placeholder="Ville"
-                        aria-label="Ville"
-                        className="col-span-2 rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                      />
-                    </div>
-
-                    {!npaBrouillonValide && (
-                      <p className="text-xs font-medium text-rialto">
-                        Indiquez un NPA à 4 chiffres.
-                      </p>
-                    )}
-                    {dZoneError && (
-                      <p className="text-xs font-medium text-rialto">
-                        {dZoneError}
-                      </p>
-                    )}
-
-                    {dHousingType === "apartment" && (
-                      <div className="space-y-3 rounded-2xl border border-border bg-neutral-50 p-4">
-                        <p className="text-xs font-bold uppercase tracking-wide text-ink">
-                          Pour que le livreur trouve facilement
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            value={dEntryCode1}
-                            onChange={(e) => setDEntryCode1(e.target.value)}
-                            placeholder="Code entrée 1"
-                            aria-label="Code entrée 1"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            value={dEntryCode2}
-                            onChange={(e) => setDEntryCode2(e.target.value)}
-                            placeholder="Code entrée 2 (si nécessaire)"
-                            aria-label="Code entrée 2"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <input
-                            type="text"
-                            value={dFloor}
-                            onChange={(e) => setDFloor(e.target.value)}
-                            placeholder="Étage (ex: 3, RDC)"
-                            aria-label="Étage"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                          <input
-                            type="text"
-                            value={dApptNum}
-                            onChange={(e) => setDApptNum(e.target.value)}
-                            placeholder="N° appartement / Porte"
-                            aria-label="N° appartement / Porte"
-                            className="rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                          />
-                        </div>
-                        <input
-                          type="text"
-                          value={dDoorbell}
-                          onChange={(e) => setDDoorbell(e.target.value)}
-                          placeholder="Nom sur la sonnette / interphone"
-                          aria-label="Nom sur la sonnette / interphone"
-                          className="w-full rounded-xl border border-border bg-white px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
-                        />
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => void enregistrerLivraison()}
-                      disabled={dSaving || !livraisonBrouillonValide}
-                      className="btn-primary mt-1 w-full disabled:opacity-40"
-                    >
-                      {dSaving ? "Vérification de la zone…" : "Enregistrer"}
-                    </button>
-                  </>
-                )}
-              </div>
-
-            </div>
-          </div>
-        )}
+        {/* ─── Pop-up « Détails de la livraison » : LE composant PARTAGÉ
+            (même voie que le « Modifier » de l'en-tête — décision Augustin
+            20.08 : une seule voie de modification d'adresse dans tout le
+            site, plus jamais de détour par la home). */}
+        <AdresseLivraisonPopup
+          restaurantId={restaurantId}
+          ouvert={editionLivraison}
+          graine={{
+            housingType,
+            street,
+            npa: postalCode,
+            ville: city,
+            entryCode1,
+            entryCode2,
+            floor,
+            apartmentNumber,
+            doorbellName,
+          }}
+          onAnnuler={() => setEditionLivraison(false)}
+          onEnregistre={(c) => {
+            setAddress(c.adresse);
+            setHousingType(c.housingType);
+            setStreet(c.adresse.address);
+            setPostalCode(c.adresse.postal_code);
+            setCity(c.adresse.city ?? "");
+            setEntryCode1(c.entryCode1);
+            setEntryCode2(c.entryCode2);
+            setFloor(c.floor);
+            setApartmentNumber(c.apartmentNumber);
+            setDoorbellName(c.doorbellName);
+            setEditionLivraison(false);
+          }}
+        />
 
         {/* ─── Panneau « Instructions pour le livreur » (spec 20.08) ───
             Deux familles MUTUELLEMENT EXCLUSIVES — les options de l'une

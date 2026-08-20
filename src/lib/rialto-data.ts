@@ -10,6 +10,15 @@
  * optimiser le transfert. Next/Image pourra ensuite les servir en AVIF.
  */
 
+/** Id du restaurant Rialto, côté CLIENT (déjà public : il voyage dans
+ *  chaque appel /api/delivery-zones/check du navigateur). Source :
+ *  NEXT_PUBLIC_RESTAURANT_ID (inlinée au build — parité avec le serveur
+ *  PAR CONSTRUCTION, relecture 20.08 : un hardcode divergeait en preview
+ *  ou après migration d'env) ; repli dur en dernier recours. */
+export const RESTAURANT_ID_CLIENT =
+  process.env.NEXT_PUBLIC_RESTAURANT_ID ??
+  "046d930d-a4cd-4a43-a11a-7f76bfe74b06";
+
 export const RIALTO_INFO = {
   name: "Rialto",
   address: "Avenue de Béthusy 29, 1012 Lausanne",

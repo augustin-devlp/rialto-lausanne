@@ -16,10 +16,23 @@
 -- RAISON (procès-verbal) : l'exploit est réel et c'est le CLIENT qui le
 -- déclenche — il commande, attend l'acceptation qui crédite son tampon,
 -- appelle pour faire annuler, et garde le tampon. Dix fois = une pizza
--- gratuite. Il est DÉJÀ matérialisé en base : au 20.08.2026, 4 lignes
--- `stamp_added` valant 5 tampons portent un order_id dont la commande est
--- `cancelled`, sur les DEUX cartes les plus avancées (9/10 chacune).
--- 8 commandes sur 52 ont fait accepted→cancelled ; 2 ont fait le retour.
+-- gratuite. Il ÉTAIT DÉJÀ matérialisé en base : au 20.08.2026, 4 lignes
+-- `stamp_added` valant 5 tampons portaient un order_id dont la commande
+-- était `cancelled` — R-2026-042 (1), R-2026-043 (1), R-2026-045 (1),
+-- R-2026-051 (2) — sur les DEUX cartes les plus avancées :
+-- f5c4bb7f-9ecc-4050-9127-27ba119cad93 (HTEF9Z5K, 9/10) et
+-- f6abe121-5918-4a92-a785-3b3d498dfb1d (PSPVUQ7X, 9/10).
+-- 8 commandes sur 52 avaient fait accepted→cancelled ; 2 le retour.
+--
+-- ⚠️ CE FAIT N'EST PLUS VÉRIFIABLE PAR UNE SIMPLE REQUÊTE DEPUIS LE
+-- 20.08 22:26 UTC : le balayage manuel de ce soir-là a fait passer 37
+-- commandes `cancelled` en `completed`, y compris ces quatre. La requête
+-- « lignes stamp_added dont la commande est cancelled » renvoie donc 0
+-- aujourd'hui, et une session future pourrait en conclure que l'exploit
+-- était imaginaire. Le parcours réel reste lisible dans
+-- order_status_history (chercher une transition cancelled→completed).
+-- Les ids sont écrits en dur ci-dessus pour cette raison — c'est le
+-- piège F3b appliqué à F7 elle-même.
 --
 -- PRINCIPE GÉNÉRAL (Augustin 21.08) : LE RETRAIT NE TOUCHE JAMAIS QU'À CE
 -- QUE CETTE COMMANDE A APPORTÉ, JAMAIS À CE QUI VIENT D'AILLEURS. Un
@@ -210,12 +223,28 @@ begin
   -- lecture ne doit JAMAIS être « simplifiée » : c'est elle qui empêche un
   -- double retrait concurrent (deux appels simultanés retirant chacun leur
   -- part, 9 → 7 au lieu de 9 → 8).
-  select t.customer_card_id
-    into v_card_id
+  select t.customer_card_id, t.type
+    into v_card_id, v_tx_type
   from transactions t
   where t.order_id = p_order_id
     and t.type in ('stamp_added','stamp_reversed')
   limit 1;
+
+  -- SORTIE ANTICIPEE AVANT TOUT VERROU (amendement 21.08, lot CL1) : si
+  -- l'etat est deja convergent, inutile de verrouiller la carte. Le filet
+  -- cron appelle ce RPC en masse — sans cette sortie, il verrouillerait
+  -- des cartes pour ne rien faire. Lecture NON verrouillee : en course on
+  -- peut lire un type perime et sortir en no-op a tort ; la divergence est
+  -- alors transitoire et le passage suivant la reprend. Un no-op errone
+  -- n'ecrit JAMAIS rien — meme propriete que la sortie 'aucune_ligne'.
+  -- La porte definitive reste en (5), sous verrou.
+  if v_card_id is not null
+     and ((v_solide and v_tx_type = 'stamp_added')
+          or (not v_solide and v_tx_type = 'stamp_reversed')) then
+    return jsonb_build_object('ok', true, 'action', 'deja_aligne',
+                              'status', v_status, 'type', v_tx_type,
+                              'sans_verrou', true);
+  end if;
 
   if v_card_id is null then
     -- Aucune ligne : rien n'a jamais été crédité pour cette commande.
@@ -422,7 +451,35 @@ DROP TRIGGER IF EXISTS trg_orders_sync_stamps ON public.orders;
 CREATE TRIGGER trg_orders_sync_stamps
   AFTER UPDATE OF status ON public.orders
   FOR EACH ROW
-  WHEN (new.status IS DISTINCT FROM old.status)
+  -- AMENDEMENT 21.08 (lot CL1, cloture du service) : le trigger ne s'arme
+  -- QUE sur une BASCULE DE SOLIDITE, pas sur tout changement de statut.
+  -- Sans cette clause, la cloture nocturne (accepted -> completed) armerait
+  -- le trigger sur chaque commande du lot : chacune serait un no-op
+  -- LOGIQUE ('deja_aligne') mais PAS un no-op de VERROUS — la porte
+  -- d'idempotence est APRES les deux FOR UPDATE, donc chaque no-op
+  -- verrouillerait une carte en exclusif jusqu'au COMMIT du lot. Il n'y a
+  -- que 5 cartes dans toute la base : une volee en verrouillerait la
+  -- moitie. Ici, accepted -> completed devient STRICTEMENT inerte.
+  --   accepted->cancelled  : oui->non  = ARME (raison d'etre de F7)
+  --   cancelled->accepted  : non->oui  = ARME (restauration, cas atteste)
+  --   new->cancelled       : non->non  = JAMAIS arme (refus direct, que F7
+  --                                      s'engage a ne pas modifier — la
+  --                                      clause le rend structurellement
+  --                                      inatteignable au lieu de compter
+  --                                      sur un return)
+  --   accepted->completed  : oui->oui  = JAMAIS arme (la cloture)
+  --   accepted->preparing  : oui->oui  = JAMAIS arme (progression)
+  -- ATTENTION : c'est un QUATRIEME miroir de SOLID_STATUSES (settle.ts,
+  -- etape 1 de credit_order_stamps, et etape (1) de
+  -- rialto_sync_order_stamps). Toute evolution du vocabulaire se
+  -- repercute aux QUATRE. Le mode de defaillance en cas de derive est
+  -- benin : le trigger ne s'arme plus, donc pas de retrait — et le filet
+  -- cron rattrape.
+  WHEN (
+    (old.status IN ('accepted','preparing','ready','completed'))
+      IS DISTINCT FROM
+    (new.status IN ('accepted','preparing','ready','completed'))
+  )
   EXECUTE FUNCTION public.trg_sync_order_stamps();
 
 -- ============================================================================
@@ -468,6 +525,16 @@ CREATE TRIGGER trg_orders_sync_stamps
 --   -- CAS 9 — KILLSWITCH COUPÉ
 --   --   stamp_online_enabled=false : le RETRAIT s'applique quand même ;
 --   --   la RESTAURATION répond 'killswitch_off' sans créditer.
+--   -- CAS 11 — CLOTURE INERTE (amendement CL1) : une commande creditee
+--   --   passe accepted -> completed
+--   --   ATTENDU : le trigger NE SE DECLENCHE PAS DU TOUT (le WHEN ne
+--   --             s'arme pas), solde et transactions inchanges, aucun
+--   --             warning [F7] au log.
+--   -- CAS 12 — CONTROLE NEGATIF DE MASSE : forcer cancelled -> completed
+--   --   sur une commande dont le tampon a ete repris
+--   --   ATTENDU : re-credit (SENS 2). C'est le comportement CORRECT de
+--   --             F7 — et la demonstration de pourquoi CL1 doit refuser
+--   --             de toucher une commande `cancelled`.
 --   -- CAS 10 — LA CAISSE N'EST JAMAIS BLOQUÉE
 --   --   session A : verrouiller customer_cards FOR UPDATE et attendre ;
 --   --   session B : UPDATE orders SET status='cancelled'
@@ -533,6 +600,17 @@ CREATE TRIGGER trg_orders_sync_stamps
 --    « porte au comptoir » (vérification avant chaque scan) — REFUSÉE :
 --    « refuser une pizza légitime devant un client à cause d'un hoquet de
 --    verrou est un échec bien pire qu'une perte rare de l'ordre du franc ».
+-- 3bis. INVARIANT DECOUVERT LE 21.08, A NE JAMAIS OUBLIER :
+--    TOUTE ECRITURE DE MASSE FAISANT PASSER DES COMMANDES VERS UN STATUT
+--    SOLIDE EST UN ORDRE DE CREDIT POUR F7. F7 est un reconciliateur
+--    pilote par le statut courant : cancelled -> completed declenche le
+--    SENS 2 (restauration des tampons). Contrefactuel : si F7 avait ete
+--    en base depuis le 03.08, le balayage du 20.08 aurait RE-CREDITE les
+--    5 tampons fantomes qu'elle venait de retirer, en 17 minutes, sans un
+--    mot dans les logs. Une cloture, un import, un replay ou une
+--    reparation ne doivent JAMAIS toucher une commande `cancelled` sans
+--    decision explicite. C'est ce que le lot CL1
+--    (db/orders/CL1_cloture_service.sql) garantit par sa liste positive.
 -- 4. PAS DE RÉTROACTIF sur les tampons fantômes existants (décision
 --    Augustin). Le grand ménage (docs/GO_LIVE.md) doit remettre à zéro
 --    les deux cartes concernées EN MÊME TEMPS qu'il purge les commandes

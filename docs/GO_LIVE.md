@@ -183,6 +183,39 @@
       logique caisse, ETA ancré sur le créneau) est OBLIGATOIRE AVANT LE
       GO-LIVE — sinon retirer l'option du checkout avant l'ouverture.
 
+## Clôture du service précédent (CL1, 21.08 — navette en attente)
+
+**À DIRE À MEHMET AVANT QU'IL NE LE DÉCOUVRE UN SOIR** — les deux
+comportements sont voulus, mais surprenants s'ils ne sont pas annoncés :
+
+1. **Une commande JAMAIS DÉCIDÉE reste visible et CONTINUE DE SONNER,
+   indéfiniment.** Elle n'est jamais clôturée automatiquement : ses deux
+   seules sorties sont ACCEPTER ou REFUSER, par un humain. C'est
+   volontaire — une commande jamais décidée qui deviendrait
+   « terminée » serait une commande perdue en silence. L'alarme qui
+   persiste est le comportement correct, pas un bug.
+2. **Les commandes acceptées du service de la veille disparaissent
+   toutes seules** au premier passage du cron suivant 05:00 (soit vers
+   10h30–11h30 selon la saison). L'écran repart vierge. Rien n'est perdu :
+   elles passent en « terminée », le chiffre d'affaires est inchangé, les
+   tampons ne bougent pas.
+
+**⚠️ LA FENÊTRE DE RÉTRACTATION EST DÉSORMAIS BORNÉE.** ERGO-2 promet un
+changement de décision « sans limite de délai » ; la clôture devient cette
+limite. Une commande close **sort du périmètre de la caisse** : elle
+disparaît du fetch (« Tout afficher » ne la ramène pas), la réimpression
+du ticket et le changement de décision deviennent inatteignables.
+Fenêtre effective : **entre ~6 h 30 et ~30 h 30** après l'acceptation,
+selon l'heure de la commande. Cette borne haute est imposée par le plan
+Vercel (un seul cron quotidien), pas par un choix produit — elle se
+resserrera le jour où la clôture pourra tourner à son heure réelle.
+
+**Comment savoir que la clôture ne marche plus** : le rapport du cron
+porte `restantes_de_plus_de_24h`. Toute valeur non nulle après un passage
+réussi est la seule preuve possible que le mécanisme est mort. Précédent à
+ne pas rejouer : le 401 silencieux du 22.07 au 04.08 — treize jours,
+jamais détecté.
+
 ## Moteur de statuts (livré 08.08 — QA fenêtre Studio)
 
 - [ ] QA des phases intermédiaires : Augustin bascule une commande test

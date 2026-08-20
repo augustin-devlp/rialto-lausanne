@@ -38,6 +38,13 @@ export const maxDuration = 60;
  * projection ferait perdre silencieusement promo_discount_amount et
  * rouvrirait la faille des codes de parrainage à −100 %.
  *
+ * ⚠️ IL PORTE AUSSI LA CLÔTURE DU SERVICE PRÉCÉDENT (CL1, 21.08.2026) —
+ * greffée faute d'un second cron (plan Vercel). Les commandes acceptées
+ * du service écoulé passent en `completed` : l'écran de la caisse repart
+ * vierge. Voir db/orders/CL1_cloture_service.sql. La clôture ne touche
+ * JAMAIS une commande `new` (jamais décidée) ni `cancelled` (décision
+ * inverse) — liste POSITIVE de statuts, garde levée en base.
+ *
  * Il JOURNALISE aussi, sans agir, les commandes restées 'new' au-delà de 2 h
  * (leur pending client s'évaporera à H+24 sans jamais se solidifier). Pas de
  * table de dead-letter : au volume de Rialto, le rapport en logs suffit.
@@ -77,12 +84,56 @@ export async function GET(req: NextRequest) {
   // ligne.
   const anniversaires = await envoieCadeauxAnniversaire(sb);
 
+  // ─── CLÔTURE DU SERVICE PRÉCÉDENT (CL1, 21.08.2026) ─────────────────
+  // Greffée ICI, et pas plus bas, pour DEUX raisons :
+  //   1. les returns anticipés du barème (`!rule` → 500, `!rule.enabled`
+  //      → inactif) sont juste en dessous : greffer après aurait rendu
+  //      l'hygiène des commandes otage du killswitch FIDÉLITÉ, deux
+  //      choses sans le moindre rapport ;
+  //   2. même raison que les vœux d'anniversaire, qui sont placés là
+  //      pour ce motif exact.
+  // Toute la logique (frontière 05:00 Europe/Zurich, liste positive de
+  // statuts, signature des écritures) vit dans le RPC — voir
+  // db/orders/CL1_cloture_service.sql. Ce code ne fait que l'appeler.
+  // ⚠️ TOLÉRANT À L'ABSENCE DU RPC (pattern `attribution`) : tant que la
+  // navette CL1 n'est pas exécutée, l'erreur « fonction inconnue » est
+  // journalisée et le cron continue. Le code peut donc partir avant le
+  // DDL, dans n'importe quel ordre.
+  let cloture: unknown = { ok: false, raison: "non_executee" };
+  try {
+    const volees: unknown[] = [];
+    // Volées bornées : une transaction géante prendrait des verrous sur
+    // toutes les lignes d'un coup et pèserait sur le budget maxDuration.
+    for (let i = 0; i < 4; i++) {
+      const { data, error } = await sb.rpc("rialto_cloture_service", {
+        p_restaurant_id: RESTAURANT_ID,
+        p_limit: 50,
+      });
+      if (error) throw error;
+      volees.push(data);
+      const n = (data as { nb_closes?: number } | null)?.nb_closes ?? 0;
+      if (n < 50) break; // plus rien à clore
+    }
+    cloture = volees.length === 1 ? volees[0] : volees;
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    // 42883 / PGRST202 = la fonction n'existe pas encore (navette non
+    // exécutée). Tout le reste est une vraie anomalie.
+    console.error(
+      code === "42883" || code === "PGRST202"
+        ? "[cloture] RPC absent — navette CL1 pas encore exécutée"
+        : "[cloture] échec — le reste du cron continue",
+      code ?? e,
+    );
+    cloture = { ok: false, code: code ?? "inconnue" };
+  }
+
   const rule = await loadStampRule(sb);
   if (!rule) {
     // Les vœux sont DÉJÀ partis : le rapport doit le dire même en échec
     // du barème, sinon un retry manuel croirait la fournée jamais servie.
     return NextResponse.json(
-      { ok: false, error: "bareme_introuvable", anniversaires },
+      { ok: false, error: "bareme_introuvable", anniversaires, cloture },
       { status: 500 },
     );
   }
@@ -92,6 +143,7 @@ export async function GET(req: NextRequest) {
       inactif: true,
       raison: "stamp_online_enabled = false",
       anniversaires,
+      cloture,
     });
   }
 
@@ -136,6 +188,7 @@ export async function GET(req: NextRequest) {
     skipped: bilan.skipped,
     commandes_new_de_plus_de_2h: newVieilles ?? 0,
     anniversaires,
+    cloture,
     duration_ms: Date.now() - debut,
   };
   console.log("[loyalty-settle]", JSON.stringify(rapport));

@@ -131,7 +131,20 @@ export async function generateUpsell(
       reasons: [`chemin:${resultatChemin!.chemin}`],
     });
   }
-  if (parChemin.length === 0) cheminRetenu = null;
+  // ⚠️ SI AUCUN CANDIDAT DU CHEMIN NE SURVIT AUX GARDES DURES, LE CHEMIN
+  // N'A PAS GAGNÉ — c'est le scoreur qui reprend. Il faut alors oublier le
+  // chemin ENTIÈREMENT, y compris son palier.
+  // Bug attrapé en production le 21.08 : `economiePalier` lisait encore
+  // `resultatChemin` (donc P2) alors que `cheminRetenu` était déjà remis à
+  // null. Résultat : une suggestion choisie par le SCOREUR — donc jamais
+  // filtrée sur « prix ≥ écart » — s'affichait avec le message de coût net.
+  // Le seuil aurait pu ne PAS être franchi, et le prix affiché engage.
+  // La condition de véracité ① était contournée par le repli.
+  let cheminGagnant = resultatChemin;
+  if (parChemin.length === 0) {
+    cheminRetenu = null;
+    cheminGagnant = null;
+  }
 
   // Filtres durs + scoring
   const scored: UpsellCandidate[] = [];
@@ -211,7 +224,7 @@ export async function generateUpsell(
       score: cand.score,
       reasons: cand.reasons,
       chemin: cheminRetenu,
-      palier: economiePalier(cand.item.price, resultatChemin),
+      palier: economiePalier(cand.item.price, cheminGagnant),
     });
     if (suggestions.length >= budget) break;
   }
@@ -231,7 +244,7 @@ export async function generateUpsell(
         score: c.score,
         reasons: c.reasons,
         chemin: cheminRetenu,
-        palier: economiePalier(c.item.price, resultatChemin),
+        palier: economiePalier(c.item.price, cheminGagnant),
       });
     }
   }

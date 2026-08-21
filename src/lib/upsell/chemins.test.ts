@@ -456,3 +456,38 @@ describe("P2 — la distance au palier", () => {
     expect(r?.candidats.some((c) => c.id === ID.SALADE)).toBe(false);
   });
 });
+
+
+describe("🔴 le palier ne doit JAMAIS survivre au repli sur le scoreur", () => {
+  it("P2 sans aucun candidat viable ne laisse pas d'économie derrière lui", () => {
+    // Écart de 12 : seuls les articles à 13+ conviennent. On les rend tous
+    // épuisés → P2 n'a plus de candidat. Le chemin ne doit PAS « gagner ».
+    const casse = CATALOGUE.map((i) =>
+      i.price >= 12 ? { ...i, is_out_of_stock: true } : i,
+    );
+    const panier = [pizza()];
+    const r = choisitChemin(panier, analyzeCart(panier), casse, {
+      remaining: 12,
+      delivery_fee: 5,
+    });
+    // Soit un autre chemin prend la main, soit rien — mais jamais P2.
+    expect(r?.chemin).not.toBe("P2");
+  });
+
+  it("un candidat P2 couvre TOUJOURS l'écart, sinon la promesse est fausse", () => {
+    for (const ecart of [1, 5, 7, 9, 11, 12]) {
+      const panier = [pizza()];
+      const r = choisitChemin(panier, analyzeCart(panier), CATALOGUE, {
+        remaining: ecart,
+        delivery_fee: 5,
+      });
+      if (r?.chemin !== "P2") continue;
+      for (const c of r.candidats) {
+        expect(
+          c.price,
+          `écart ${ecart} : « ${c.name} » à ${c.price} ne franchit pas le seuil`,
+        ).toBeGreaterThanOrEqual(ecart);
+      }
+    }
+  });
+});

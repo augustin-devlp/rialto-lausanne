@@ -306,6 +306,22 @@ export default function MesCommandesClient() {
                         id={`detail-${order.order_number}`}
                         className="border-t border-border px-4 py-3"
                       >
+                        {/* « Suivre ma commande » : HORS de la branche « ok ».
+                            Placé à l'intérieur, il disparaissait dès que le
+                            détail échouait — un client dont la pizza est en
+                            route perdait alors tout accès au suivi, qui est
+                            justement la raison pour laquelle il a ouvert cet
+                            écran. Et pour une commande en cours c'est
+                            l'action n°1 : elle passe donc en tête et en
+                            bouton, pas en lien gris tout en bas. */}
+                        {enCours && (
+                          <Link
+                            href={`/confirmation/${order.order_number}`}
+                            className="mb-3 flex w-full items-center justify-center rounded-xl bg-rialto px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rialto-dark"
+                          >
+                            Suivre ma commande
+                          </Link>
+                        )}
                         {(!etat || etat.statut === "chargement") && (
                           <p className="text-sm text-mute">Chargement…</p>
                         )}
@@ -369,25 +385,24 @@ export default function MesCommandesClient() {
                                 </div>
                               )}
                               <div className="flex justify-between font-bold text-ink">
-                                <span>Total payé</span>
+                                {/* « Payé » n'est vrai QUE sur une commande
+                                    terminée. Sur une commande annulée, le
+                                    client n'a rien payé et ne paiera rien ;
+                                    sur une commande en cours, il paiera au
+                                    livreur (aucun paiement en ligne). */}
+                                <span>
+                                  {order.status === "completed"
+                                    ? "Total payé"
+                                    : order.status === "cancelled"
+                                      ? "Montant de la commande annulée"
+                                      : "Total à régler au livreur"}
+                                </span>
                                 <span className="tabular">
                                   {formatCHF(etat.detail.montants.total)}
                                 </span>
                               </div>
                             </div>
 
-                            {/* « Voir le suivi » : lien SECONDAIRE, et
-                                seulement tant qu'il y a quelque chose à
-                                suivre. Une commande d'il y a trois
-                                semaines n'a pas de suivi à consulter. */}
-                            {enCours && (
-                              <Link
-                                href={`/confirmation/${order.order_number}`}
-                                className="mt-3 inline-block text-sm font-medium text-mute underline underline-offset-2 transition hover:text-ink"
-                              >
-                                Voir le suivi
-                              </Link>
-                            )}
                           </>
                         )}
                       </div>

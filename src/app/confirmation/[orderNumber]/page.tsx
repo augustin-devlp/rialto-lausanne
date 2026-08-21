@@ -10,7 +10,13 @@ async function loadOrder(orderNumber: string) {
   const { data: order } = await sb
     .from("orders")
     .select(
-      "id, order_number, customer_name, customer_phone, status, total_amount, created_at, requested_pickup_time, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, delivery_floor_door, delivery_instructions, delivery_zone_id, customer_confirmed_delivered_at",
+      // ⚠️ CETTE PAGE EST PUBLIQUE ET SES NUMÉROS SONT SÉQUENTIELS.
+      // Tout ce qui est sélectionné ici part dans le HTML, affiché ou non.
+      // `delivery_floor_door`, `delivery_instructions` et `delivery_zone_id`
+      // ont été RETIRÉS le 21.08 : ils n'étaient lus par aucun composant et
+      // exposaient codes d'entrée et consignes de livraison à qui demandait
+      // l'URL. N'ajoutez ici que ce qui est réellement affiché au client.
+      "id, order_number, customer_name, customer_phone, status, total_amount, created_at, requested_pickup_time, fulfillment_type, delivery_address, delivery_postal_code, delivery_city, customer_confirmed_delivered_at",
     )
     .eq("restaurant_id", RESTAURANT_ID)
     .eq("order_number", orderNumber)

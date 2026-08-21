@@ -853,12 +853,23 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                 // retrait de l'étape « Livrée ») :
                 //   · le client a TAPÉ → il l'a dit, on peut l'affirmer ;
                 //   · seule l'horloge a tourné → conditionnel obligatoire.
-                const description =
-                  step.key === "delivering" && phase.key === "delivered"
-                    ? tapEffectue
-                      ? "Votre commande est arrivée."
-                      : "Votre commande devrait être arrivée."
-                    : step.description;
+                const arrivee =
+                  step.key === "delivering" && phase.key === "delivered";
+                const description = arrivee
+                  ? tapEffectue
+                    ? "Votre commande est arrivée."
+                    : "Votre commande devrait être arrivée."
+                  : step.description;
+                // Le LIBELLÉ bouge avec la description. Sans ça, le titre en
+                // gras disait « Votre commande arrive » juste au-dessus de
+                // « Votre commande est arrivée. » — deux lignes qui se
+                // touchent et se contredisent, à une lettre près. Illisible
+                // pour une clientèle qui ne lit pas couramment le français.
+                const label = arrivee
+                  ? tapEffectue
+                    ? "Commande arrivée"
+                    : "Livraison"
+                  : step.label;
                 return (
                   <li key={step.key} className="flex gap-4">
                     <div className="flex flex-col items-center">
@@ -902,7 +913,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                           done ? "text-ink" : "text-mute"
                         }`}
                       >
-                        {step.label}
+                        {label}
                       </div>
                       <div className="text-sm text-mute">
                         {description}
@@ -1021,15 +1032,23 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
               </dd>
             </div>
             <div className="flex justify-between font-display text-base font-bold">
-              <dt>Total à régler au livreur</dt>
+              {/* Une commande annulée ne se règle pas. Afficher « Total à
+                  régler au livreur » à 400 px du bandeau « Commande
+                  annulée » réclamerait de l'argent pour rien — exactement
+                  le genre d'affirmation fausse que ce lot a retiré ailleurs. */}
+              <dt>
+                {isCancelled ? "Montant de la commande annulée" : "Total à régler au livreur"}
+              </dt>
               <dd className="tabular">{formatCHF(Number(order.total_amount))}</dd>
             </div>
           </dl>
 
-          <div className="mt-6 rounded-xl bg-saffron/15 p-4 text-sm text-ink">
-            <span className="font-semibold">💶 Paiement au livreur.</span>{" "}
-            Cash, TWINT ou carte bancaire acceptés.
-          </div>
+          {!isCancelled && (
+            <div className="mt-6 rounded-xl bg-saffron/15 p-4 text-sm text-ink">
+              <span className="font-semibold">💶 Paiement au livreur.</span>{" "}
+              Cash, TWINT ou carte bancaire acceptés.
+            </div>
+          )}
         </div>
       </section>
 

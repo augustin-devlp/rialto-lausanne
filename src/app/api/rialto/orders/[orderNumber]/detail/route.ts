@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
+import { phoneLookupVariants } from "@/lib/phoneVariants";
 
 export const dynamic = "force-dynamic";
 
@@ -54,11 +55,18 @@ export async function GET(
   }
 
   // Le téléphone doit désigner LE client de cette commande.
+  // ⚠️ Comparaison sur les VARIANTES, jamais en égalité brute : la base est
+  // historiquement mixte (+41…, 41…, 07…) et c'est ce que fait déjà tout le
+  // reste du dépôt (loyalty/lookup, POST /api/orders, login-by-phone). Une
+  // égalité brute ici donnerait un 404 PERMANENT à tout client dont la
+  // session porte un format différent de celui stocké — un refus définitif,
+  // sur un écran qui lui dirait « réessayez dans un instant ».
+  const variantes = phoneLookupVariants(phone).variants;
   const { data: client } = await admin
     .from("customers")
     .select("id")
     .eq("id", order.customer_id)
-    .eq("phone", phone)
+    .in("phone", variantes.length > 0 ? variantes : [phone])
     .maybeSingle();
   if (!client) {
     // 404 et non 403 : ne pas confirmer l'existence d'un numéro deviné.

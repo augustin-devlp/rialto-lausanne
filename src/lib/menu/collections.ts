@@ -14,9 +14,10 @@
  *
  * ⚠️ CES IDS SONT DES CLÉS ÉTRANGÈRES SANS CONTRAINTE. Un article
  * supprimé ou remplacé en base laisserait un id orphelin, et sa carte
- * disparaîtrait SILENCIEUSEMENT du rail. La garde vit dans
- * `resoudCollections()` : elle journalise les ids introuvables côté
- * serveur au lieu de les avaler.
+ * disparaîtrait SILENCIEUSEMENT du rail. La garde est `idsOrphelins()`,
+ * appelée par `loadMenu()` (src/app/menu/page.tsx) sur le catalogue BRUT :
+ * elle journalise les ids introuvables côté serveur au lieu de les avaler.
+ * Si vous supprimez cet appel, supprimez aussi cette phrase.
  *
  * RÈGLES DE COMPOSITION (Augustin) :
  *   · 12 plats par rail — en dessous, les flèches ne servent à rien ;
@@ -263,15 +264,23 @@ export type CollectionResolue = { slug: string; titre: string; items: MenuItem[]
  * Résout les 12 listes contre les articles DÉJÀ CHARGÉS par la page menu
  * — zéro requête réseau supplémentaire.
  *
- * `disponibles` doit être la liste déjà filtrée par l'appelant (régimes,
- * allergènes, saison, épuisés) : un rail ne doit jamais proposer ce que
- * la grille refuse. Un rail vidé par les filtres disparaît.
+ * `candidats` est la liste déjà filtrée par l'appelant (régimes, allergènes,
+ * saison, recherche). Un rail vidé par les filtres disparaît.
+ *
+ * ⚠️ LA DISPONIBILITÉ EST FILTRÉE ICI, PAS CHEZ L'APPELANT. C'est la
+ * quatrième fois que cette classe de bug ressort (bouton « Modifier », fiche
+ * produit, carrousel vedette, rails) : à chaque fois parce que la garde
+ * vivait chez celui qui appelle, et qu'un appelant l'a oubliée. Un appelant
+ * peut oublier ; cette fonction, non. Ne JAMAIS déplacer ce filtre en amont.
  */
 export function resoudCollections(
-  disponibles: MenuItem[],
+  candidats: MenuItem[],
 ): CollectionResolue[] {
-  const parId = new Map(disponibles.map((it) => [it.id, it]));
-  // Ids du catalogue COMPLET, pour distinguer « filtré » de « inexistant ».
+  const parId = new Map(
+    candidats
+      .filter((it) => it.is_available !== false && it.is_out_of_stock !== true)
+      .map((it) => [it.id, it]),
+  );
   const sortie: CollectionResolue[] = [];
   for (const c of COLLECTIONS) {
     const items: MenuItem[] = [];

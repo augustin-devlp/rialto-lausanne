@@ -5,7 +5,6 @@
  * Contenu éditorial en Fraunces, corps Inter, largeur limitée lisible.
  */
 
-import Link from "next/link";
 import LienAccueil from "@/components/layout/LienAccueil";
 import SiteFooter from "@/components/home/SiteFooter";
 

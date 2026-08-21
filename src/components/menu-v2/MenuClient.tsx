@@ -287,8 +287,10 @@ export default function MenuClient({ categories, items, options, restaurantId }:
   // elle ne pilote simplement plus aucun carrousel.
 
   // Les 12 rails : résolus contre les articles DÉJÀ filtrés (zéro requête
-  // réseau — la page a chargé le catalogue une fois). Régimes,
-  // allergènes, saison et épuisés sont donc déjà appliqués.
+  // réseau — la page a chargé le catalogue une fois). Régimes, allergènes,
+  // saison et recherche sont appliqués ici ; LA DISPONIBILITÉ, elle, est
+  // filtrée par `resoudCollections` elle-même — surtout ne pas la rajouter
+  // ici en croyant bien faire, la garde doit rester à un seul endroit.
   const collections = useMemo(
     () => resoudCollections(Object.values(itemsByCategory).flat()),
     [itemsByCategory],
@@ -420,6 +422,13 @@ export default function MenuClient({ categories, items, options, restaurantId }:
   const canCheckout = count > 0 && missing === 0;
 
   function handleSelectItem(item: MenuItem) {
+    // Garde de dernier recours : un plat épuisé ne rentre pas au panier,
+    // quel que soit l'endroit d'où l'appel vient (grille, rail, lien
+    // profond). Les surfaces masquent déjà leur bouton « + » ; cette ligne
+    // est là pour le jour où une nouvelle surface oublie de le faire —
+    // sinon le client construit un panier que le serveur refusera au
+    // paiement, et il perd sa commande.
+    if (item.is_available === false || item.is_out_of_stock === true) return;
     if (item.has_options) {
       setSelectedItem(item);
       return;
@@ -562,9 +571,10 @@ export default function MenuClient({ categories, items, options, restaurantId }:
           <div className="min-w-0 flex-1">
       {/* ─── LES 12 RAILS THÉMATIQUES (21.08) ────────────────────
           Composés à la main (src/lib/menu/collections.ts), ordre fixé.
-          Alimentés par `itemsDisponibles` — donc régimes, allergènes,
-          saison ET épuisés déjà appliqués : un rail ne propose jamais ce
-          que la grille refuse. Un rail vidé par les filtres disparaît.
+          Alimentés par `itemsByCategory` (régimes, allergènes, saison),
+          la disponibilité étant filtrée dans `resoudCollections` : un rail
+          ne propose jamais ce que la grille refuse. Un rail vidé par les
+          filtres disparaît.
           Masqués pendant une recherche, comme l'ancien rail unique. */}
       {recherche.trim() === "" &&
         collections.map((c) => (

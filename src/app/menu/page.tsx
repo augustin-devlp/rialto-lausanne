@@ -5,6 +5,7 @@ import type {
   MenuItemOption,
 } from "@/lib/types";
 import MenuClient from "@/components/menu-v2/MenuClient";
+import { idsOrphelins } from "@/lib/menu/collections";
 
 // Rendu dynamique : connexion Supabase au runtime (jamais au build, évite
 // "supabaseUrl is required"). Bonus : badges Coup de cœur / Épuisé / Saison
@@ -39,6 +40,19 @@ async function loadMenu() {
         .in("item_id", itemIds)
         .order("display_order")
     : { data: [] as MenuItemOption[] };
+
+  // Garde d'intégrité des 12 rails : leurs ids sont des clés étrangères SANS
+  // contrainte en base. Un article supprimé/recréé laisse un id orphelin et
+  // sa carte disparaît du rail sans que personne ne le sache. On journalise
+  // côté serveur plutôt que d'avaler l'oubli. Contrôlé sur le catalogue
+  // BRUT (avant tout filtre) : « absent du catalogue » ≠ « filtré ».
+  const orphelins = idsOrphelins((items ?? []) as MenuItem[]);
+  if (orphelins.length > 0) {
+    console.error(
+      `[menu/rails] ${orphelins.length} id(s) de collection introuvable(s) au catalogue :`,
+      orphelins.join(", "),
+    );
+  }
 
   return {
     categories: (categories ?? []) as MenuCategory[],

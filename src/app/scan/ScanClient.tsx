@@ -75,10 +75,24 @@ export default function ScanClient() {
       try {
         const res = await fetch("/api/scan/login", { method: "GET" });
         if (cancelled) return;
-        // 500 = config incomplète côté serveur. Ne JAMAIS envoyer l'employé
-        // sur l'écran PIN dans ce cas : aucun code ne marchera.
-        if (res.status === 500) setPhase("non_configure");
-        else setPhase(res.ok ? "scanning" : "pin");
+        if (res.ok) {
+          setPhase("scanning");
+          return;
+        }
+        // 🔴 ON LIT LE MARQUEUR, PAS LE CODE DE STATUT.
+        // Cette ligne testait `res.status === 500`. Or un 500 a DEUX causes
+        // contraires : la config manquante (aucun code ne marchera jamais)
+        // et un plantage passager de la lambda (tout remarche à la seconde
+        // suivante). Un signal à deux causes contraires n'est plus un
+        // signal : il envoyait le comptoir sur un écran terminal pour un
+        // hoquet d'une seconde.
+        // Le serveur envoyait DÉJÀ le bon marqueur — `scan_not_configured`,
+        // dans le corps de la réponse — et ce client le jetait.
+        const corps = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        if (cancelled) return;
+        setPhase(corps?.error === "scan_not_configured" ? "non_configure" : "pin");
       } catch {
         if (!cancelled) setPhase("pin");
       }
@@ -105,12 +119,23 @@ export default function ScanClient() {
         setPhase("scanning");
       } else if (res.status === 429) {
         setPinError("Trop de tentatives. Patientez une minute puis réessayez.");
-      } else if (res.status === 500) {
-        // Panne de config, PAS un mauvais code : on sort de l'écran PIN
-        // au lieu de laisser l'employé ressaisir un code correct.
-        setPhase("non_configure");
       } else {
-        setPinError("Code incorrect. Il est sur la carte sous le comptoir.");
+        // 🔴 MÊME LECTURE DU MARQUEUR QU'AU MOUNT, et c'est ICI que ça
+        // comptait le plus : l'employé vient de taper son code. Un 500
+        // passager le sortait DÉFINITIVEMENT de l'écran de saisie.
+        const corps = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        if (corps?.error === "scan_not_configured") {
+          // Panne de config : aucun code ne marchera, on sort de l'écran.
+          setPhase("non_configure");
+        } else if (res.status >= 500) {
+          // Hoquet serveur : on RESTE sur l'écran, et surtout on ne dit pas
+          // « code incorrect » à quelqu'un qui a tapé le bon code.
+          setPinError("Problème de connexion. Réessayez.");
+        } else {
+          setPinError("Code incorrect. Il est sur la carte sous le comptoir.");
+        }
       }
     } catch {
       setPinError(NETWORK_ERROR);
@@ -223,21 +248,49 @@ export default function ScanClient() {
         {phase === "non_configure" && (
           <div className="rounded-2xl border border-rialto/30 bg-rialto/5 p-6 text-center">
             {/* ⚠️ AUCUN NOM DE VARIABLE D'ENVIRONNEMENT ICI. L'écran
-                /scan est servi à tout le monde — le dashboard, lui, affiche
-                « les variables DASHBOARD_PIN et DASHBOARD_COOKIE_SECRET
-                manquent » à n'importe quel visiteur, ce qui est une fuite de
-                configuration. On ne reproduit pas ça.
-                Message pour un employé au comptoir : dire quoi FAIRE, pas
-                ce qui est cassé. */}
+                /scan est servi à tout le monde : il n'y a pas de middleware,
+                la porte est plus loin. Message pour un employé au comptoir :
+                dire quoi FAIRE, pas ce qui est cassé.
+                (Le dashboard nommait ses variables manquantes à tout
+                visiteur ; c'est retiré depuis le 22.08 — voir `PinGate`.) */}
             <h1 className="font-serif text-xl text-ink">Scanner indisponible</h1>
             <p className="mt-2 text-sm text-mute">
               Le scanner ne peut pas s&apos;ouvrir en ce moment. Ce n&apos;est
-              pas votre code : inutile de réessayer.
+              pas votre code.
             </p>
             <p className="mt-2 text-sm text-mute">
               Prévenez Augustin. En attendant, notez les cartes sur papier :
               les tampons pourront être ajoutés plus tard.
             </p>
+            {/* 🔴 CET ÉCRAN ÉTAIT UN CUL-DE-SAC (relecture adversariale
+                du 22.08, seul finding qui a survécu à trois sceptiques).
+                Rien n'en sortait : ni bouton, ni minuteur, ni re-contrôle.
+                La seule issue était que quelqu'un pense à recharger la page,
+                pendant un service. Ce bouton est la sortie. */}
+            <button
+              type="button"
+              onClick={async () => {
+                setPhase("loading");
+                try {
+                  const res = await fetch("/api/scan/login", { method: "GET" });
+                  if (res.ok) {
+                    setPhase("scanning");
+                    return;
+                  }
+                  const c = (await res.json().catch(() => null)) as
+                    | { error?: string }
+                    | null;
+                  setPhase(
+                    c?.error === "scan_not_configured" ? "non_configure" : "pin",
+                  );
+                } catch {
+                  setPhase("non_configure");
+                }
+              }}
+              className="mt-4 w-full rounded-xl bg-rialto py-3 font-semibold text-white transition-colors hover:bg-rialto-dark"
+            >
+              Réessayer
+            </button>
           </div>
         )}
 

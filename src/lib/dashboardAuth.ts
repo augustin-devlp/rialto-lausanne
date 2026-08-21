@@ -28,9 +28,11 @@ const THIRTY_DAYS_SEC = 30 * 24 * 60 * 60;
  *
  * ⚠️ POURQUOI CELUI-CI AUSSI, ALORS QUE SEUL LE SCAN ÉTAIT DEMANDÉ :
  * la comparaison était `pin !== process.env.DASHBOARD_PIN`, exactement le
- * même défaut que le scan. Or cette porte-ci protège DAVANTAGE — dix-sept
- * routes `/api/dashboard/*`, dont l'EXPORT DES CLIENTS et l'export des
- * commandes. Durcir la petite porte et laisser la grande en l'état
+ * même défaut que le scan. Or cette porte-ci protège DAVANTAGE — VINGT
+ * fichiers de route `/api/dashboard/*` appellent `requireDashboardAuth`,
+ * dont l'EXPORT DES CLIENTS et l'export des commandes. (Le chiffre écrit
+ * ici le 22.08 était « dix-sept » : compté de mémoire, jamais vérifié.
+ * Recompté par `grep -rl requireDashboardAuth src/app/api/dashboard/`.) Durcir la petite porte et laisser la grande en l'état
  * n'aurait pas tenu debout.
  * Extension de périmètre volontaire, signalée à Augustin.
  *

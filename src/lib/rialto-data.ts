@@ -29,7 +29,13 @@ export const RIALTO_INFO = {
   openingHoursShort: "11h30 – 23h30",
   quartier: "Entre Place de l'Ours et Chailly",
   prepTimeMinutes: 30,
-  minOrderCHF: 25,
+  // ⚠️ `minOrderCHF` A ÉTÉ RETIRÉ LE 22.08. C'était un minimum de
+  // commande EN DUR, servant de repli à `MenuClient` et
+  // `CheckoutPageClient` ; le repli vit désormais dans
+  // `src/lib/delivery/minimum.ts` (const `MINIMUM_DE_REPLI_CHF`), à un
+  // seul endroit. Le laisser ici après l'avoir vidé de ses lecteurs
+  // invitait à le réutiliser — or 25 est faux pour trois anneaux sur
+  // quatre (35 / 45 / 55).
   tagline: "Pizzeria & cuisine anatolienne",
   mapUrl:
     "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d694.2!2d6.646!3d46.523!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x478c2fa72fc9bcad%3A0x27de4c0facd1ae1c!2sRialto!5e0!3m2!1sfr!2sch!4v1700000000000",

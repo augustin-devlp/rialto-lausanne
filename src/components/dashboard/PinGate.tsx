@@ -23,9 +23,23 @@ export default function PinGate({ children }: { children: ReactNode }) {
       try {
         const res = await fetch("/api/dashboard/login", { cache: "no-store" });
         if (cancelled) return;
-        if (res.ok) setPhase("authed");
-        else if (res.status === 500) setPhase("not_configured");
-        else setPhase("pin");
+        if (res.ok) {
+          setPhase("authed");
+          return;
+        }
+        // 🔴 ON LIT LE MARQUEUR, PAS LE CODE DE STATUT — même correction
+        // qu'au scan (`src/app/scan/ScanClient.tsx`). Un 500 a DEUX causes
+        // contraires : la config manquante, et un plantage passager de la
+        // lambda. Le serveur envoie déjà `dashboard_not_configured` dans le
+        // corps ; ce client le jetait et basculait sur l'écran de panne pour
+        // un hoquet d'une seconde.
+        const corps = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        if (cancelled) return;
+        setPhase(
+          corps?.error === "dashboard_not_configured" ? "not_configured" : "pin",
+        );
       } catch {
         if (!cancelled) setPhase("pin");
       }
@@ -89,8 +103,17 @@ export default function PinGate({ children }: { children: ReactNode }) {
           </h1>
           <p className="mt-2 text-sm text-mute">
             L&apos;espace restaurateur ne peut pas s&apos;ouvrir en ce
-            moment. Ce n&apos;est pas votre code : inutile de réessayer.
+            moment. Ce n&apos;est pas votre code.
           </p>
+          {/* 🔴 MÊME CUL-DE-SAC QUE L'ÉCRAN DE SCAN, corrigé en même
+              temps : rien ne sortait de cette phase sans recharger. */}
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 w-full rounded-xl bg-rialto py-3 font-semibold text-white"
+          >
+            Réessayer
+          </button>
         </div>
       </div>
     );

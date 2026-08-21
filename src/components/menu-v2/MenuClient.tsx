@@ -41,6 +41,7 @@ import {
 } from "@/lib/clientStore";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { track } from "@/lib/tracking";
+import { resoudCollections } from "@/lib/menu/collections";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { comptePizzasPanier } from "@/lib/eta/pizzas";
 
@@ -279,18 +280,19 @@ export default function MenuClient({ categories, items, options, restaurantId }:
     return map;
   }, [items, activeFilters, excludedAllergens, categoryById, recherche]);
 
-  // Articles vedette (is_priority — « Coup de cœur » du dashboard) pour
-  // le carrousel « Nos plats en vedette » (É5). Dérivés d'itemsByCategory
-  // (relecture 20.08) : la fenêtre saisonnière, les filtres et les
-  // EXCLUSIONS D'ALLERGÈNES s'appliquent aussi aux vedettes — et le
-  // carrousel disparaît pendant une recherche (un état « aucun résultat »
-  // surmonté d'offres pleines serait contradictoire).
-  const itemsVedette = useMemo(() => {
-    if (recherche.trim()) return [];
-    return Object.values(itemsByCategory)
-      .flat()
-      .filter((it) => it.is_priority && it.is_available && !it.is_out_of_stock);
-  }, [itemsByCategory, recherche]);
+  // ⚠️ `itemsVedette` (le rail unique alimenté par is_priority) a été
+  // RETIRÉ le 21.08 : remplacé par les 12 rails thématiques composés à la
+  // main (src/lib/menu/collections.ts). La colonne is_priority reste en
+  // base et continue de porter le badge « Coup de cœur » sur les cartes —
+  // elle ne pilote simplement plus aucun carrousel.
+
+  // Les 12 rails : résolus contre les articles DÉJÀ filtrés (zéro requête
+  // réseau — la page a chargé le catalogue une fois). Régimes,
+  // allergènes, saison et épuisés sont donc déjà appliqués.
+  const collections = useMemo(
+    () => resoudCollections(Object.values(itemsByCategory).flat()),
+    [itemsByCategory],
+  );
 
   // Scroll-spy REFONDU (É5, 20.08 — bug constaté par Augustin : catégorie
   // décalée d'une section sur entrées/softdrinks, « bières » affichée en
@@ -558,12 +560,22 @@ export default function MenuClient({ categories, items, options, restaurantId }:
         {/* Content principal */}
         <div className="min-w-0 flex-1 px-3 sm:px-4 md:px-5 pt-4 md:pt-5 lg:flex lg:gap-5">
           <div className="min-w-0 flex-1">
-      {/* ─── Carrousel « Nos plats en vedette » (É5) ─────────── */}
-      <OffresCarrousel
-        items={itemsVedette}
-        categoryNameById={categoryById}
-        onAdd={handleSelectItem}
-      />
+      {/* ─── LES 12 RAILS THÉMATIQUES (21.08) ────────────────────
+          Composés à la main (src/lib/menu/collections.ts), ordre fixé.
+          Alimentés par `itemsDisponibles` — donc régimes, allergènes,
+          saison ET épuisés déjà appliqués : un rail ne propose jamais ce
+          que la grille refuse. Un rail vidé par les filtres disparaît.
+          Masqués pendant une recherche, comme l'ancien rail unique. */}
+      {recherche.trim() === "" &&
+        collections.map((c) => (
+          <OffresCarrousel
+            key={c.slug}
+            titre={c.titre}
+            items={c.items}
+            categoryNameById={categoryById}
+            onAdd={handleSelectItem}
+          />
+        ))}
 
       {/* ─── Intro compacte ──────────────────────────────────── */}
       <section className="pb-2 flex items-start justify-between gap-3">

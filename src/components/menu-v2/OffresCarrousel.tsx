@@ -21,12 +21,15 @@ import { formatCHF } from "@/lib/format";
 import { matchDishImage } from "@/lib/rialto-data";
 
 type Props = {
+  /** Titre du rail (12 rails thématiques depuis le 21.08). */
+  titre: string;
   items: MenuItem[];
   categoryNameById: Record<string, string>;
   onAdd: (item: MenuItem) => void;
 };
 
 export default function OffresCarrousel({
+  titre,
   items,
   categoryNameById,
   onAdd,
@@ -42,10 +45,10 @@ export default function OffresCarrousel({
   };
 
   return (
-    <section className="pt-4" aria-label="Nos plats en vedette">
+    <section className="pt-4" aria-label={titre}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-lg font-bold text-ink md:text-xl">
-          Nos plats en vedette
+          {titre}
         </h2>
         <div className="flex gap-1.5">
           <button
@@ -98,7 +101,7 @@ export default function OffresCarrousel({
                   </svg>
                 </button>
               </div>
-              <div className="mt-1.5 truncate text-sm font-medium text-ink">
+              <div className="mt-1.5 line-clamp-2 text-sm font-medium leading-snug text-ink">
                 {it.name}
               </div>
               <div className="tabular text-xs text-mute">

@@ -9,7 +9,7 @@ import { analyzeCart } from './cartAnalysis';
 import { fetchFullMenu } from './supabaseMenu';
 import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring';
 import { callGeminiForMessages, genericPairingMessage } from './geminiCall';
-import { choisitChemin, idsInconnus } from './chemins';
+import { choisitChemin, idsInconnus, panierEstUneTablee } from './chemins';
 
 export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
 
@@ -53,7 +53,18 @@ export async function generateUpsell(
   // v2 (D2) — garde-fou anti-lourdeur : sous-total > seuil CHF → silence total.
   // Au-delà, suggérer paraît cupide. S'ajoute au court-circuit >=8 items ci-dessus.
   const subtotal = analysis.totalPrice; // déjà pondéré quantité (cartAnalysis)
-  if (subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
+
+  // ⚠️ LE MODE TABLÉE IGNORE CE SEUIL (décision Augustin 21.08).
+  //
+  // Le plafond de 80 CHF a été pensé pour une GROSSE COMMANDE
+  // INDIVIDUELLE — au-delà, insister paraît cupide. Il ne vaut pas pour un
+  // GROUPE : trois plats, c'est précisément là que le 1.5 l et les formats
+  // 11 pièces paient. Constaté en production le 21.08 : trois plats à 29
+  // font déjà 87, donc le mode le plus rentable du moteur était muet
+  // exactement sur les tablées les plus chères.
+  const estTablee =
+    panierEstUneTablee(cart) ;
+  if (!estTablee && subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
 

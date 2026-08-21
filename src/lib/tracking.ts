@@ -140,7 +140,24 @@ export function grantTracking(): void {
     }
 
     // ── Meta : stub fbq (équivalent du snippet officiel) + init ──
-    if (META_PIXEL_ID) {
+    //
+    // ⚠️ JAMAIS SUR /confirmation (décision Augustin 21.08).
+    //
+    // Cette page porte un JETON D'ACCÈS dans son URL. `fbevents.js`
+    // construit son paramètre `dl` à partir de `document.location.href`, et
+    // RIEN ne peut le surcharger : `page_location` et `page_path` sont des
+    // paramètres gtag, Meta ne les lit pas. Injecter le pixel ici
+    // publierait donc le secret chez un sous-traitant hors UE, à chaque
+    // ouverture du lien reçu par e-mail.
+    //
+    // On ne perd rien de la chaîne de conversion : le `Purchase` part du
+    // CHECKOUT au retour du POST (CheckoutPageClient), pendant que le
+    // navigateur est encore sur /checkout — la page de confirmation est
+    // rechargeable, donc elle a toujours été exclue pour éviter les
+    // doublons. Ce qu'on perd, c'est un PageView. C'est tout.
+    const surConfirmation =
+      window.location.pathname.startsWith("/confirmation/");
+    if (META_PIXEL_ID && !surConfirmation) {
       if (!window.fbq) {
         const fbq: NonNullable<Window["fbq"]> = (...args: unknown[]) => {
           if (fbq.callMethod) {

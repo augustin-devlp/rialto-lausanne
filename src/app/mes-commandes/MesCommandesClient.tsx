@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { formatCHF } from "@/lib/format";
-import { cheminConfirmation, suffixeJeton } from "@/lib/orderAccessShared";
 import { readCustomerSession } from "@/lib/customerSession";
 import { addLinesToCart } from "@/lib/clientStore";
 import type { CartItem } from "@/lib/types";
@@ -17,18 +16,7 @@ type OrderRow = {
   status: string;
   total_amount: number;
   created_at: string;
-  /** Jeton d'accès fourni par /api/rialto/loyalty/lookup (21.08). Sans lui,
-   *  ni le lien de suivi ni « Recommander » ne fonctionnent : les deux
-   *  routes visées sont gardées. Optionnel par prudence — un cache client
-   *  antérieur au 21.08 n'en porte pas. */
-  access_token?: string | null;
 };
-
-/** Suffixe `?t=…` d'une commande, ou chaîne vide si le jeton manque.
- *  Passe par la fabrique partagée : jamais le nom du paramètre en dur. */
-function qs(order: OrderRow): string {
-  return suffixeJeton(order.access_token);
-}
 
 /** Statuts pour lesquels un SUIVI a encore du sens. Une commande d'il y a
  *  trois semaines n'a rien à suivre — le lien « Voir le suivi » ne doit
@@ -117,16 +105,23 @@ export default function MesCommandesClient() {
     }
   }
 
-  async function handleReorder(order: OrderRow) {
-    const orderNumber = order.order_number;
+  async function handleReorder(orderNumber: string) {
     setReorderingId(orderNumber);
     try {
-      // La route reorder est gardée par jeton depuis le 21.08 : elle
-      // renvoyait le panier complet — notes libres du client comprises — à
-      // qui devinait un numéro de commande.
-      const res = await fetch(
-        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder${qs(order)}`,
+      // La route reorder vérifie le PROPRIÉTAIRE par téléphone, comme sa
+      // route sœur `detail` — même session, même preuve. Elle renvoyait le
+      // panier complet, notes libres comprises, à qui devinait un numéro.
+      const session = readCustomerSession();
+      if (!session?.phone) {
+        alert("Reconnectez-vous pour recommander.");
+        return;
+      }
+      const urlReorder = new URL(
+        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder`,
+        window.location.origin,
       );
+      urlReorder.searchParams.set("phone", session.phone);
+      const res = await fetch(urlReorder.toString());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as {
         cart_items: CartItem[];
@@ -322,25 +317,22 @@ export default function MesCommandesClient() {
                         id={`detail-${order.order_number}`}
                         className="border-t border-border px-4 py-3"
                       >
-                        {/* « Suivre ma commande » : HORS de la branche « ok ».
-                            Placé à l'intérieur, il disparaissait dès que le
-                            détail échouait — un client dont la pizza est en
-                            route perdait alors tout accès au suivi, qui est
-                            justement la raison pour laquelle il a ouvert cet
-                            écran. Et pour une commande en cours c'est
-                            l'action n°1 : elle passe donc en tête et en
-                            bouton, pas en lien gris tout en bas. */}
-                        {enCours && (
-                          <Link
-                            href={cheminConfirmation(
-                              order.order_number,
-                              order.access_token,
-                            )}
-                            className="mb-3 flex w-full items-center justify-center rounded-xl bg-rialto px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rialto-dark"
-                          >
-                            Suivre ma commande
-                          </Link>
-                        )}
+                        {/* ⚠️ « SUIVRE MA COMMANDE » A ÉTÉ RETIRÉ LE 21.08,
+                            et ce n'est pas un oubli.
+                            La page de suivi exige un jeton d'accès. Ce jeton
+                            venait de `loyalty/lookup` — une route OUVERTE,
+                            dont la seule clé est un numéro de téléphone.
+                            Elle est donc devenue le distributeur des clés
+                            qu'on venait de poser : la garde était annulée par
+                            sa propre distribution. Le jeton en a été retiré.
+                            Il n'existe AUCUN chemin propre pour le redonner
+                            ici : toute route qui l'échangerait contre un
+                            téléphone recréerait exactement le trou qu'on
+                            vient de fermer.
+                            Le lien revient AVEC la session client signée, et
+                            pas avant. En attendant, le client garde ses deux
+                            vrais accès : la redirection après commande, et
+                            le lien de son e-mail de confirmation. */}
                         {(!etat || etat.statut === "chargement") && (
                           <p className="text-sm text-mute">Chargement…</p>
                         )}
@@ -430,7 +422,7 @@ export default function MesCommandesClient() {
                     <div className="border-t border-border px-4 py-2.5">
                       <button
                         type="button"
-                        onClick={() => handleReorder(order)}
+                        onClick={() => handleReorder(order.order_number)}
                         disabled={isReordering}
                         className="flex w-full items-center justify-center gap-2 rounded-xl bg-rialto/10 px-3 py-2 text-sm font-semibold text-rialto transition hover:bg-rialto hover:text-white disabled:opacity-60"
                       >

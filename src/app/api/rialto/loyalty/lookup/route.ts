@@ -8,7 +8,6 @@ import {
   RIALTO_PLACE_ID,
 } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
-import { signOrderToken } from "@/lib/orderAccess";
 import { computeSpinAvailability } from "@/lib/spinAvailability";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 import { toStampRule } from "@/lib/loyalty/rule";
@@ -312,19 +311,24 @@ export async function GET(req: NextRequest) {
     // à « Mes commandes » de construire un lien de suivi valide et
     // d'appeler `reorder`, désormais gardée. Le jeton est DÉRIVÉ, donc
     // recalculé ici sans rien lire de plus en base.
-    // ⚠️ CE QUI SUIT N'EST PAS UNE GARANTIE DE SÉCURITÉ, et il ne faut pas
-    // le lire comme telle. Le `.eq("customer_id", …)` plus haut borne les
-    // DONNÉES au porteur de la carte — il ne dit RIEN sur le fait que
-    // l'appelant SOIT ce porteur. Cette route est ouverte : quiconque
-    // connaît (ou devine) un numéro obtient ces jetons, donc l'accès à la
-    // page de suivi et à /api/orders/[id].
-    // Le jeton vaut donc, en pratique, « connaît le numéro de téléphone ».
-    // C'est mieux qu'un numéro de commande séquentiel — ce n'est pas une
-    // fermeture. La vraie fermeture est une session client signée.
-    orders: (orders ?? []).map((o) => ({
-      ...o,
-      access_token: signOrderToken(RESTAURANT_ID, o.order_number as string),
-    })),
+    // ⚠️ CETTE ROUTE NE DISTRIBUE PLUS DE JETON D'ACCÈS. RETIRÉ LE 21.08.
+    //
+    // Je l'avais ajouté ici la veille, et c'était l'erreur : cette route est
+    // OUVERTE (sa seule clé est un numéro de téléphone). Elle est donc
+    // devenue le distributeur des clés qu'on venait de poser sur quatre
+    // surfaces — la garde était annulée par sa propre distribution.
+    // Chaîne vérifiée en production, zéro authentification :
+    //   lookup?phone= → jeton → /confirmation → /api/orders/[id] (adresse,
+    //   code d'entrée, notes) → confirm-delivered (une ÉCRITURE).
+    //
+    // RÈGLE QUI EN SORT : un jeton ne s'émet JAMAIS depuis une route moins
+    // authentifiée que la surface qu'il ouvre. Le jeton ne circule plus que
+    // par ses vrais canaux — email, redirection après commande — que
+    // l'attaquant ne contrôle pas.
+    //
+    // Le jour où une session client signée existera, c'est ELLE qui pourra
+    // le redonner ici. Pas avant.
+    orders: orders ?? [],
     review_gate: {
       place_id: RIALTO_PLACE_ID,
       active_claim: activeClaim,

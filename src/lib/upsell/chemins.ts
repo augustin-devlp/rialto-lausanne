@@ -25,13 +25,16 @@ import type { CartAnalysis, MenuItemFull } from "./types";
  * ── CHEMINS IMPLÉMENTÉS ICI ─────────────────────────────────────────────
  *   P3 — plat sans boisson
  *   P4 — plat sans accompagnement (le vrai levier de marge)
- *   P6 — le MODE TABLÉE : pas un chemin, il change les formats de P3/P4
+ *   P6 — le MODE TABLÉE : pas un chemin, il change les formats de P3/P4/P5
  *   P8 — le silence : ne rien dire est une réponse valable
  *
  * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
+ *   P5 — le dessert (repas complet sans dessert)
+ *
+ * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
  *   P1 (combo)  → BLOQUÉ, trois raisons, voir `docs/UPSELL_MOTEUR.md`
- *   P2 (palier) → touche l'affichage des prix : à faire après P1
- *   P5 (dessert), P7 (minimum de zone) → spécifiés, pas codés
+ *   P2 (palier) → affiche des PRIX : traité à part, voir le même document
+ *   P7 (minimum de zone) → spécifié, pas codé
  */
 
 /** Catégories, par id. Les noms ne sont PAS un discriminant fiable :
@@ -65,9 +68,13 @@ export const ART = {
   VIGNE_11: "37464a33-eada-4f3b-8060-768181c29f48", // 21.00
   FALAFELS_11: "7da2f3e2-eb1a-4a11-8553-a3cb2e09d083", // 21.00
   CALAMARS_11: "df18a882-c0f9-44cc-85de-cd15fc76f2af", // 21.00
+  BAKLAVA: "9a40203f-8005-4914-8f1e-47076ebdab50", // 10.00 · anatolien
+  TIRAMISU: "6d2dd901-99d2-4a76-bb03-a6c77c2d99af", // 9.00 · italien
+  GLACE_NOIX: "a254fea6-e24e-46b3-871f-2c0121f49ba7", // 17.00 · 3 pers.
+  GLACE_COOKIE: "3598fbf8-f1f9-4431-bf79-24dca6f56e0f", // 17.00 · 3 pers.
 } as const;
 
-export type Chemin = "P3" | "P4" | "P8";
+export type Chemin = "P3" | "P4" | "P5" | "P8";
 
 export interface ResultatChemin {
   chemin: Chemin;
@@ -121,6 +128,18 @@ function majoriteAnatolienne(plats: MenuItemFull[]): boolean {
   return anat * 2 > total;
 }
 
+/**
+ * Le panier est-il une TABLÉE ? Au moins `SEUIL_TABLEE` plats principaux,
+ * quantités comprises.
+ *
+ * Exporté parce que le seuil de SILENCE du moteur (80 CHF) doit l'ignorer :
+ * ce plafond vise une grosse commande individuelle, pas un groupe — et
+ * trois plats, c'est justement là que les grands formats paient.
+ */
+export function panierEstUneTablee(panier: MenuItemFull[]): boolean {
+  return nbPlats(panier) >= SEUIL_TABLEE;
+}
+
 /** Nombre de plats principaux, quantités comprises. */
 function nbPlats(panier: MenuItemFull[]): number {
   return platsDuPanier(panier).reduce((n, i) => n + (i.quantity ?? 1), 0);
@@ -163,13 +182,13 @@ function cheminP3(
  * pizza. C'est la seule ligne de la table qui est une INTERDICTION, et elle
  * compte plus que les autres.
  *
- * ⚠️ LES HAMBURGERS SONT EXCLUS, et c'est un ÉCART ASSUMÉ vis-à-vis de la
- * spec. Elle dit « Cheeseburger, Hamburger classique → Frites Classique ».
- * Or les deux hamburgers portent le tag `fries_included` en base : ils sont
- * SERVIS avec des frites. Leur en proposer reviendrait à vendre des frites
- * à quelqu'un qui en a déjà dans son assiette. Le moteur bloquait déjà ce
- * cas ; on ne le contredit pas. À rouvrir seulement si Augustin confirme
- * que les hamburgers viennent réellement sans frites.
+ * ⚠️ LES HAMBURGERS NE REÇOIVENT JAMAIS D'ACCOMPAGNEMENT (Augustin 21.08,
+ * après correction de sa propre table). Ils portent `fries_included` en
+ * base : ils sont SERVIS avec des frites. Leur en proposer reviendrait à
+ * en vendre à quelqu'un qui en a déjà dans son assiette.
+ * P4 les laisse donc passer, et ils tombent sur P3 (boisson) ou P5
+ * (dessert) — exactement ce que la règle demande : « pour un burger, une
+ * boisson ou un dessert, jamais un accompagnement ».
  */
 function cheminP4(
   panier: MenuItemFull[],
@@ -239,6 +258,49 @@ function fait(chemin: Chemin, candidats: MenuItemFull[]): ResultatChemin | null 
 }
 
 /**
+ * P5 — REPAS COMPLET SANS DESSERT.
+ *
+ * Déclencheur : un plat ET une boisson au panier, aucun dessert.
+ *
+ * ⚠️ LE TIRAMISU EST MARQUÉ `contains_alcohol = true` EN BASE. Le filtre
+ * d'entrée de ce module l'écarte donc, et le panier italien retombe
+ * automatiquement sur le Baklava — sans erreur, sans trou. C'est voulu :
+ * la spec dit « Tiramisu SI disponible, sinon Baklava », et « disponible »
+ * inclut « pas écarté par une garde ». Augustin demande à Mehmet si son
+ * tiramisu contient réellement de l'alcool ; d'ici là, Baklava par défaut.
+ * On le cite quand même en PREMIER pour le panier italien : le jour où le
+ * drapeau tombe, le chemin se corrige tout seul.
+ *
+ * ⚠️ LES DEUX GLACES 500 ml sont au même prix, même format, même
+ * `serves_pax`. La spec ne tranche pas : on cite les deux, noix d'abord.
+ */
+function cheminP5(
+  panier: MenuItemFull[],
+  analysis: CartAnalysis,
+  get: ReturnType<typeof parId>,
+): ResultatChemin | null {
+  if (!analysis.hasMain) return null;
+  if (!analysis.hasAnyDrink) return null;
+  if (analysis.hasDessert) return null;
+
+  const plats = panier.filter(
+    (i) => i.dish_role === "main" || i.dish_role === "combo",
+  );
+
+  // Tablée : le format partage plutôt qu'une part individuelle.
+  if (panierEstUneTablee(panier)) {
+    return fait("P5", get(ART.GLACE_NOIX, ART.GLACE_COOKIE));
+  }
+  if (majoriteAnatolienne(plats)) {
+    return fait("P5", get(ART.BAKLAVA));
+  }
+  if (plats.some((p) => p.cuisine_style === "italian")) {
+    return fait("P5", get(ART.TIRAMISU, ART.BAKLAVA));
+  }
+  return fait("P5", get(ART.BAKLAVA));
+}
+
+/**
  * P8 — LE SILENCE. Plat + boisson + accompagnement + dessert déjà là :
  * on ne dit rien. Ne rien dire est une réponse valable, et c'est même la
  * bonne quand le repas est complet — insister décrédibilise tout le reste.
@@ -280,6 +342,7 @@ export function choisitChemin(
     cheminP8(analysis) ??
     cheminP3(panier, analysis, get) ??
     cheminP4(panier, analysis, get) ??
+    cheminP5(panier, analysis, get) ??
     null
   );
 }

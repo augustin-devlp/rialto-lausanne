@@ -42,6 +42,10 @@ const ID = {
   CALAMARS_11: "df18a882-c0f9-44cc-85de-cd15fc76f2af",
   COCA_ZERO_05: "fe329962-741f-4e93-aadb-677a07db2cbd",
   COCA_ZERO_15: "a0184db6-659a-4eba-a9ba-227e3dfcbae0",
+  BAKLAVA: "9a40203f-8005-4914-8f1e-47076ebdab50",
+  TIRAMISU: "6d2dd901-99d2-4a76-bb03-a6c77c2d99af",
+  GLACE_NOIX: "a254fea6-e24e-46b3-871f-2c0121f49ba7",
+  GLACE_COOKIE: "3598fbf8-f1f9-4431-bf79-24dca6f56e0f",
 };
 
 function art(p: Partial<MenuItemFull> & { id: string }): MenuItemFull {
@@ -92,6 +96,11 @@ const CATALOGUE: MenuItemFull[] = [
   art({ id: ID.VIGNE_11, dish_role: "starter", price: 21, category_id: CAT.ENTREES }),
   art({ id: ID.FALAFELS_11, dish_role: "starter", price: 21, category_id: CAT.ENTREES }),
   art({ id: ID.CALAMARS_11, dish_role: "starter", price: 21, category_id: CAT.ENTREES }),
+  art({ id: ID.BAKLAVA, dish_role: "dessert", price: 10, category_id: CAT.DESSERTS, cuisine_style: "anatolian" }),
+  // Le Tiramisu est marqué alcoolisé EN BASE : le filtre d'entrée l'écarte.
+  art({ id: ID.TIRAMISU, dish_role: "dessert", price: 9, category_id: CAT.DESSERTS, contains_alcohol: true }),
+  art({ id: ID.GLACE_NOIX, dish_role: "dessert", price: 17, category_id: CAT.DESSERTS, serves_pax: 3 }),
+  art({ id: ID.GLACE_COOKIE, dish_role: "dessert", price: 17, category_id: CAT.DESSERTS, serves_pax: 3 }),
 ];
 
 const pizza = (q = 1) => art({ id: "pizza-1", category_id: CAT.PIZZA, quantity: q });
@@ -193,9 +202,15 @@ describe("P4 — plat sans accompagnement", () => {
     expect(r?.candidats.map((c) => c.id)).toEqual([ID.VIGNE_5, ID.FALAFELS_4]);
   });
 
-  it("ne propose RIEN sur un hamburger — il vient déjà avec ses frites", () => {
+  it("ne propose AUCUN ACCOMPAGNEMENT sur un hamburger — il vient déjà avec ses frites", () => {
+    // Il n'est pas muet pour autant : il tombe sur P5 (dessert). C'est la
+    // règle corrigée par Augustin le 21.08 — pour un burger, une boisson ou
+    // un dessert, jamais un accompagnement.
     const r = chemin([burger(), boisson()]);
-    expect(r).toBeNull();
+    expect(r?.chemin).not.toBe("P4");
+    const ids = r?.candidats.map((c) => c.id) ?? [];
+    expect(ids).not.toContain(ID.FRITES);
+    expect(ids).not.toContain(ID.SALADE);
   });
 
   it("ne dit rien s'il y a déjà un accompagnement", () => {
@@ -319,5 +334,55 @@ describe("P4 sur un panier COMBO", () => {
     const ids = choisitChemin(panier, analyzeCart(panier), CATALOGUE)
       ?.candidats.map((c) => c.id) ?? [];
     expect(ids).not.toContain(ID.FRITES);
+  });
+});
+
+
+describe("P5 — le dessert", () => {
+  it("propose un dessert quand plat + boisson sont là, sans dessert", () => {
+    // Panier pizza + coca + salade : P3 et P4 sont fermés, P5 prend la main.
+    const r = chemin([pizza(), boisson(), salade()]);
+    expect(r?.chemin).toBe("P5");
+  });
+
+  it("🔴 retombe sur le BAKLAVA pour un panier italien — le Tiramisu est marqué alcoolisé", () => {
+    const r = chemin([pizza(), boisson(), salade()]);
+    const ids = r?.candidats.map((c) => c.id) ?? [];
+    expect(ids, "le Tiramisu doit être écarté par le filtre d'entrée").not.toContain(
+      ID.TIRAMISU,
+    );
+    expect(ids[0]).toBe(ID.BAKLAVA);
+  });
+
+  it("propose le Baklava sur un panier anatolien", () => {
+    const r = chemin([anatolien(), boisson(), salade()]);
+    expect(r?.candidats[0].id).toBe(ID.BAKLAVA);
+  });
+
+  it("passe au format partage en mode TABLÉE", () => {
+    const r = chemin([pizza(), pates(), viande(), boisson(), salade()]);
+    expect(r?.chemin).toBe("P5");
+    expect(r?.candidats.map((c) => c.id)).toEqual([ID.GLACE_NOIX, ID.GLACE_COOKIE]);
+  });
+
+  it("ne dit rien s'il y a déjà un dessert", () => {
+    const r = chemin([pizza(), boisson(), salade(), dessert()]);
+    expect(r?.chemin).not.toBe("P5");
+  });
+});
+
+describe("🔴 le BURGER : une boisson ou un dessert, JAMAIS un accompagnement", () => {
+  it("burger seul → une boisson (P3), pas un accompagnement", () => {
+    const r = chemin([burger()]);
+    expect(r?.chemin).toBe("P3");
+  });
+
+  it("burger + boisson → un DESSERT (P5), jamais des frites ni une salade", () => {
+    const r = chemin([burger(), boisson()]);
+    expect(r?.chemin).toBe("P5");
+    const ids = r?.candidats.map((c) => c.id) ?? [];
+    expect(ids).not.toContain(ID.FRITES);
+    expect(ids).not.toContain(ID.SALADE);
+    expect(ids).not.toContain(ID.POTATOES);
   });
 });

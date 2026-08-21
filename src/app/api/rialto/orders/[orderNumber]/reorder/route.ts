@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
-import { PARAM_JETON, verifyOrderToken } from "@/lib/orderAccess";
+import { phoneLookupVariants } from "@/lib/phoneVariants";
 
 export const dynamic = "force-dynamic";
 
@@ -17,16 +17,23 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { orderNumber: string } },
 ) {
-  // ⚠️ JETON EXIGÉ (21.08.2026). Cette route n'avait AUCUN contrôle : le
-  // numéro de commande — séquentiel — suffisait à obtenir le panier
-  // complet, NOTES LIBRES DU CLIENT COMPRISES (voir le select plus bas).
-  // Elle est fermée par le même jeton que la page de confirmation, et non
-  // par le téléphone : le téléphone ne prouve rien ici, puisque c'est
-  // précisément ce que la page publiait.
-  // Vérification AVANT le SELECT — un jeton faux ne coûte pas une requête.
-  const jeton = new URL(req.url).searchParams.get(PARAM_JETON);
-  if (!verifyOrderToken(RESTAURANT_ID, params.orderNumber, jeton)) {
-    // 404 et non 403 : ne pas confirmer qu'un numéro deviné existe.
+  // ⚠️ CONTRÔLE DU PROPRIÉTAIRE PAR TÉLÉPHONE — comme la route sœur
+  // `detail`, et NON par jeton (revirement du 21.08, second passage).
+  //
+  // Cette route n'avait AUCUN contrôle : le numéro de commande — séquentiel
+  // — suffisait à obtenir le panier complet, NOTES LIBRES DU CLIENT
+  // COMPRISES. Je l'ai d'abord fermée par jeton, en écrivant que « le
+  // téléphone ne prouve rien ici, puisque c'est précisément ce que la page
+  // publiait ». Cet argument est MORT le jour même : la page de
+  // confirmation est fermée, elle ne publie plus rien. La circularité a
+  // disparu, donc le téléphone redevient une preuve valable — et il évite
+  // de faire transiter le jeton par une route ouverte, ce qui était le vrai
+  // problème.
+  //
+  // Niveau d'exposition identique à `detail`, qui suit la même règle :
+  // des noms de plats et les notes du client, jamais un montant.
+  const phone = new URL(req.url).searchParams.get("phone")?.trim();
+  if (!phone) {
     return NextResponse.json({ error: "order_not_found" }, { status: 404 });
   }
 
@@ -34,12 +41,29 @@ export async function GET(
 
   const { data: order } = await admin
     .from("orders")
-    .select("id, order_number, status")
+    .select("id, order_number, status, customer_id")
     .eq("order_number", params.orderNumber)
     .eq("restaurant_id", RESTAURANT_ID)
     .maybeSingle();
 
-  if (!order) {
+  if (!order || !order.customer_id) {
+    return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+  }
+
+  // Le téléphone doit désigner LE client de cette commande. Comparaison sur
+  // les VARIANTES, jamais en égalité brute : la base est historiquement
+  // mixte (+41…, 41…, 07…). Une égalité brute donnerait un 404 permanent à
+  // tout client dont la session porte un autre format — même piège que
+  // `detail`, déjà corrigé là-bas.
+  const variantes = phoneLookupVariants(phone).variants;
+  const { data: proprietaire } = await admin
+    .from("customers")
+    .select("id")
+    .eq("id", order.customer_id)
+    .in("phone", variantes.length > 0 ? variantes : [phone])
+    .maybeSingle();
+  if (!proprietaire) {
+    // 404 et non 403 : ne pas confirmer qu'un numéro deviné existe.
     return NextResponse.json({ error: "order_not_found" }, { status: 404 });
   }
 

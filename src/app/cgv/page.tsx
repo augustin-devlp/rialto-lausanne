@@ -27,11 +27,31 @@ export default function CGVPage() {
         <p>
           Les commandes sont prises en livraison uniquement sur la zone
           desservie (vérifiable via le code postal sur la page d&apos;accueil).
-          Le minimum de commande varie selon la zone (typiquement 25–30 CHF).
+          {/* ⚠️ DISAIT « typiquement 25–30 CHF ». Faux dans les deux sens :
+              aucune zone n'est à 30, et la grille monte à 55. Valeurs
+              relevées en base le 22.08 (`delivery_zones.min_order_amount`) :
+              25 sur 15 NPA, 35 sur 11, 45 sur 19, 55 sur 19.
+              🔴 CES CHIFFRES SONT CONTRACTUELS. Toute navette qui touche la
+              grille des zones doit repasser ici. */}{" "}
+          Le minimum de commande dépend de votre zone : de 25 à 55 CHF. Le
+          montant exact s&apos;affiche dès que vous entrez votre code postal.
+        </p>
+        {/* ⚠️ AJOUTÉ LE 22.08 : l'email est devenu OBLIGATOIRE pour
+            commander le 21.08 (`src/app/api/orders/route.ts`, const
+            `emailRecu`). C'est une CONDITION DE COMMANDE, donc contractuel —
+            les CGV ne le mentionnaient nulle part. */}
+        <p>
+          Une adresse email valide est nécessaire pour passer commande : elle
+          sert à vous envoyer le reçu et le lien de suivi de votre commande.
         </p>
         <p>
-          Une fois passée, votre commande est transmise au restaurant qui
-          vous envoie un SMS de confirmation. Vous pouvez suivre son avancement
+          {/* ⚠️ DISAIT « vous envoie un SMS de confirmation ». Plus vrai
+              depuis la séparation des canaux du 21.07.2026 : aucun SMS n'est
+              envoyé à la création d'une commande (vérifié — `sendSms` n'est
+              pas appelé dans `src/app/api/orders/route.ts`). Le client reçoit
+              un email. Corrigé le 22.08. */}
+          Une fois passée, votre commande est transmise au restaurant et vous
+          recevez un email de confirmation. Vous pouvez suivre son avancement
           sur la page <a href="/confirmation">/confirmation</a>.
         </p>
       </section>

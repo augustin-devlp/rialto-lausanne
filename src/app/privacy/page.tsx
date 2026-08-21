@@ -35,9 +35,18 @@ export default function PrivacyPage() {
       <section>
         <h2>Données collectées</h2>
         <p>Lors d&apos;une commande, nous collectons :</p>
+        {/* ⚠️ CETTE LISTE DOIT ÉNUMÉRER TOUT CE QUI EST RÉELLEMENT COLLECTÉ.
+            L'adresse email y manquait : elle était collectée sans être
+            déclarée, et depuis le 21.08.2026 elle est OBLIGATOIRE au
+            checkout (`src/app/api/orders/route.ts`, const `emailRecu`),
+            donc collectée à CHAQUE commande. Ajoutée le 22.08.
+            🔴 SI UN CHAMP ENTRE OU SORT DU CHECKOUT, CETTE LISTE BOUGE LE
+            MÊME JOUR. On ne peut rien promettre sur une donnée dont on ne
+            déclare pas la collecte. */}
         <ul>
           <li>Nom et prénom</li>
           <li>Numéro de téléphone</li>
+          <li>Adresse email</li>
           <li>Adresse de livraison (rue, code postal, étage)</li>
           <li>Instructions livreur (facultatif)</li>
           <li>Contenu et montant de la commande</li>
@@ -57,17 +66,36 @@ export default function PrivacyPage() {
         <p>Vos données servent uniquement à :</p>
         <ul>
           <li>Traiter et livrer votre commande</li>
+          {/* ⚠️ CETTE PUCE DISAIT « (si vous avez indiqué une adresse) ».
+              Devenu FAUX le 21.08.2026 : l'adresse est exigée pour
+              commander. Corrigé le 22.08.
+              🔴 ET LE DÉCOUPAGE DES CANAUX EST UNE PROMESSE, PAS UNE
+              DESCRIPTION : l'email ne sert QU'aux reçus, la publicité passe
+              uniquement par le SMS. C'est vrai par construction —
+              `sendEmail` (`src/lib/brevo.ts`) est la seule fonction d'envoi
+              d'email du dépôt et elle n'a qu'un appelant, le reçu de
+              commande. La même promesse est écrite au checkout
+              (`CheckoutPageClient`, libellé du champ email).
+              SI UN JOUR UN ENVOI MARKETING PAR EMAIL EST BRANCHÉ, CES DEUX
+              TEXTES TOMBENT DANS LE MÊME COMMIT. */}
           <li>
-            Vous envoyer le reçu de votre commande par email (si vous avez
-            indiqué une adresse) et des SMS liés à votre fidélité (carte
+            Vous envoyer le reçu de votre commande par email.{" "}
+            <strong>
+              Votre adresse email ne sert qu&apos;à ça : nous ne vous envoyons
+              aucune publicité par email.
+            </strong>
+          </li>
+          <li>
+            Vous envoyer par SMS les messages liés à votre fidélité (carte
             créée, récompense, gains)
           </li>
           <li>
             Gérer votre programme fidélité si vous avez une carte Rialto Club
           </li>
           <li>
-            Vous envoyer ponctuellement des offres de fidélité (spin wheel,
-            tombola), que vous pouvez désactiver à tout moment
+            Vous envoyer ponctuellement <em>par SMS</em> des offres de
+            fidélité (spin wheel, tombola), que vous pouvez refuser à tout
+            moment
           </li>
         </ul>
         <p>

@@ -31,9 +31,21 @@ connecte et repart avec tout.
 aujourd'hui — zéro client réel. Après le go-live, ce serait une
 reconnexion forcée pour tout le monde, un soir de service.
 
-**Ce que j'ai besoin que tu tranches** : la preuve de possession se fait
-par SMS ou par **e-mail** (voir la section dédiée — ta décision de rendre
-l'e-mail obligatoire vient d'ouvrir cette seconde voie, moins chère).
+**🔴 TRANCHÉ LE 22.08 PAR AUGUSTIN — trois décisions :**
+
+1. **Le canal de preuve est l'E-MAIL**, pas le SMS. Gratuit, aucun canal
+   à surveiller le soir du go-live, aucun piège de caractères.
+2. **La clé d'identité reste le TÉLÉPHONE.** Le lien e-mail *connecte* à
+   un compte identifié par son numéro — il ne le remplace pas. Carte de
+   fidélité, `lookup` et `reorder` restent indexés sur le numéro.
+3. **Le cas du foyer revient à la conception** : quand une adresse porte
+   DEUX comptes, le lien doit proposer de **CHOISIR** — jamais en
+   supposer un.
+
+⚠️ **Conséquence directe : ce chantier est BLOQUÉ tant que
+`customers_email_unique` n'est pas retiré** (navette
+`db/clients/CU1_retrait_index_email.sql`). Voir la section « Ce que les
+décisions du 22.08 changent au chiffrage ».
 
 ---
 
@@ -106,36 +118,113 @@ livrer la session en croyant avoir fermé :
 2. **Une preuve de possession à la connexion.** Sans elle, la session
    n'est qu'un souvenir mieux rangé.
 
-### Deux façons de prouver la possession — et l'e-mail change la donne
+### 🔴 LA DÉCISION DU 22.08 — le canal est l'e-mail
 
-**(a) Un code par SMS.** Prouve la possession du NUMÉRO, qui est la clé du
-compte aujourd'hui. C'est la voie la plus directe. Coût : un template SMS
-de plus, un envoi par connexion, et un canal à surveiller le soir du
-go-live.
+**Pourquoi l'e-mail et pas le SMS** (raisonnement d'Augustin, retenu) :
+gratuit, pas de canal supplémentaire à surveiller le soir du lancement,
+aucun piège de translittération. Sur un produit à cinq commandes par jour,
+ces trois raisons l'emportent.
 
-**(b) Un lien de connexion par E-MAIL.** ⚠️ Cette voie **n'existait pas
-avant le 21.08** : l'e-mail était optionnel, donc inutilisable comme
-canal de preuve. Depuis qu'il est **obligatoire au checkout**, tout client
-qui a commandé une fois en a un — et il est déjà écrit sur sa fiche.
+Cette voie **n'existait pas avant le 21.08** : l'e-mail était optionnel,
+donc inutilisable comme canal de preuve. Elle n'est ouverte que parce que
+le champ est devenu obligatoire au checkout.
 
-Ce qu'elle change concrètement :
-- **moins cher** : pas de SMS par connexion, on réutilise Brevo qui envoie
-  déjà les reçus ;
-- **plus simple à saisir** : un lien qu'on clique, pas un code qu'on
-  recopie ;
-- ⚠️ **elle prouve l'e-mail, pas le numéro.** Ce n'est pas un détail : si
-  le compte reste indexé par téléphone, un attaquant qui connaît le numéro
-  ne peut plus se connecter — c'est bien l'effet voulu — mais un client
-  qui change d'e-mail perd son accès, et il faut un chemin de récupération.
-- ⚠️ **elle ne couvre pas les clients d'avant.** Les 5 fiches en base n'ont
-  pas d'e-mail. Sans clients réels, la question est théorique aujourd'hui ;
-  elle ne le sera plus après le 01.09.
+### 🔴 CE QUE LA DÉCISION NE FAIT PAS — la clé d'identité ne bouge PAS
 
-**Ma recommandation : (b), l'e-mail.** Elle coûte moins, elle s'appuie sur
-une décision que tu viens déjà de prendre, et elle évite d'ajouter un
-canal SMS à surveiller le soir du lancement. Mais c'est **ton arbitrage** :
-elle déplace la clé d'identité du téléphone vers l'e-mail, et ça se décide
-une fois pour toutes, pas à moitié.
+J'avais présenté la voie e-mail comme « elle déplace la clé d'identité du
+téléphone vers l'e-mail ». **Augustin a tranché l'inverse, et c'est le bon
+appel** : le lien e-mail *connecte* à un compte, il ne l'*identifie* pas.
+
+- La carte de fidélité, `loyalty/lookup` et `reorder` restent indexés sur
+  le **numéro**.
+- L'e-mail ne devient jamais une clé de lecture. Aucun code ne doit
+  chercher un client par son adresse (règle gravée le 22.08 dans
+  `CLAUDE.md`).
+- Un client qui change d'adresse e-mail ne perd pas son compte : il perd
+  seulement ce moyen de connexion, et son numéro reste la vérité.
+
+C'est ce découplage qui rend la décision sûre. Sans lui, changer d'e-mail
+aurait effacé un client.
+
+### 🔴 LE CAS DU FOYER — le lien PROPOSE, il ne suppose jamais
+
+Une adresse peut porter **plusieurs comptes** : couple, colocation,
+famille. Chacun a son numéro, tous donnent la même adresse.
+
+Le lien de connexion doit donc, à l'arrivée, **lister les comptes portés
+par cette adresse et laisser choisir**. Jamais « on prend le premier », ni
+« on prend le plus récent » — les deux sont des façons silencieuses de
+connecter quelqu'un au mauvais compte, avec l'historique et l'adresse de
+livraison de l'autre.
+
+Écran d'arrivée, dans l'esprit :
+
+> **Deux comptes utilisent cette adresse.**
+> · Mehmet — 07• ••• •• 89
+> · Ana — 07• ••• •• 12
+
+Numéros masqués : la page est atteinte par un lien, on n'y révèle pas un
+numéro complet.
+
+⚠️ **CE QU'IL FAUT SAVOIR ET DIRE : partager une adresse e-mail, c'est
+partager l'accès.** Qui contrôle la boîte peut ouvrir les deux comptes.
+Ce n'est pas un défaut du mécanisme — c'est l'arrangement du foyer
+lui-même. Mais ça doit être un choix conscient, pas une surprise.
+
+---
+
+## 🔴 Ce que les décisions du 22.08 changent au chiffrage
+
+### Ce qui DISPARAÎT par rapport à la voie SMS
+
+- Le **7ᵉ template SMS** et sa relecture.
+- Le **coût par connexion**.
+- **Le canal à surveiller le soir du go-live** — c'était le vrai coût
+  caché, et il tombe.
+- Tout le **risque de translittération** (GSM-7 / UCS-2, lettres barrées).
+
+### Ce qui S'AJOUTE
+
+- **Un template e-mail** de plus (Brevo est déjà branché, `sendEmail`
+  existe et n'a qu'un appelant).
+- **Deux routes** : demander le lien, consommer le lien.
+- **Un écran de désambiguïsation** — le cas du foyer. C'est la pièce
+  nouvelle, et elle n'existait dans aucune des deux versions précédentes
+  du chiffrage.
+
+### Ce qui NE COÛTE RIEN, et c'est la bonne nouvelle
+
+**Aucune table, aucune migration pour le jeton.** Le lien peut être
+**dérivé en HMAC**, exactement comme le jeton d'accès aux commandes livré
+le 21.08 (`src/lib/orderAccess.ts`, patron prouvé en production) :
+`HMAC(secret, adresse + horodatage d'expiration)`. Rien à stocker.
+
+⚠️ **Le compromis, dit franchement** : un lien HMAC est **rejouable**
+jusqu'à son expiration — il n'est pas à usage unique. Le rendre à usage
+unique exigerait une table, donc une migration. **Ma proposition :
+expiration à 15 minutes et on accepte le rejeu dans cette fenêtre.**
+Quelqu'un qui lit la boîte mail peut de toute façon en redemander un.
+C'est ton arbitrage, pas une règle.
+
+### 🔴 LA DÉPENDANCE DURE — ce chantier est bloqué par CU1
+
+Tant que `customers_email_unique` existe :
+
+- deux membres d'un foyer **ne peuvent pas** porter la même adresse ;
+- donc l'écran de choix que tu viens de demander **ne peut jamais être
+  atteint** ;
+- et surtout, le second membre **n'a aucune adresse sur sa fiche** — il ne
+  peut donc **jamais se connecter du tout**.
+
+**La session client par e-mail n'est pas livrable avant la migration CU1.**
+Ce n'est pas un ordre de préférence, c'est un blocage technique.
+
+### Chiffrage net
+
+Environ **le même nombre de pièces** que la voie SMS, mais des pièces
+moins chères, et **zéro nouveau canal externe** à surveiller au
+lancement — ce qui était le vrai risque. La pièce en plus, l'écran de
+choix, est directement la conséquence de la décision (3).
 
 ---
 
@@ -155,8 +244,10 @@ connexion, qui gagne l'étape du code), `MesCommandesClient`,
 `FideliteSection`, `ParrainageClient`. Plus `UpsellPanel`, qui lit
 `customer_id`.
 
-**Le SMS** — un septième template, et un canal de plus à surveiller le
-soir du go-live. Le module de translittération est déjà en place.
+**L'e-mail** — un template de plus. ⚠️ Ce paragraphe annonçait « un
+septième template SMS » : caduc depuis la décision du 22.08, le canal de
+preuve est l'e-mail. Brevo est déjà branché et `sendEmail`
+(`src/lib/brevo.ts`) n'a qu'un seul appelant aujourd'hui.
 
 **Le stockage** — `customerSession.ts` est aujourd'hui un `localStorage`
 de quatre clés non signées. Il devient un miroir d'affichage ; la vérité
@@ -206,11 +297,15 @@ bord sur le parcours client.
 
 ## Ordre proposé
 
+0. 🔴 **La migration CU1** (retrait de `customers_email_unique`).
+   Bloquante : sans elle, le second membre d'un foyer n'a pas d'adresse sur
+   sa fiche et ne peut pas se connecter. Attend le signal d'Augustin.
 1. **Minimisation de `lookup`** — court, sans effet de bord, à condition
    d'avoir vérifié qu'aucune autre route ne rend les mêmes champs.
 2. **La session signée** — le socle, puis les six routes, puis les écrans.
-3. **La preuve de possession** (SMS ou lien e-mail — à trancher). Sans
-   elle, l'étape 2 n'est pas une fermeture, et il ne faut pas l'écrire
+3. **La preuve de possession — LE LIEN E-MAIL** (tranché le 22.08), avec
+   l'écran de choix quand l'adresse porte plusieurs comptes. Sans cette
+   étape, l'étape 2 n'est pas une fermeture, et il ne faut pas l'écrire
    comme si elle l'était.
 
 Le point 3 est celui qu'on est tenté de repousser. C'est aussi le seul

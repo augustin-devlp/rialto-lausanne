@@ -82,6 +82,27 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ⚠️ LE CODE POSTAL FAIT PARTIE DE LA CLÉ DE L'EFFET (corrigé 21.08).
+  // Il était lu DANS le fetch, mais l'effet ne dépendait que du panier :
+  // un client qui saisissait 1010 (frais 10), voyait « la livraison passe
+  // de 10.00 à 0.00 », puis corrigeait pour Chailly (frais 0.00) gardait
+  // à l'écran une promesse qui n'a jamais existé pour sa zone — le panier
+  // n'ayant pas bougé, rien ne se recalculait. C'est du donné-repris, et
+  // la condition ③ d'Augustin ne pouvait pas être tenue sans ça.
+  // On écoute le MÊME événement que le reste du tiroir.
+  /** P7 : le panier est SOUS LE MINIMUM et aucun article seul ne le
+   *  débloque. On affiche alors le MONTANT, sans proposer d'article. */
+  const [blocage, setBlocage] = useState<{ manque: number } | null>(null);
+  const [codePostal, setCodePostal] = useState<string | null>(
+    () => readAddress()?.postal_code ?? null,
+  );
+  useEffect(() => {
+    const maj = () => setCodePostal(readAddress()?.postal_code ?? null);
+    maj();
+    window.addEventListener("rialto:address-updated", maj);
+    return () => window.removeEventListener("rialto:address-updated", maj);
+  }, []);
+
   // Stable key pour éviter fetch inutile
   const cartKey = cart
     .map((c) => `${c.menu_item_id}x${c.quantity}`)
@@ -145,6 +166,15 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       return;
     }
 
+    // ⚠️ ON VIDE AVANT DE REFETCHER. Sans ça, l'ancienne carte — qui
+    // affiche un PRIX — restait visible et intacte pendant le debounce et
+    // le réseau : le client retirait une pizza et lisait encore
+    // « la livraison passe de 10.00 à 0.00 » sur un panier qui venait de
+    // repasser sous le seuil. Une carte qui affiche un prix ne survit
+    // jamais à un changement de son assiette.
+    setSuggestions([]);
+    setBlocage(null);
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (abortRef.current) abortRef.current.abort();
 
@@ -177,7 +207,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
             customer_id: customerId,
             // Le SEUL montant qu'on envoie est… aucun. On envoie le code
             // postal, le serveur relit la zone et le seuil en base.
-            postal_code: readAddress()?.postal_code,
+            postal_code: codePostal ?? undefined,
           }),
           signal: ac.signal,
         });
@@ -188,8 +218,10 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
         const data = (await resp.json()) as {
           ok?: boolean;
           suggestions?: Suggestion[];
+          blocage?: { manque: number } | null;
         };
         const list = data.suggestions ?? [];
+        setBlocage(data.blocage ?? null);
         setSuggestions(list);
 
         // Track shown
@@ -220,7 +252,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartKey, customerId, sessionDone]);
+  }, [cartKey, customerId, sessionDone, codePostal]);
 
   const handleAdd = (s: Suggestion) => {
     onAdd(s.menu_item_id);
@@ -267,6 +299,23 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
     return (
       <div className="mt-6 space-y-2">
         <UpsellSkeleton />
+      </div>
+    );
+  }
+
+  // ⚠️ LE BLOCAGE PASSE AVANT LE « rien à dire ». Le client est sous le
+  // minimum de sa zone et aucun article seul ne l'en sort : se taire le
+  // laisserait bloqué sans savoir de combien. On dit ce qui débloque, pas
+  // ce qu'on gagne — c'est du déblocage, pas de la vente.
+  if (blocage) {
+    return (
+      <div className="mt-3 rounded-2xl border border-border bg-white p-3.5">
+        <p className="text-sm font-semibold text-ink">
+          Il manque {formatCHF(blocage.manque)} pour livrer chez vous.
+        </p>
+        <p className="mt-0.5 text-[11px] text-mute">
+          Ajoutez ce qu&apos;il vous plaît pour atteindre le minimum.
+        </p>
       </div>
     );
   }
@@ -338,28 +387,29 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
                 {s.name}
               </p>
               {s.palier ? (
-                /* ═══ CHEMIN P2 — LE COÛT NET, PAS L'ÉCART ═══════════════
-                   Le prix plein est BARRÉ, le coût net en gras, et la
-                   DÉCOMPOSITION est toujours dessous (condition ② : on
-                   n'affiche jamais un coût net tout seul, sinon le client
-                   ne peut pas vérifier).
-                   `cout_net` peut être NÉGATIF : la facture baisse. C'est
-                   le cas le plus vendeur, et il se dit en clair. */
+                /* ═══ CHEMIN P2 — LE SUJET EST LA FACTURE, PAS L'ARTICLE ══
+                   ⚠️ PAS DE PRIX BARRÉ. Un prix barré est une ALLÉGATION :
+                   la convention (et l'OIP) veut qu'il soit un prix de
+                   référence antérieur DU MÊME ARTICLE. Ici l'article n'est
+                   pas remisé du tout — c'est la FACTURE qui baisse parce
+                   que les frais de livraison sautent. Barrer 9.00 pour
+                   afficher 4.00 disait « ce dessert est à 4 francs » :
+                   faux, et en Suisse le prix affiché engage.
+                   ⚠️ ET « OFFERT » EST INTERDIT sur un article facturé.
+                   Corrigé le 21.08 (Augustin), même racine.
+                   La décomposition reste TOUJOURS affichée — condition ②. */
                 <>
-                  <p className="tabular text-sm font-semibold text-ink">
-                    <span className="mr-1.5 font-normal text-mute line-through">
-                      {formatCHF(s.price)}
-                    </span>
-                    {s.palier.cout_net < 0
-                      ? `et payez ${formatCHF(Math.abs(s.palier.cout_net))} de moins`
+                  <p className="text-sm font-semibold text-ink">
+                    {s.palier.cout_net > 0
+                      ? `votre total ne monte que de ${formatCHF(s.palier.cout_net)}`
                       : s.palier.cout_net === 0
-                        ? "offert"
-                        : `pour ${formatCHF(s.palier.cout_net)}`}
+                        ? "votre total ne bouge pas"
+                        : `et payez ${formatCHF(Math.abs(s.palier.cout_net))} de MOINS`}
                   </p>
                   <p className="mt-0.5 text-[11px] leading-snug text-mute">
-                    {formatCHF(s.price)} l&apos;article, livraison{" "}
-                    {formatCHF(0)} au lieu de{" "}
-                    {formatCHF(s.palier.frais_economises)}
+                    {formatCHF(s.price)} l&apos;article, et la livraison
+                    passe de {formatCHF(s.palier.frais_economises)} à{" "}
+                    {formatCHF(0)}
                   </p>
                 </>
               ) : (

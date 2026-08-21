@@ -30,8 +30,11 @@ export async function GET(
   // de faire transiter le jeton par une route ouverte, ce qui était le vrai
   // problème.
   //
-  // Niveau d'exposition identique à `detail`, qui suit la même règle :
-  // des noms de plats et les notes du client, jamais un montant.
+  // ⚠️ NIVEAU D'EXPOSITION, dit exactement : des noms de plats, les notes
+  // libres du client, ET LES PRIX CATALOGUE COURANTS (`base_price`,
+  // `unit_price`, `subtotal`, plus bas). Ce ne sont pas les montants PAYÉS
+  // — ils sont recalculés au tarif du jour — mais écrire « jamais un
+  // montant » était faux, et contredit par le code dix lignes plus bas.
   const phone = new URL(req.url).searchParams.get("phone")?.trim();
   if (!phone) {
     return NextResponse.json({ error: "order_not_found" }, { status: 404 });
@@ -39,13 +42,21 @@ export async function GET(
 
   const admin = supabaseService();
 
-  const { data: order } = await admin
+  const { data: order, error: erreurCommande } = await admin
     .from("orders")
     .select("id, order_number, status, customer_id")
     .eq("order_number", params.orderNumber)
     .eq("restaurant_id", RESTAURANT_ID)
     .maybeSingle();
 
+  // ⚠️ PANNE DB ≠ COMMANDE INEXISTANTE. La route sœur `detail` pose la
+  // doctrine (« on ne ment pas au client »), et ce fichier revendiquait
+  // « la même règle » — sans l'appliquer : un incident Supabase transitoire
+  // répondait 404, donc « cette commande n'existe pas ».
+  if (erreurCommande) {
+    console.error("[reorder] lecture commande en échec", erreurCommande);
+    return NextResponse.json({ error: "indisponible" }, { status: 503 });
+  }
   if (!order || !order.customer_id) {
     return NextResponse.json({ error: "order_not_found" }, { status: 404 });
   }
@@ -56,12 +67,16 @@ export async function GET(
   // tout client dont la session porte un autre format — même piège que
   // `detail`, déjà corrigé là-bas.
   const variantes = phoneLookupVariants(phone).variants;
-  const { data: proprietaire } = await admin
+  const { data: proprietaire, error: erreurClient } = await admin
     .from("customers")
     .select("id")
     .eq("id", order.customer_id)
     .in("phone", variantes.length > 0 ? variantes : [phone])
     .maybeSingle();
+  if (erreurClient) {
+    console.error("[reorder] lecture client en échec", erreurClient);
+    return NextResponse.json({ error: "indisponible" }, { status: 503 });
+  }
   if (!proprietaire) {
     // 404 et non 403 : ne pas confirmer qu'un numéro deviné existe.
     return NextResponse.json({ error: "order_not_found" }, { status: 404 });

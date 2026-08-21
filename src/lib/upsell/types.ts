@@ -168,6 +168,10 @@ export interface UpsellSuggestion {
 
 export interface UpsellResponse {
   suggestions: UpsellSuggestion[];
+  /** Renseigné par P7 quand le panier est SOUS LE MINIMUM de zone et
+   *  qu'aucun article seul ne comble l'écart. À afficher tel quel, sans
+   *  proposer d'article : le client est bloqué, il doit savoir de combien. */
+  blocage?: { manque: number } | null;
   debug?: {
     analysis: Partial<CartAnalysis>;
     context: Partial<UpsellContext>;

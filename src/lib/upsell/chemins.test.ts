@@ -537,3 +537,27 @@ describe("P7 — le panier sous le minimum de zone (déblocage, pas upsell)", ()
     expect(p7([pizza()], 9)?.palier).toBeUndefined();
   });
 });
+
+
+describe("🔴 P7 ne reste pas muet quand aucun article ne comble l'écart", () => {
+  it("dit le MONTANT sans proposer d'article", () => {
+    // Le plat le plus cher du catalogue de test est à 21. Écart de 41.50 :
+    // aucun article seul ne débloque.
+    const r = choisitChemin([pizza()], analyzeCart([pizza()]), CATALOGUE, null, {
+      remaining: 41.5,
+      minimum: 45,
+    });
+    expect(r?.chemin).toBe("P7");
+    expect(r?.candidats).toEqual([]);
+    expect(r?.manqueSeul).toBe(41.5);
+  });
+
+  it("ne dit pas le montant quand un article suffit — il propose", () => {
+    const r = choisitChemin([pizza()], analyzeCart([pizza()]), CATALOGUE, null, {
+      remaining: 9,
+      minimum: 45,
+    });
+    expect(r?.manqueSeul).toBeUndefined();
+    expect(r?.candidats.length).toBeGreaterThan(0);
+  });
+});

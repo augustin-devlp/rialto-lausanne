@@ -18,10 +18,15 @@ export const dynamic = "force-dynamic";
  *
  * ⚠️ VÉRIFICATION DU PROPRIÉTAIRE (durcissement volontaire) : les numéros
  * de commande sont SÉQUENTIELS (R-2026-050 → R-2026-051), donc devinables.
- * La route sœur `reorder` n'expose que des noms de plats et s'en accommode ;
- * ici on renvoie aussi les montants payés, alors on exige le téléphone de
- * session et on vérifie qu'il correspond au client de la commande. Une
- * commande devinée par son numéro ne rend donc rien.
+ * ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08, que « la route sœur `reorder`
+ * n'expose que des noms de plats et s'en accommode » — c'est-à-dire qu'elle
+ * n'avait pas de vérification. C'est FAUX depuis : `reorder/route.ts:64-83`
+ * vérifie le propriétaire par le MÊME mécanisme (téléphone de session,
+ * comparaison sur variantes, 404 jamais 403).
+ * La seule différence qui reste entre les deux : `detail` renvoie les
+ * MONTANTS PAYÉS, `reorder` renvoie les prix catalogue du jour.
+ * On exige donc le téléphone de session et on vérifie qu'il correspond au
+ * client de la commande. Une commande devinée par son numéro ne rend rien.
  * (Toutes les commandes listées sur /mes-commandes ont un customer_id : la
  * liste est elle-même construite à partir du client connecté.)
  */

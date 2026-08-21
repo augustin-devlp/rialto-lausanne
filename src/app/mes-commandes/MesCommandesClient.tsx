@@ -18,9 +18,13 @@ type OrderRow = {
   created_at: string;
 };
 
-/** Statuts pour lesquels un SUIVI a encore du sens. Une commande d'il y a
- *  trois semaines n'a rien à suivre — le lien « Voir le suivi » ne doit
- *  donc apparaître que là (décision Augustin 21.08). Liste POSITIVE. */
+/** Statuts pour lesquels un SUIVI aurait du sens.
+ *  ⚠️ AUCUN CODE NE LA LIT AUJOURD'HUI, et c'est volontaire : le lien
+ *  « Suivre ma commande » a été retiré le 21.08 (voir le commentaire au
+ *  point d'affichage, plus bas — le jeton n'a plus de source). La constante
+ *  est CONSERVÉE pour son retour avec la session client signée.
+ *  Une règle au présent sans code derrière serait un commentaire menteur :
+ *  celui-ci dit explicitement qu'il décrit un état à venir. */
 const STATUTS_EN_COURS = ["new", "accepted", "preparing", "ready"];
 
 type LigneDetail = {
@@ -147,7 +151,7 @@ export default function MesCommandesClient() {
       router.push("/checkout");
     } catch (err) {
       console.error("[reorder] failed", err);
-      alert("Erreur lors de la re-commande. Réessaie dans un instant.");
+      alert("Erreur lors de la re-commande. Réessayez dans un instant.");
     } finally {
       setReorderingId(null);
     }
@@ -258,7 +262,6 @@ export default function MesCommandesClient() {
                 const isReordering = reorderingId === order.order_number;
                 const estOuverte = ouverte === order.order_number;
                 const etat = details[order.order_number];
-                const enCours = STATUTS_EN_COURS.includes(order.status);
                 return (
                   <li
                     key={order.id}

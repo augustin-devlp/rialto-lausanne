@@ -11,7 +11,10 @@ import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring'
 import { callGeminiForMessages, genericPairingMessage } from './geminiCall';
 import { choisitChemin, idsInconnus, panierEstUneTablee } from './chemins';
 
-export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
+export const UPSELL_SILENCE_THRESHOLD_CHF = 80;
+/** Plafond de la TABLÉE (≥ 3 plats). Au-delà, on se tait aussi : quelqu'un
+ *  qui commande pour dix personnes n'a pas besoin d'une boisson de plus. */
+export const UPSELL_SILENCE_TABLEE_CHF = 150; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
 
 /**
  * Orchestrateur principal : panier + contexte → suggestions.
@@ -83,7 +86,16 @@ export async function generateUpsell(
   // 11 pièces paient. Constaté en production le 21.08 : trois plats à 29
   // font déjà 87, donc le mode le plus rentable du moteur était muet
   // exactement sur les tablées les plus chères.
+  // ⚠️ LA DÉROGATION TABLÉE A UN PLAFOND (Augustin 21.08). Elle était
+  // BINAIRE : `!estTablee && subtotal > 80` ouvrait la vanne jusqu'au
+  // plafond suivant (8 articles), donc 7 plats à 29 = 203 CHF recevaient
+  // une suggestion. Proposer une glace à une tablée de 200 CHF, c'est
+  // exactement le « ça paraît cupide » que le seuil devait empêcher.
+  // La justification écrite portait sur un cas à ~90 CHF : on borne là.
   const estTablee = panierEstUneTablee(cart);
+  const plafondSilence = estTablee
+    ? UPSELL_SILENCE_TABLEE_CHF
+    : UPSELL_SILENCE_THRESHOLD_CHF;
   // ⚠️ Un panier SOUS LE MINIMUM n'est jamais fait taire : il est refusé au
   // checkout, et se taire laisserait le client bloqué sans rien lui dire.
   // (Cas théorique aujourd'hui — le minimum le plus haut est 55 CHF, bien
@@ -91,7 +103,7 @@ export async function generateUpsell(
   const bloque = Boolean(
     context.ecartMinimum && context.ecartMinimum.remaining > 0,
   );
-  if (!estTablee && !bloque && subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
+  if (!bloque && subtotal > plafondSilence) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
 
@@ -124,6 +136,18 @@ export async function generateUpsell(
     context.ecartMinimum,
   );
   let cheminRetenu: string | null = resultatChemin?.chemin ?? null;
+
+  // P7 sans candidat viable : le panier est SOUS LE MINIMUM et aucun
+  // article seul ne le débloque. On sort ici en disant le montant — sinon
+  // le scoreur reprendrait la main et proposerait n'importe quoi à
+  // quelqu'un qui ne peut pas commander.
+  if (resultatChemin?.chemin === "P7" && resultatChemin.manqueSeul) {
+    return {
+      suggestions: [],
+      blocage: { manque: resultatChemin.manqueSeul },
+      debug: { analysis: {}, context: {}, shortlist: [] },
+    };
+  }
 
   // P8 — le silence est une réponse valable.
   if (resultatChemin?.chemin === "P8") {

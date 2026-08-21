@@ -28,18 +28,20 @@ import type {
  * éviter un double filtrage ».
  *
  * ── CHEMINS IMPLÉMENTÉS ICI ─────────────────────────────────────────────
- *   P3 — plat sans boisson
- *   P4 — plat sans accompagnement (le vrai levier de marge)
+ *   P2 — la distance au palier, avec le prix NET (`cheminP2`)
+ *   P3 — plat sans boisson (`cheminP3`)
+ *   P4 — plat sans accompagnement, le vrai levier de marge (`cheminP4`)
+ *   P5 — le dessert, repas complet sans dessert (`cheminP5`)
  *   P6 — le MODE TABLÉE : pas un chemin, il change les formats de P3/P4/P5
- *   P8 — le silence : ne rien dire est une réponse valable
+ *         (`panierEstUneTablee`)
+ *   P7 — panier sous le minimum de zone : déblocage, pas upsell (`cheminP7`)
+ *   P8 — le silence : ne rien dire est une réponse valable (`cheminP8`)
  *
- * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
- *   P5 — le dessert (repas complet sans dessert)
- *   P7 — le panier sous le minimum de zone (déblocage, pas upsell)
+ * ── NON IMPLÉMENTÉ, ET POURQUOI ─────────────────────────────────────────
+ *   P1 (combo) → BLOQUÉ, trois raisons, voir `docs/UPSELL_MOTEUR.md`
  *
- * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
- *   P1 (combo)  → BLOQUÉ, trois raisons, voir `docs/UPSELL_MOTEUR.md`
- *   P2 (palier) → affiche des PRIX : traité à part, voir le même document
+ * ORDRE RÉEL D'ÉVALUATION (le premier qui matche gagne, jamais de cumul) :
+ *   P8 → P7 → P2 → P3 → P4 → P5. Voir `choisitChemin` en bas de fichier.
  */
 
 /** Catégories, par id. Les noms ne sont PAS un discriminant fiable :
@@ -88,6 +90,9 @@ export interface ResultatChemin {
   /** Renseigné par P2 seulement : de quoi afficher le coût net et sa
    *  décomposition. Voir `cheminP2`. */
   palier?: PalierLivraison;
+  /** Renseigné par P7 quand AUCUN article seul ne comble l'écart : le
+   *  montant qui manque, à dire SANS proposer d'article. Voir `cheminP7`. */
+  manqueSeul?: number;
 }
 
 /** Au-delà de cet écart, on ne propose plus de combler : on demanderait
@@ -199,13 +204,18 @@ function cheminP3(
  * Ne pas se fier à l'absence de `ART.FRITES` dans la branche ci-dessous :
  * ce n'est pas une garde, c'est un choix de candidats.
  *
- * ⚠️ LES HAMBURGERS NE REÇOIVENT JAMAIS D'ACCOMPAGNEMENT (Augustin 21.08,
- * après correction de sa propre table). Ils portent `fries_included` en
- * base : ils sont SERVIS avec des frites. Leur en proposer reviendrait à
- * en vendre à quelqu'un qui en a déjà dans son assiette.
- * P4 les laisse donc passer, et ils tombent sur P3 (boisson) ou P5
- * (dessert) — exactement ce que la règle demande : « pour un burger, une
- * boisson ou un dessert, jamais un accompagnement ».
+ * ⚠️ ON NE PROPOSE JAMAIS UN ACCOMPAGNEMENT *À CAUSE* D'UN HAMBURGER
+ * (Augustin 21.08, après correction de sa propre table). Ils portent
+ * `fries_included` en base : ils sont SERVIS avec des frites. Leur en
+ * proposer reviendrait à en vendre à quelqu'un qui en a déjà dans son
+ * assiette.
+ * IMPLÉMENTÉ par la garde `analysis.hasFriesIncluded` en tête de
+ * `cheminP4` (ci-dessous), et par l'absence de branche HAMBURGERS.
+ * ⚠️ FORMULATION EXACTE : ce n'est PAS « jamais quand il y a un burger ».
+ * Sur un panier burger + pâtes, la branche PÂTES répond avant et propose
+ * une salade — elle est pour les pâtes, et c'est le bon comportement.
+ * Sans hamburger seul au panier, P4 se tait et le client tombe sur P3
+ * (boisson) ou P5 (dessert).
  */
 function cheminP4(
   panier: MenuItemFull[],
@@ -405,7 +415,16 @@ function cheminP7(
     .sort((a, b) => a.price - b.price)
     .slice(0, 4);
 
-  return candidats.length > 0 ? { chemin: "P7", candidats } : null;
+  // ⚠️ ON NE RESTE PAS MUET QUAND AUCUN ARTICLE NE SUFFIT (Augustin 21.08).
+  // L'écart peut dépasser le prix du plat le plus cher (minimum de zone à
+  // 55 CHF, panier à 3.50). Rendre `null` faisait retomber le client sur
+  // une suggestion quelconque du scoreur, alors qu'il est BLOQUÉ et qu'il
+  // ne le sait pas. On dit alors le MONTANT, sans proposer d'article :
+  // c'est du déblocage, pas de la vente.
+  if (candidats.length === 0) {
+    return { chemin: "P7", candidats: [], manqueSeul: manque };
+  }
+  return { chemin: "P7", candidats };
 }
 
 /**
@@ -427,9 +446,14 @@ function cheminP8(analysis: CartAnalysis): ResultatChemin | null {
  * cumul. Renvoie `null` quand aucun chemin ne s'applique — l'appelant
  * retombe alors sur le scoreur historique.
  *
- * Ordre : P8 (silence) d'abord — un repas complet doit fermer la porte avant
- * que P3 ou P4 ne trouvent un trou à combler. Puis P3, puis P4, dans l'ordre
- * de priorité de la spec (la boisson avant l'accompagnement).
+ * ORDRE RÉEL : P8 → P7 → P2 → P3 → P4 → P5.
+ *   · P8 (silence) d'abord — un repas complet ferme la porte avant que
+ *     quoi que ce soit ne cherche un trou à combler.
+ *   · P7 ensuite — tant que le panier est SOUS LE MINIMUM, il est refusé
+ *     au checkout : aucune autre suggestion n'a de sens.
+ *   · P2 avant P3/P4/P5 — franchir un palier fait BAISSER la facture,
+ *     ça vaut mieux que combler un trou de composition.
+ *   · puis P3 → P4 → P5, l'ordre de priorité de la spec.
  */
 export function choisitChemin(
   panier: MenuItemFull[],

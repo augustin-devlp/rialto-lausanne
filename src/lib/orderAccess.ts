@@ -102,11 +102,16 @@ export { PARAM_JETON, cheminConfirmation, suffixeJeton } from "./orderAccessShar
 /**
  * ⚠️ L'UNIQUE FABRIQUE D'URL DE CONFIRMATION DU DÉPÔT.
  *
- * Quatre endroits construisaient cette URL à la main (email HTML, email
- * texte, redirection après paiement, « Suivre ma commande »). Quatre
- * endroits, c'est quatre occasions d'en oublier un — et un oubli côté
- * checkout livrerait un lien mort au client juste après sa commande.
- * Toute nouvelle surface qui a besoin de ce lien passe PAR ICI.
+ * Quatre endroits la construisaient à la main (email HTML, email texte,
+ * redirection après paiement, « Suivre ma commande »). Quatre endroits,
+ * c'est quatre occasions d'en oublier un — et un oubli côté checkout
+ * livrerait un lien mort au client juste après sa commande.
+ * ⚠️ IL N'EN RESTE QUE TROIS depuis le 21.08 : « Suivre ma commande » a été
+ * retiré de /mes-commandes (le jeton n'a plus de source tant que la session
+ * client signée n'existe pas).
+ * Le NOM du paramètre et le chemin relatif vivent dans
+ * `src/lib/orderAccessShared.ts` — isomorphe, donc utilisable côté client.
+ * Toute nouvelle surface qui a besoin de ce lien passe par l'un des deux.
  */
 export function buildConfirmationUrl(params: {
   siteUrl: string;

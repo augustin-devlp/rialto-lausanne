@@ -1,8 +1,15 @@
 -- ============================================================================
 -- NU1 — NUMÉROTATION DES COMMANDES SANS COURSE NI COLLISION
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE, attend le signal d'Augustin.
---   ⚠️ Mettre ce statut à jour LE JOUR de l'exécution (piège F3b).
+-- STATUT : ✅ EXÉCUTÉE LE 22.08.2026 (GO Augustin), migration
+--   `nu1_numerotation_sans_course`.
+--   PREUVE : trois appels successifs ont rendu R-2026-053 / 054 / 055,
+--   strictement monotones, dans une transaction annulée — le compteur est
+--   resté à 52, donc la prochaine commande réelle porte bien R-2026-053.
+--   Après : `count(*)` a disparu de la fonction, elle est SECURITY DEFINER,
+--   l'EXECUTE est réservé à `service_role` (anon et authenticated l'avaient
+--   tous les deux avant), et la table de compteurs porte la RLS sans aucun
+--   grant à anon ni authenticated.
 --
 -- ────────────────────────────────────────────────────────────────────────
 -- CE QUE FAIT LA FONCTION AUJOURD'HUI

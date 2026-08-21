@@ -1,6 +1,14 @@
 -- ═══════════════════════════════════════════════════════════════════════
 -- NAVETTE PR1 — Lot « re-dérivation des prix serveur » (BLOQUANT go-live,
--- GO Augustin 20.08.2026). AMENDÉE LE 22.08.2026 : un BLOC 3 ferme la
+-- GO Augustin 20.08.2026).
+-- STATUT : ✅ EXÉCUTÉE LE 22.08.2026, migration
+--   `pr1_journal_ecarts_et_deux_policies_caisse`.
+--   PREUVE : 0 policy « Public insert » restante, colonne
+--   `pricing_adjustments` créée, et `anon` a DISPARU des droits des deux
+--   tables — il portait `arwdDxtm` sur `order_items`, TRUNCATE compris.
+--   Les trois policies caisse (read orders, update orders, read
+--   order_items) sont intactes, vérifié dans la migration elle-même.
+-- AMENDÉE LE 22.08.2026 : un BLOC 3 ferme la
 -- SECONDE porte publique (« Public insert orders »), restée ouverte —
 -- fermer order_items seul ne servait à rien.
 -- Trois volets INDISSOCIABLES :

@@ -1,8 +1,17 @@
 -- ============================================================================
 -- CU1 — RETRAIT DE `customers_email_unique`
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en NAVETTE, attend le signal d'Augustin (jeudi).
---   ⚠️ Mettre ce statut à jour LE JOUR de l'exécution (piège F3b).
+-- STATUT : ✅ EXÉCUTÉE LE 22.08.2026 (GO Augustin), migration
+--   `cu1_retrait_customers_email_unique`.
+--   PREUVE : DEUX fiches ont été acceptées sur UNE MÊME adresse e-mail dans
+--   une transaction annulée — le cas du foyer. Avant, le second INSERT
+--   échouait en 23505.
+--   CONTRE-ÉPREUVE : un doublon de TÉLÉPHONE est toujours refusé
+--   (« duplicate key value violates unique constraint
+--   "customers_phone_unique" »). La clé d'identité n'a pas bougé.
+--   ⚠️ LE ROLLBACK CI-DESSOUS EST DÉSORMAIS SOUS CONDITION : il ne passera
+--   que tant qu'aucune adresse ne porte deux fiches. Lire son avertissement
+--   AVANT de l'exécuter.
 --
 -- ────────────────────────────────────────────────────────────────────────
 -- LE BESOIN (décision Augustin 22.08.2026, actée)

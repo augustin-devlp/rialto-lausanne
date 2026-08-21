@@ -13,7 +13,10 @@ export const STATUS_LABELS: Record<string, string> = {
   accepted: "Acceptée",
   preparing: "En préparation",
   ready: "Prête",
-  completed: "Livrée",
+  // « Terminée » et non « Livrée » : la clôture du service (CL1) posera
+  // ce statut automatiquement sur les commandes acceptées de la veille —
+  // personne n'aura constaté la remise (aligné sur /mes-commandes).
+  completed: "Terminée",
   cancelled: "Annulée",
 };
 

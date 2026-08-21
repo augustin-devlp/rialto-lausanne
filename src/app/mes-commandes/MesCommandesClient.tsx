@@ -22,7 +22,12 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   accepted: { label: "Acceptée", color: "bg-blue-50 text-blue-700" },
   preparing: { label: "En préparation", color: "bg-amber-50 text-amber-800" },
   ready: { label: "En livraison", color: "bg-orange-50 text-orange-800" },
-  completed: { label: "Livrée", color: "bg-emerald-50 text-emerald-700" },
+  // ⚠️ « Terminée », PAS « Livrée » (Augustin 21.08). Le statut
+  // `completed` ne prouve pas une livraison : il sera posé
+  // AUTOMATIQUEMENT par la clôture du service (CL1) sur toute commande
+  // acceptée de la veille, sans que personne n'ait constaté la remise.
+  // Afficher « Livrée » serait affirmer une certitude qu'on n'a pas.
+  completed: { label: "Terminée", color: "bg-emerald-50 text-emerald-700" },
   cancelled: { label: "Annulée", color: "bg-rialto/10 text-rialto" },
 };
 

@@ -87,6 +87,20 @@ type Props = {
  * src/lib/eta/phase.ts — f(acceptation, ETA, maintenant), rejouée à
  * chaque render + tick 30 s. Deux variantes selon le mode.
  */
+/**
+ * ⚠️ QUATRE ÉTAPES, PAS CINQ (décision Augustin 21.08). L'étape « Livrée »
+ * a été RETIRÉE de l'affichage : tout le suivi repose sur des ESTIMATIONS,
+ * donc « Livré » ne peut pas être affirmé — le client aurait sa pizza en
+ * main pendant que l'écran dirait autre chose, ou l'inverse. On ne montre
+ * jamais une certitude qu'on n'a pas.
+ *
+ * ⚠️ LE MOTEUR N'EST PAS TOUCHÉ : src/lib/eta/phase.ts continue de
+ * calculer la phase `delivered` (stepIndex 4). Comme la liste n'a plus que
+ * 4 entrées (indices 0-3), `done = idx <= 4` coche TOUTES les étapes et
+ * `current = idx === 4` n'en active AUCUNE : une fois la commande arrivée,
+ * les quatre pastilles sont pleines et rien ne clignote. C'est exactement
+ * l'état voulu, obtenu sans une ligne de logique métier.
+ */
 const STEPS_DELIVERY: { key: PhaseKey; label: string; description: string }[] = [
   {
     key: "waiting",
@@ -95,23 +109,21 @@ const STEPS_DELIVERY: { key: PhaseKey; label: string; description: string }[] = 
   },
   {
     key: "confirmed",
-    label: "Confirmée",
-    description: "Le restaurant confirme la commande.",
+    label: "Commande confirmée",
+    description: "Le restaurant a accepté votre commande.",
   },
   {
     key: "preparing",
     label: "En préparation",
-    description: "Les pâtes sont au four.",
+    // Texte FIXE (Augustin 21.08) : l'ancien s'adaptait au panier (« Les
+    // pâtes sont au four ») — complexité inutile, et il pouvait mentir
+    // sur une commande sans pâtes.
+    description: "Rialto prépare votre commande.",
   },
   {
     key: "delivering",
-    label: "En livraison",
+    label: "Votre commande arrive",
     description: "Le livreur est en route.",
-  },
-  {
-    key: "delivered",
-    label: "Livrée",
-    description: "Bon appétit !",
   },
 ];
 
@@ -123,13 +135,13 @@ const STEPS_PICKUP: { key: PhaseKey; label: string; description: string }[] = [
   },
   {
     key: "confirmed",
-    label: "Confirmée",
-    description: "Le restaurant confirme la commande.",
+    label: "Commande confirmée",
+    description: "Le restaurant a accepté votre commande.",
   },
   {
     key: "preparing",
     label: "En préparation",
-    description: "Les pâtes sont au four.",
+    description: "Rialto prépare votre commande.",
   },
   {
     key: "ready",
@@ -834,6 +846,19 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
               {steps.map((step, idx) => {
                 const done = idx <= currentStep;
                 const current = idx === currentStep;
+                // La dernière étape ne peut plus dire « Le livreur est en
+                // route » une fois le trajet fini : texte périmé = bug.
+                // Mais la formulation doit distinguer ce qu'on SAIT de ce
+                // qu'on ESTIME (doctrine Augustin, la raison même du
+                // retrait de l'étape « Livrée ») :
+                //   · le client a TAPÉ → il l'a dit, on peut l'affirmer ;
+                //   · seule l'horloge a tourné → conditionnel obligatoire.
+                const description =
+                  step.key === "delivering" && phase.key === "delivered"
+                    ? tapEffectue
+                      ? "Votre commande est arrivée."
+                      : "Votre commande devrait être arrivée."
+                    : step.description;
                 return (
                   <li key={step.key} className="flex gap-4">
                     <div className="flex flex-col items-center">
@@ -880,7 +905,7 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
                         {step.label}
                       </div>
                       <div className="text-sm text-mute">
-                        {step.description}
+                        {description}
                       </div>
                     </div>
                   </li>

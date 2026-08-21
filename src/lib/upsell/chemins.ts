@@ -179,8 +179,13 @@ function cheminP3(
  * Table d'association de la spec, traduite en CATÉGORIES et non en noms.
  *
  * ⚠️ PIZZA → SURTOUT PAS DE FRITES. Personne ne mange des frites avec une
- * pizza. C'est la seule ligne de la table qui est une INTERDICTION, et elle
- * compte plus que les autres.
+ * pizza. C'est la seule ligne de la table qui est une INTERDICTION — et une
+ * interdiction ne peut PAS être portée par ce chemin : elle serait perdue
+ * dès que le moteur retombe sur le scoreur.
+ * ELLE EST IMPLÉMENTÉE PAR `interditAvecLePanier()` (bas de ce fichier),
+ * appelée par `passesHardFilters()` dans `src/lib/upsell/scoring.ts`.
+ * Ne pas se fier à l'absence de `ART.FRITES` dans la branche ci-dessous :
+ * ce n'est pas une garde, c'est un choix de candidats.
  *
  * ⚠️ LES HAMBURGERS NE REÇOIVENT JAMAIS D'ACCOMPAGNEMENT (Augustin 21.08,
  * après correction de sa propre table). Ils portent `fries_included` en

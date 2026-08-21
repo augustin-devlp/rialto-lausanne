@@ -307,10 +307,6 @@ export async function GET(req: NextRequest) {
           require_google_review: !!(lottery as { require_google_review?: boolean }).require_google_review,
         }
       : null,
-    // Chaque commande porte son JETON D'ACCÈS (21.08). C'est ce qui permet
-    // à « Mes commandes » de construire un lien de suivi valide et
-    // d'appeler `reorder`, désormais gardée. Le jeton est DÉRIVÉ, donc
-    // recalculé ici sans rien lire de plus en base.
     // ⚠️ CETTE ROUTE NE DISTRIBUE PLUS DE JETON D'ACCÈS. RETIRÉ LE 21.08.
     //
     // Je l'avais ajouté ici la veille, et c'était l'erreur : cette route est

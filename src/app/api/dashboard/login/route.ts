@@ -3,6 +3,7 @@ import {
   isDashboardConfigured,
   createDashboardCookie,
   requireDashboardAuth,
+  verifyDashboardPin,
 } from "@/lib/dashboardAuth";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ export const dynamic = "force-dynamic";
 /**
  * Authentification du dashboard restaurateur.
  *
- * POST { pin } : compare à process.env.DASHBOARD_PIN. Bon PIN → pose le
+ * POST { pin } : vérifié par `verifyDashboardPin` (`src/lib/dashboardAuth.ts`),
+ * en TEMPS CONSTANT. Bon PIN → pose le
  * cookie de session signé (30j). Mauvais PIN → 401. Rate-limit
  * anti-brute-force EN MÉMOIRE (5 tentatives / 60s par IP) → 429.
  *
@@ -75,7 +77,9 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as { pin?: string } | null;
   const pin = body?.pin;
 
-  if (!pin || pin !== process.env.DASHBOARD_PIN) {
+  // ⚠️ LA COMPARAISON VIT DANS `verifyDashboardPin`
+  // (`src/lib/dashboardAuth.ts`), PAS ICI — même geste que pour le scan.
+  if (!verifyDashboardPin(pin)) {
     return NextResponse.json(
       { ok: false, error: "pin_invalide" },
       { status: 401 },

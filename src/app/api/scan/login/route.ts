@@ -3,6 +3,7 @@ import {
   isScanConfigured,
   createScanCookie,
   requireScanAuth,
+  verifyScanPin,
 } from "@/lib/scanAuth";
 
 export const dynamic = "force-dynamic";
@@ -10,9 +11,16 @@ export const dynamic = "force-dynamic";
 /**
  * Authentification du scanner de tampons (comptoir).
  *
- * POST { pin } : compare à process.env.SCAN_PIN. Bon PIN → pose le cookie
- * de session signé (30j). Mauvais PIN → 401. Rate-limit anti-brute-force
- * EN MÉMOIRE (5 tentatives / 60s par IP) → 429.
+ * POST { pin } : vérifié par `verifyScanPin` (`src/lib/scanAuth.ts`), en
+ * TEMPS CONSTANT. Bon PIN → pose le cookie de session signé (7 jours
+ * depuis le 22.08.2026 — c'était 30). Mauvais PIN → 401.
+ *
+ * Rate-limit anti-brute-force EN MÉMOIRE : 5 tentatives / 60 s par IP → 429.
+ * ⚠️ CE QUE CE RATE-LIMIT NE FAIT PAS, dit franchement : le `Map` vit dans
+ * UNE instance de lambda. Sur du serverless, la limite réelle est de
+ * « 5 × nombre d'instances chaudes » par minute et par IP. Il RALENTIT une
+ * attaque, il ne la FERME pas. C'est la longueur du PIN qui la ferme —
+ * raison du passage à 8 caractères alphanumériques le 22.08.2026.
  *
  * GET : check de session (le cookie est httpOnly, donc illisible en JS ;
  * le front interroge cette route au mount pour savoir s'il doit afficher
@@ -74,10 +82,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = (await req.json().catch(() => null)) as { pin?: string } | null;
-  const pin = body?.pin;
+  const body = (await req.json().catch(() => null)) as { pin?: unknown } | null;
 
-  if (!pin || pin !== process.env.SCAN_PIN) {
+  // ⚠️ LA COMPARAISON VIT DANS `verifyScanPin` (`src/lib/scanAuth.ts`), PAS
+  // ICI. Elle était écrite `pin !== process.env.SCAN_PIN` à cette ligne :
+  // une comparaison de chaînes JS, qui court-circuite au premier caractère
+  // différent et fuit donc le préfixe par le temps de réponse — alors que
+  // la vérification du cookie, elle, était déjà timing-safe.
+  // Règle gravée : une garde qui protège une règle vit DANS la fonction.
+  if (!verifyScanPin(body?.pin)) {
     return NextResponse.json(
       { ok: false, error: "pin_invalide" },
       { status: 401 },

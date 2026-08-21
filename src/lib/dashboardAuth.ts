@@ -20,6 +20,34 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const THIRTY_DAYS_SEC = 30 * 24 * 60 * 60;
 
 /** True si les secrets requis sont présents (sinon les routes 500). */
+/**
+ * Vérifie le PIN dashboard, en TEMPS CONSTANT.
+ *
+ * ⚠️ MIROIR EXACT de `verifyScanPin` (`src/lib/scanAuth.ts`), et la
+ * duplication reste assumée comme pour le reste de ce fichier.
+ *
+ * ⚠️ POURQUOI CELUI-CI AUSSI, ALORS QUE SEUL LE SCAN ÉTAIT DEMANDÉ :
+ * la comparaison était `pin !== process.env.DASHBOARD_PIN`, exactement le
+ * même défaut que le scan. Or cette porte-ci protège DAVANTAGE — dix-sept
+ * routes `/api/dashboard/*`, dont l'EXPORT DES CLIENTS et l'export des
+ * commandes. Durcir la petite porte et laisser la grande en l'état
+ * n'aurait pas tenu debout.
+ * Extension de périmètre volontaire, signalée à Augustin.
+ *
+ * ⚠️ CE QUI N'A PAS CHANGÉ ICI : la durée de session reste à 30 jours.
+ * Le passage à 7 jours est une décision opérationnelle qui repose sur la
+ * carte plastifiée sous le comptoir ; elle a été prise pour le SCAN, et
+ * elle n'a pas été prise pour le dashboard.
+ */
+export function verifyDashboardPin(pin: unknown): boolean {
+  const attendu = process.env.DASHBOARD_PIN;
+  if (!attendu) return false;
+  if (typeof pin !== "string" || pin.length === 0) return false;
+  const fourni = crypto.createHash("sha256").update(pin, "utf8").digest();
+  const cible = crypto.createHash("sha256").update(attendu, "utf8").digest();
+  return crypto.timingSafeEqual(fourni, cible);
+}
+
 export function isDashboardConfigured(): boolean {
   return (
     Boolean(process.env.DASHBOARD_PIN) &&

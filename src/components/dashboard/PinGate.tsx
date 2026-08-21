@@ -76,12 +76,20 @@ export default function PinGate({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen items-center justify-center bg-cream px-6">
         <div className="max-w-sm rounded-2xl border border-border bg-white p-6 text-center shadow-card">
           <div className="mb-3 text-3xl">⚙️</div>
+          {/* ⚠️ CET ÉCRAN NOMMAIT LES VARIABLES D'ENVIRONNEMENT
+              MANQUANTES — « DASHBOARD_PIN et DASHBOARD_COOKIE_SECRET » —
+              à N'IMPORTE QUEL VISITEUR de /dashboard. Il n'y a pas de
+              middleware : la page est servie à tout le monde, la porte est
+              plus loin. Nommer ses secrets à un inconnu, c'est lui donner
+              la carte du bâtiment.
+              Retiré le 22.08 en durcissant les deux PIN. Le diagnostic
+              précis appartient aux logs serveur, pas à la page. */}
           <h1 className="font-display text-lg font-bold text-ink">
-            Dashboard non configuré
+            Dashboard indisponible
           </h1>
           <p className="mt-2 text-sm text-mute">
-            Les variables DASHBOARD_PIN et DASHBOARD_COOKIE_SECRET manquent
-            côté serveur.
+            L&apos;espace restaurateur ne peut pas s&apos;ouvrir en ce
+            moment. Ce n&apos;est pas votre code : inutile de réessayer.
           </p>
         </div>
       </div>
@@ -103,6 +111,14 @@ export default function PinGate({ children }: { children: ReactNode }) {
         <p className="mt-1 text-sm text-mute">
           Entrez votre code d&apos;accès.
         </p>
+        {/* ⚠️ CET INPUT NE LAISSE PASSER QUE DES CHIFFRES (`inputMode` +
+            le `replace` ci-dessous). C'est cohérent avec un DASHBOARD_PIN
+            numérique — c'est le cas aujourd'hui.
+            🔴 LE JOUR OÙ DASHBOARD_PIN DEVIENT ALPHANUMÉRIQUE, CES DEUX
+            LIGNES DOIVENT CHANGER LE MÊME JOUR, sinon le code juste est
+            effacé sous les doigts et l'écran affiche « Code incorrect ».
+            C'est exactement le piège trouvé sur l'écran de scan le
+            22.08 (`src/app/scan/ScanClient.tsx`, composant `PinScreen`). */}
         <input
           type="password"
           inputMode="numeric"

@@ -8,6 +8,13 @@ const QrScanner = dynamic(() => import("./QrScanner"), { ssr: false });
 
 type Phase =
   | "pin"
+  // ⚠️ PHASE AJOUTÉE LE 22.08 : sans elle, une panne de CONFIGURATION
+  // (SCAN_PIN ou SCAN_COOKIE_SECRET absents en production) s'affichait à
+  // l'employé comme « PIN incorrect ». Il aurait ressaisi le code juste,
+  // encore et encore, sur une porte qui ne pouvait pas s'ouvrir — et
+  // au bout de 5 essais il se serait pris le rate-limit par-dessus.
+  // Un message trompeur au comptoir coûte un service, pas une minute.
+  | "non_configure"
   | "scanning"
   | "loading"
   | "scanned"
@@ -68,7 +75,10 @@ export default function ScanClient() {
       try {
         const res = await fetch("/api/scan/login", { method: "GET" });
         if (cancelled) return;
-        setPhase(res.ok ? "scanning" : "pin");
+        // 500 = config incomplète côté serveur. Ne JAMAIS envoyer l'employé
+        // sur l'écran PIN dans ce cas : aucun code ne marchera.
+        if (res.status === 500) setPhase("non_configure");
+        else setPhase(res.ok ? "scanning" : "pin");
       } catch {
         if (!cancelled) setPhase("pin");
       }
@@ -95,8 +105,12 @@ export default function ScanClient() {
         setPhase("scanning");
       } else if (res.status === 429) {
         setPinError("Trop de tentatives. Patientez une minute puis réessayez.");
+      } else if (res.status === 500) {
+        // Panne de config, PAS un mauvais code : on sort de l'écran PIN
+        // au lieu de laisser l'employé ressaisir un code correct.
+        setPhase("non_configure");
       } else {
-        setPinError("PIN incorrect");
+        setPinError("Code incorrect. Il est sur la carte sous le comptoir.");
       }
     } catch {
       setPinError(NETWORK_ERROR);
@@ -206,6 +220,27 @@ export default function ScanClient() {
 
         {phase === "loading" && !card && <LoadingCard label="Chargement…" />}
 
+        {phase === "non_configure" && (
+          <div className="rounded-2xl border border-rialto/30 bg-rialto/5 p-6 text-center">
+            {/* ⚠️ AUCUN NOM DE VARIABLE D'ENVIRONNEMENT ICI. L'écran
+                /scan est servi à tout le monde — le dashboard, lui, affiche
+                « les variables DASHBOARD_PIN et DASHBOARD_COOKIE_SECRET
+                manquent » à n'importe quel visiteur, ce qui est une fuite de
+                configuration. On ne reproduit pas ça.
+                Message pour un employé au comptoir : dire quoi FAIRE, pas
+                ce qui est cassé. */}
+            <h1 className="font-serif text-xl text-ink">Scanner indisponible</h1>
+            <p className="mt-2 text-sm text-mute">
+              Le scanner ne peut pas s&apos;ouvrir en ce moment. Ce n&apos;est
+              pas votre code : inutile de réessayer.
+            </p>
+            <p className="mt-2 text-sm text-mute">
+              Prévenez Augustin. En attendant, notez les cartes sur papier :
+              les tampons pourront être ajoutés plus tard.
+            </p>
+          </div>
+        )}
+
         {phase === "pin" && (
           <PinScreen
             pin={pin}
@@ -288,7 +323,22 @@ function PinScreen({
       <div>
         <h1 className="font-serif text-2xl text-ink">Accès comptoir</h1>
         <p className="mt-1 text-sm text-mute">
-          Entrez le code PIN pour ouvrir le scanner.
+          Entrez le code pour ouvrir le scanner.
+        </p>
+        {/* 🔴 CETTE PHRASE EST LA CONDITION POSÉE PAR AUGUSTIN LE 22.08,
+            pas une décoration. La session passe de 30 à 7 jours : les
+            occasions de tomber sur cet écran sont MULTIPLIÉES PAR QUATRE.
+            La caisse a identifié le pire blocage du produit — session
+            tombée, écran muet, plus personne ne connaît le code. Un écran
+            qui dit où trouver le code est ce qui rend le raccourcissement
+            acceptable.
+            ⚠️ SI LA CARTE PLASTIFIÉE DISPARAÎT OU CHANGE DE PLACE,
+            CETTE PHRASE DOIT CHANGER LE MÊME JOUR. Un repère faux est pire
+            que pas de repère : il fait chercher au mauvais endroit.
+            Mots courants et phrase courte (règle R4). */}
+        <p className="mt-3 rounded-xl bg-cream px-3 py-2 text-sm text-mute">
+          Le code est sur la carte plastifiée, sous le comptoir — la même
+          que pour la caisse.
         </p>
       </div>
 
@@ -296,16 +346,29 @@ function PinScreen({
         <label htmlFor="scan-pin" className="mb-1.5 block text-sm font-medium text-ink">
           Code PIN
         </label>
+        {/* 🔴 CET INPUT REFUSAIT LES LETTRES.
+            Il faisait `replace(/\D/g, "")` avec `maxLength={6}` et
+            `inputMode="numeric"` : un PIN de 8 caractères ALPHANUMÉRIQUES —
+            décision d'Augustin du 22.08 — était PHYSIQUEMENT IMPOSSIBLE À
+            SAISIR. Changer `SCAN_PIN` sans changer cette ligne aurait
+            condamné le scanner du comptoir, sans aucun message d'erreur
+            utile : l'employé aurait tapé le bon code, vu ses lettres
+            disparaître sous ses doigts, et lu « PIN incorrect ».
+            `maxLength` à 32 et non à 8 : la limite de saisie ne doit pas
+            fuir la longueur du secret. */}
         <input
           id="scan-pin"
           type="password"
-          inputMode="numeric"
+          inputMode="text"
           autoComplete="off"
-          maxLength={6}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={32}
           value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-          className="w-full rounded-xl border border-border bg-cream px-4 py-3.5 text-center text-2xl tracking-[0.5em] text-ink outline-none focus:border-rialto focus:ring-2 focus:ring-rialto/30"
-          placeholder="••••••"
+          onChange={(e) => setPin(e.target.value.slice(0, 32))}
+          className="w-full rounded-xl border border-border bg-cream px-4 py-3.5 text-center text-2xl tracking-[0.25em] text-ink outline-none focus:border-rialto focus:ring-2 focus:ring-rialto/30"
+          placeholder="••••••••"
           autoFocus
         />
       </div>
@@ -319,9 +382,12 @@ function PinScreen({
         </p>
       )}
 
+      {/* Seuil de saisie abaissé à 1 : il était à 4, hérité du PIN
+          numérique. Le laisser à 4 n'apporte rien, et un seuil calé sur la
+          longueur réelle du secret la ferait fuir. Le serveur tranche. */}
       <button
         type="submit"
-        disabled={submitting || pin.length < 4}
+        disabled={submitting || pin.length < 1}
         className="w-full rounded-xl bg-rialto py-3.5 font-semibold text-white transition-colors hover:bg-rialto-dark disabled:opacity-50"
       >
         {submitting ? "Vérification…" : "Valider"}

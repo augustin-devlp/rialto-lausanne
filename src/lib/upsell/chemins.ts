@@ -1,0 +1,264 @@
+import type { CartAnalysis, MenuItemFull } from "./types";
+
+/**
+ * LES CHEMINS D'UPSELL — moteur à priorité (spec Augustin, 21.08.2026).
+ *
+ * Le moteur historique est un SCOREUR : il note tous les candidats et garde
+ * le meilleur. La spec décrit autre chose — des CHEMINS ordonnés, où le
+ * premier qui correspond gagne, sans jamais cumuler. Ce module apporte cette
+ * couche ; le scoreur reste en repli quand aucun chemin ne s'applique.
+ *
+ * ⚠️ FAIT QUI COMMANDE TOUT : la carte est presque PLATE en prix. On ne peut
+ * donc pas faire monter en gamme À L'INTÉRIEUR d'une catégorie — on ne peut
+ * qu'AJOUTER UNE CATÉGORIE ABSENTE du panier.
+ *
+ * ⚠️ CE MODULE NE FILTRE PAS. Il propose des candidats DANS L'ORDRE DE
+ * PRÉFÉRENCE ; les gardes dures (alcool, épuisé, déjà au panier, allergène,
+ * régime, article déjà refusé) restent dans `scoring.ts`, qui est le seul
+ * endroit où elles vivent. Un candidat rendu ici peut donc être écarté
+ * ensuite — c'est voulu, et c'est pourquoi on en rend plusieurs.
+ *
+ * ── CHEMINS IMPLÉMENTÉS ICI ─────────────────────────────────────────────
+ *   P3 — plat sans boisson
+ *   P4 — plat sans accompagnement (le vrai levier de marge)
+ *   P6 — le MODE TABLÉE : pas un chemin, il change les formats de P3/P4
+ *   P8 — le silence : ne rien dire est une réponse valable
+ *
+ * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
+ *   P1 (combo)  → BLOQUÉ, trois raisons, voir `docs/UPSELL_MOTEUR.md`
+ *   P2 (palier) → touche l'affichage des prix : à faire après P1
+ *   P5 (dessert), P7 (minimum de zone) → spécifiés, pas codés
+ */
+
+/** Catégories, par id. Les noms ne sont PAS un discriminant fiable :
+ *  « Entrées » mélange 3 accompagnements et 11 entrées, et « Plats viandes »
+ *  contient un plat végétarien. On passe donc par les ids, avec une garde. */
+const CAT = {
+  PIZZA: "244cfb35-dc56-47e5-b251-862cb623e482",
+  PATES: "d30e7b56-3df5-4a6a-95e3-abeeb85b3ebb",
+  LASAGNE: "d59b5816-2f22-43d9-bc54-643c228ea87b",
+  TORTELLINIS: "6576bf45-6c06-476e-a2f4-f8a491f80430",
+  VIANDES: "ceabb32d-190c-4c28-ad1f-f0ebbc79a283",
+  POISSONS: "d8117593-23be-4b25-8de6-5dfe80996f38",
+  HAMBURGERS: "68f2821b-b2ae-47a4-8166-92d9a2d61dac",
+} as const;
+
+/** Articles cités par la spec, par id (jamais par nom : les noms en base
+ *  sont accentués et longs — « Mini Rösti », « Salade mêlée » — un lookup
+ *  par la graphie de la spec renvoie zéro ligne). */
+const ART = {
+  COCA_05: "63889d31-a920-4a73-b5a4-12bfcb6e1575", // Coca-Cola 0.5l · 3.50
+  COCA_ZERO_05: "fe329962-741f-4e93-aadb-677a07db2cbd", // Zéro 0.5l · 3.50
+  COCA_15: "1fad6b68-90c8-48ae-9aac-b648db8829f2", // Coca-Cola 1.5l · 8.50
+  COCA_ZERO_15: "a0184db6-659a-4eba-a9ba-227e3dfcbae0", // Zéro 1.5l · 8.50
+  FRITES: "70b16d92-7e04-40a9-9984-429313029fc3", // 8.00
+  POTATOES: "f198ecfe-b29b-4be3-9910-b3bb991471bc", // 9.00
+  ROSTI: "201c2cd7-d201-4c55-b1bc-f6d3e2942083", // 10.00
+  SALADE: "3e311046-cda7-4851-90ba-1ac5690e0361", // 13.00
+  TOMATE_MOZZA: "c714276f-c8b0-450c-bf13-d0394e8cbbdc", // 13.00
+  VIGNE_5: "7982d1e7-4186-4aa9-80d3-b33863434d0a", // 13.00
+  FALAFELS_4: "eb211daa-b84c-4656-b89f-cae7ed196a30", // 13.00
+  VIGNE_11: "37464a33-eada-4f3b-8060-768181c29f48", // 21.00
+  FALAFELS_11: "7da2f3e2-eb1a-4a11-8553-a3cb2e09d083", // 21.00
+  CALAMARS_11: "df18a882-c0f9-44cc-85de-cd15fc76f2af", // 21.00
+} as const;
+
+export type Chemin = "P3" | "P4" | "P8";
+
+export interface ResultatChemin {
+  chemin: Chemin;
+  /** Candidats DANS L'ORDRE DE PRÉFÉRENCE. Vide si le chemin dit « rien ». */
+  candidats: MenuItemFull[];
+}
+
+/** Seuil de la tablée (P6). Au-delà, on passe aux grands formats. */
+export const SEUIL_TABLEE = 3;
+
+/**
+ * Garde d'intégrité : les articles et catégories cités ici qui n'existent
+ * PAS au catalogue. Un id périmé rendrait un chemin silencieusement mort —
+ * pas d'erreur, pas de log, juste zéro suggestion. Même raison d'être que
+ * `idsOrphelins` pour les rails.
+ */
+export function idsInconnus(catalogue: MenuItemFull[]): {
+  articles: string[];
+  categories: string[];
+} {
+  const articles = new Set(catalogue.map((i) => i.id));
+  const categories = new Set(catalogue.map((i) => i.category_id));
+  return {
+    articles: Object.values(ART).filter((id) => !articles.has(id)),
+    categories: Object.values(CAT).filter((id) => !categories.has(id)),
+  };
+}
+
+function parId(catalogue: MenuItemFull[]) {
+  const m = new Map(catalogue.map((i) => [i.id, i]));
+  return (...ids: string[]): MenuItemFull[] =>
+    ids.map((id) => m.get(id)).filter((i): i is MenuItemFull => i !== undefined);
+}
+
+/** Les plats principaux du panier (jamais les combos : un combo porte déjà
+ *  sa boisson, et compter un combo comme un plat fausserait la tablée). */
+function platsDuPanier(panier: MenuItemFull[]): MenuItemFull[] {
+  return panier.filter((i) => i.dish_role === "main");
+}
+
+/**
+ * Le panier est-il anatolien ? Mesuré sur les PLATS seuls (voir P4) :
+ * strictement plus de la moitié des plats principaux, quantités comprises.
+ */
+function majoriteAnatolienne(plats: MenuItemFull[]): boolean {
+  const total = plats.reduce((n, i) => n + (i.quantity ?? 1), 0);
+  if (total === 0) return false;
+  const anat = plats
+    .filter((i) => i.cuisine_style === "anatolian")
+    .reduce((n, i) => n + (i.quantity ?? 1), 0);
+  return anat * 2 > total;
+}
+
+/** Nombre de plats principaux, quantités comprises. */
+function nbPlats(panier: MenuItemFull[]): number {
+  return platsDuPanier(panier).reduce((n, i) => n + (i.quantity ?? 1), 0);
+}
+
+/**
+ * P3 — PLAT SANS BOISSON.
+ *
+ * Déclencheur : au moins un plat principal, aucune boisson.
+ * Article : le Coca 0.5l — celui des combos, donc cohérent avec le reste.
+ * En mode TABLÉE (P6) : le 1.5l, cinq francs de plus pour le même geste.
+ *
+ * ⚠️ ZÉRO OU NORMAL : la spec ne tranche pas. On ne devine pas au hasard —
+ * on propose les DEUX, normal d'abord, et la garde « déjà au panier » plus
+ * le départage font le reste. Si Augustin veut un défaut ferme, c'est une
+ * ligne à changer ici, à un seul endroit.
+ */
+function cheminP3(
+  panier: MenuItemFull[],
+  analysis: CartAnalysis,
+  get: ReturnType<typeof parId>,
+): ResultatChemin | null {
+  if (!analysis.hasMain) return null;
+  if (analysis.hasAnyDrink) return null;
+
+  const tablee = nbPlats(panier) >= SEUIL_TABLEE;
+  const candidats = tablee
+    ? get(ART.COCA_15, ART.COCA_ZERO_15)
+    : get(ART.COCA_05, ART.COCA_ZERO_05);
+
+  return candidats.length > 0 ? { chemin: "P3", candidats } : null;
+}
+
+/**
+ * P4 — PLAT SANS ACCOMPAGNEMENT. Le vrai levier de marge.
+ *
+ * Table d'association de la spec, traduite en CATÉGORIES et non en noms.
+ *
+ * ⚠️ PIZZA → SURTOUT PAS DE FRITES. Personne ne mange des frites avec une
+ * pizza. C'est la seule ligne de la table qui est une INTERDICTION, et elle
+ * compte plus que les autres.
+ *
+ * ⚠️ LES HAMBURGERS SONT EXCLUS, et c'est un ÉCART ASSUMÉ vis-à-vis de la
+ * spec. Elle dit « Cheeseburger, Hamburger classique → Frites Classique ».
+ * Or les deux hamburgers portent le tag `fries_included` en base : ils sont
+ * SERVIS avec des frites. Leur en proposer reviendrait à vendre des frites
+ * à quelqu'un qui en a déjà dans son assiette. Le moteur bloquait déjà ce
+ * cas ; on ne le contredit pas. À rouvrir seulement si Augustin confirme
+ * que les hamburgers viennent réellement sans frites.
+ */
+function cheminP4(
+  panier: MenuItemFull[],
+  analysis: CartAnalysis,
+  get: ReturnType<typeof parId>,
+): ResultatChemin | null {
+  if (!analysis.hasMain) return null;
+  // Un accompagnement OU une entrée déjà présent ferme le chemin : la spec
+  // parle de « 0 article de la catégorie Entrées », qui contient les deux.
+  if (analysis.roleCount.side > 0 || analysis.roleCount.starter > 0) return null;
+  // Le plat contient déjà ses frites (hamburgers) → rien à ajouter.
+  if (analysis.hasFriesIncluded) return null;
+
+  const tablee = nbPlats(panier) >= SEUIL_TABLEE;
+  const plats = platsDuPanier(panier);
+  const cats = new Set(plats.map((p) => p.category_id));
+
+  // Panier anatolien : le signal de cuisine prime sur la catégorie, parce
+  // qu'une pizza à la turca est une pizza ET un plat anatolien.
+  //
+  // ⚠️ ON NE SE SERT PAS DE `analysis.dominantCuisine` ICI, et c'est délibéré.
+  // Il compte TOUS les articles, boissons comprises, et exige 66 %. Un Coca
+  // (cuisine « universal ») fait donc tomber un tajine seul à 50 % — le
+  // panier cesse d'être « anatolien » au moment précis où P4 devient
+  // atteignable, puisque P3 passe avant et ne se déclenche que sans boisson.
+  // On classe donc sur les PLATS, jamais sur le panier entier.
+  if (majoriteAnatolienne(plats)) {
+    return fait("P4", tablee ? get(ART.VIGNE_11, ART.FALAFELS_11) : get(ART.VIGNE_5, ART.FALAFELS_4));
+  }
+
+  // Pizza — jamais de frites.
+  if (cats.has(CAT.PIZZA)) {
+    return fait("P4", tablee ? get(ART.VIGNE_11, ART.FALAFELS_11) : get(ART.SALADE, ART.TOMATE_MOZZA));
+  }
+
+  // Pâtes, lasagne, tortellinis → la salade allège.
+  if (cats.has(CAT.PATES) || cats.has(CAT.LASAGNE) || cats.has(CAT.TORTELLINIS)) {
+    return fait("P4", tablee ? get(ART.FALAFELS_11, ART.VIGNE_11) : get(ART.SALADE));
+  }
+
+  // Viandes grillées → féculent.
+  if (cats.has(CAT.VIANDES)) {
+    return fait("P4", tablee ? get(ART.FALAFELS_11, ART.VIGNE_11) : get(ART.POTATOES, ART.ROSTI));
+  }
+
+  // Poissons.
+  if (cats.has(CAT.POISSONS)) {
+    return fait("P4", tablee ? get(ART.CALAMARS_11) : get(ART.ROSTI, ART.SALADE));
+  }
+
+  // Hamburgers : voir l'avertissement ci-dessus — on ne propose rien.
+  if (cats.has(CAT.HAMBURGERS)) return null;
+
+  return null;
+}
+
+function fait(chemin: Chemin, candidats: MenuItemFull[]): ResultatChemin | null {
+  return candidats.length > 0 ? { chemin, candidats } : null;
+}
+
+/**
+ * P8 — LE SILENCE. Plat + boisson + accompagnement + dessert déjà là :
+ * on ne dit rien. Ne rien dire est une réponse valable, et c'est même la
+ * bonne quand le repas est complet — insister décrédibilise tout le reste.
+ */
+function cheminP8(analysis: CartAnalysis): ResultatChemin | null {
+  const complet =
+    analysis.hasMain &&
+    analysis.hasAnyDrink &&
+    analysis.hasDessert &&
+    (analysis.roleCount.side > 0 || analysis.roleCount.starter > 0);
+  return complet ? { chemin: "P8", candidats: [] } : null;
+}
+
+/**
+ * Le moteur à priorité. Le PREMIER chemin qui correspond gagne, jamais de
+ * cumul. Renvoie `null` quand aucun chemin ne s'applique — l'appelant
+ * retombe alors sur le scoreur historique.
+ *
+ * Ordre : P8 (silence) d'abord — un repas complet doit fermer la porte avant
+ * que P3 ou P4 ne trouvent un trou à combler. Puis P3, puis P4, dans l'ordre
+ * de priorité de la spec (la boisson avant l'accompagnement).
+ */
+export function choisitChemin(
+  panier: MenuItemFull[],
+  analysis: CartAnalysis,
+  catalogue: MenuItemFull[],
+): ResultatChemin | null {
+  const get = parId(catalogue);
+  return (
+    cheminP8(analysis) ??
+    cheminP3(panier, analysis, get) ??
+    cheminP4(panier, analysis, get) ??
+    null
+  );
+}

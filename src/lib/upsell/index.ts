@@ -9,6 +9,7 @@ import { analyzeCart } from './cartAnalysis';
 import { fetchFullMenu } from './supabaseMenu';
 import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring';
 import { callGeminiForMessages, genericPairingMessage } from './geminiCall';
+import { choisitChemin, idsInconnus } from './chemins';
 
 export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (configurable) — au-delà, suggérer paraît cupide
 
@@ -58,12 +59,61 @@ export async function generateUpsell(
 
   const menu = await fetchFullMenu();
 
+  // Garde d'intégrité des chemins : un id périmé rendrait un chemin
+  // silencieusement mort. On journalise plutôt que d'avaler.
+  const manquants = idsInconnus(menu);
+  if (manquants.articles.length || manquants.categories.length) {
+    console.error(
+      "[upsell/chemins] références introuvables au catalogue —",
+      "articles:", manquants.articles.join(", ") || "aucun",
+      "| catégories:", manquants.categories.join(", ") || "aucune",
+    );
+  }
+
+  // ═══ COUCHE « CHEMINS » (spec Augustin 21.08) ═══════════════════════════
+  // Le moteur historique est un SCOREUR. La spec décrit un moteur à CHEMINS
+  // prioritaires : le premier qui correspond gagne, jamais de cumul.
+  // Les chemins passent DEVANT le scoreur ; quand aucun ne s'applique, le
+  // scoreur reprend la main — on ne perd rien de l'existant.
+  //
+  // ⚠️ Les chemins ne filtrent PAS : leurs candidats repassent obligatoirement
+  // par `passesHardFilters`, seul endroit où vivent les gardes dures.
+  const resultatChemin = choisitChemin(cart, analysis, menu);
+  let cheminRetenu: string | null = resultatChemin?.chemin ?? null;
+
+  // P8 — le silence est une réponse valable.
+  if (resultatChemin?.chemin === "P8") {
+    return {
+      suggestions: [],
+      debug: { analysis: { isFullMeal: true }, context: {}, shortlist: [] },
+    };
+  }
+
+  const parChemin: UpsellCandidate[] = [];
+  for (const item of resultatChemin?.candidats ?? []) {
+    if (!passesHardFilters(item, analysis, context)) continue;
+    // Score nominal : l'ordre vient du chemin, pas du score. On garde un
+    // score décroissant pour ne pas casser les tris en aval.
+    parChemin.push({
+      item,
+      score: 1000 - parChemin.length,
+      reasons: [`chemin:${resultatChemin!.chemin}`],
+    });
+  }
+  if (parChemin.length === 0) cheminRetenu = null;
+
   // Filtres durs + scoring
   const scored: UpsellCandidate[] = [];
   for (const item of menu) {
     if (!passesHardFilters(item, analysis, context)) continue;
     const { score, reasons } = scoreItem(item, analysis, context);
     if (score > 0) scored.push({ item, score, reasons });
+  }
+
+  // Un chemin a parlé → il PRIME sur le scoreur, sans cumul.
+  if (parChemin.length > 0) {
+    scored.length = 0;
+    scored.push(...parChemin);
   }
 
   // Tri desc
@@ -129,6 +179,7 @@ export async function generateUpsell(
       category: cand.item.dish_role,
       score: cand.score,
       reasons: cand.reasons,
+      chemin: cheminRetenu,
     });
     if (suggestions.length >= budget) break;
   }
@@ -147,6 +198,7 @@ export async function generateUpsell(
         category: c.item.dish_role,
         score: c.score,
         reasons: c.reasons,
+        chemin: cheminRetenu,
       });
     }
   }

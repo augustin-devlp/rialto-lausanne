@@ -114,6 +114,13 @@ export interface UpsellSuggestion {
   category: string;
   score: number;
   reasons: string[];
+  /** Le CHEMIN qui a déclenché cette suggestion (P3, P4…), ou null si c'est
+   *  le scoreur historique. Augustin n'a aucun historique de commandes : les
+   *  associations sont écrites à la main et seront approximatives au début.
+   *  Sans ce champ, on saura dans trois mois QUE le moteur se trompe, mais
+   *  jamais SUR QUEL CHEMIN. C'est la seule chose qui rendra la correction
+   *  possible — ne pas le retirer. */
+  chemin?: string | null;
 }
 
 export interface UpsellResponse {

@@ -28,10 +28,13 @@ export async function POST(req: NextRequest) {
 
   const sb = supabaseService();
 
-  // Les ids du restaurant (le scope passe par la catégorie).
+  // Les ids du restaurant, scopés sur les DEUX clés : `restaurant_id` (celle
+  // du site client) ET la catégorie. Une remise en vente de masse ne doit
+  // jamais pouvoir déborder sur le menu d'un autre restaurant de la base.
   const { data: articles, error: erreurLecture } = await sb
     .from("menu_items")
     .select("id, menu_categories!inner (restaurant_id)")
+    .eq("restaurant_id", RESTAURANT_ID)
     .eq("menu_categories.restaurant_id", RESTAURANT_ID)
     .eq("is_out_of_stock", true);
 

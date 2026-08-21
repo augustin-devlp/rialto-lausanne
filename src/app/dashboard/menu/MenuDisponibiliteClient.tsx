@@ -21,8 +21,7 @@
  * résultat possible.
  */
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
 
 type Article = {
@@ -51,6 +50,14 @@ export default function MenuDisponibiliteClient() {
   const [confirmationTout, setConfirmationTout] = useState(false);
   const [toutEnCours, setToutEnCours] = useState(false);
 
+  /** Compteur de génération : incrémenté à CHAQUE rechargement complet.
+   *  Une écriture par ligne partie avant un rechargement ne doit plus
+   *  toucher l'écran quand elle revient après — sinon sa réponse tardive
+   *  réécrit par-dessus une vérité plus fraîche (cas réel : Mehmet bascule
+   *  un plat sur un réseau lent, puis tape « Tout remettre » ; le PATCH
+   *  arrive en dernier et réaffiche ÉPUISÉ un plat remis en vente). */
+  const generation = useRef(0);
+
   async function charge() {
     setChargement(true);
     setErreurGlobale(null);
@@ -58,7 +65,11 @@ export default function MenuDisponibiliteClient() {
       const res = await fetch("/api/dashboard/menu", { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const body = (await res.json()) as { articles: Article[] };
+      generation.current += 1;
       setArticles(body.articles ?? []);
+      // La liste qui arrive est la vérité : les messages d'erreur des
+      // lignes portaient sur l'état d'AVANT, ils ne veulent plus rien dire.
+      setErreurs({});
     } catch {
       setErreurGlobale(
         "Impossible de charger la carte. Vérifiez la connexion et réessayez.",
@@ -77,6 +88,14 @@ export default function MenuDisponibiliteClient() {
     if (enVol[article.id]) return;
     const cible = !article.epuise;
     const avant = article.epuise;
+    // Génération au moment du départ : si la liste est rechargée entre-temps,
+    // cette réponse est périmée et ne doit plus rien réécrire.
+    const gen = generation.current;
+    const perime = () => generation.current !== gen;
+    /** Le serveur a-t-il explicitement REFUSÉ (4xx) ? Dans ce seul cas on
+     *  sait que rien n'a été écrit. Un 5xx ou une coupure peut survenir
+     *  APRÈS le commit : on n'affirme alors rien. */
+    let refusExplicite = false;
 
     setEnVol((v) => ({ ...v, [article.id]: true }));
     setErreurs((e) => {
@@ -98,7 +117,9 @@ export default function MenuDisponibiliteClient() {
         ok?: boolean;
         epuise?: boolean;
       } | null;
+      if (res.status >= 400 && res.status < 500) refusExplicite = true;
       if (!res.ok || !body?.ok) throw new Error("echec");
+      if (perime()) return;
       // 2. On s'aligne sur l'état RELU par le serveur, pas sur ce qu'on
       //    croyait avoir écrit.
       setArticles((liste) =>
@@ -107,15 +128,23 @@ export default function MenuDisponibiliteClient() {
         ),
       );
     } catch {
-      // 3. ÉCHEC : retour à l'état d'origine + message explicite.
+      if (perime()) return;
+      // 3. ÉCHEC : retour à l'état d'origine + message.
       setArticles((liste) =>
         liste.map((a) => (a.id === article.id ? { ...a, epuise: avant } : a)),
       );
+      // ⚠️ On n'AFFIRME l'état de la carte que si le serveur a refusé lui-même.
+      // Une coupure réseau ou un 5xx peut arriver APRÈS que l'écriture est
+      // passée : dire « toujours en vente » serait alors un mensonge dans le
+      // sens dangereux — Mehmet croirait le plat retiré pendant que le site
+      // le vend. Quand on ne sait pas, on le dit.
       setErreurs((e) => ({
         ...e,
-        [article.id]: cible
-          ? "Pas enregistré — le plat est TOUJOURS EN VENTE. Réessayez."
-          : "Pas enregistré — le plat est TOUJOURS ÉPUISÉ. Réessayez.",
+        [article.id]: refusExplicite
+          ? cible
+            ? "Pas enregistré — le plat est TOUJOURS EN VENTE. Réessayez."
+            : "Pas enregistré — le plat est TOUJOURS ÉPUISÉ. Réessayez."
+          : "Pas de réponse — on ne sait pas si c'est enregistré. Rechargez la page pour voir l'état réel.",
       }));
     } finally {
       setEnVol((v) => {
@@ -128,19 +157,30 @@ export default function MenuDisponibiliteClient() {
   async function toutRemettre() {
     setToutEnCours(true);
     setErreurGlobale(null);
+    let echoue = false;
     try {
       const res = await fetch("/api/dashboard/menu/tout-remettre", {
         method: "POST",
       });
       if (!res.ok) throw new Error("echec");
       setConfirmationTout(false);
-      await charge();
     } catch {
-      setErreurGlobale(
-        "Impossible de tout remettre disponible. Rien n'a été changé — réessayez.",
-      );
+      echoue = true;
     } finally {
       setToutEnCours(false);
+      // La vérité vient du serveur dans TOUS les cas, succès comme échec.
+      await charge();
+      // ⚠️ Le message est posé APRÈS `charge()`, qui remet erreurGlobale à
+      // null — posé avant, il serait effacé aussitôt.
+      // Et il n'affirme JAMAIS « rien n'a été changé » : cet appel remet
+      // toute la carte en vente d'un seul UPDATE ; si la réponse se perd
+      // après le commit, la carte EST remise et l'affirmation serait fausse
+      // dans le sens dangereux.
+      if (echoue) {
+        setErreurGlobale(
+          "On ne sait pas si ça a marché. La liste vient d'être rechargée : vérifiez le nombre de plats épuisés ci-dessus.",
+        );
+      }
     }
   }
 
@@ -170,18 +210,16 @@ export default function MenuDisponibiliteClient() {
     return [...map.entries()];
   }, [articles, recherche, filtre]);
 
+  // Convention dashboard : le layout fournit déjà <main> et la navigation
+  // (BottomNav). Un <main> imbriqué serait du HTML invalide — deux
+  // landmarks pour un lecteur d'écran — et `container-hero` rajouterait son
+  // padding par-dessus celui du layout, rendant CET écran plus étroit que
+  // tous les autres.
   return (
-    <main className="container-hero pb-28 pt-6">
-      <Link
-        href="/dashboard"
-        className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink"
-      >
-        ← Tableau de bord
-      </Link>
-
+    <div className="pb-6">
       <h1 className="font-display text-2xl font-bold text-ink">Menu</h1>
       <p className="mt-1 text-sm text-mute">
-        Retirez un plat en rupture, remettez-le quand il revient.
+        Un plat est épuisé ? Retirez-le. Il revient ? Remettez-le en vente.
       </p>
 
       {/* ─── En-tête : combien d'épuisés + tout remettre ─── */}
@@ -202,12 +240,12 @@ export default function MenuDisponibiliteClient() {
                 onClick={() => setConfirmationTout(true)}
                 className="mt-3 w-full rounded-xl border border-border px-3 py-2.5 text-sm font-semibold text-ink transition hover:border-ink"
               >
-                Tout remettre disponible
+                Tout remettre en vente
               </button>
             ) : (
               <div className="mt-3 rounded-xl border border-border bg-neutral-50 p-3">
                 <p className="text-sm text-ink">
-                  Remettre les {nbEpuises} plats en vente ?
+                  Remettre {nbEpuises} plat{nbEpuises > 1 ? "s" : ""} en vente ?
                 </p>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -234,16 +272,30 @@ export default function MenuDisponibiliteClient() {
       </div>
 
       {erreurGlobale && (
-        <p
+        <div
           role="alert"
           className="mt-3 rounded-xl border border-rialto/30 bg-rialto/10 p-3 text-sm text-rialto"
         >
-          {erreurGlobale}
-        </p>
+          <p>{erreurGlobale}</p>
+          {/* Le message dit « réessayez » : il faut de quoi le faire, sinon
+              seul un rechargement du navigateur s'en sort et rien ne le dit. */}
+          <button
+            type="button"
+            onClick={() => void charge()}
+            disabled={chargement}
+            className="mt-2 rounded-lg border border-rialto/40 px-3 py-1.5 font-semibold transition hover:bg-rialto/10 disabled:opacity-50"
+          >
+            {chargement ? "…" : "Réessayer"}
+          </button>
+        </div>
       )}
 
       {/* ─── Recherche + filtre ─── */}
-      <div className="sticky top-0 z-10 -mx-4 mt-4 space-y-2 bg-white/95 px-4 py-3 backdrop-blur">
+      {/* `top-14` et non `top-0` : l'en-tête du dashboard est lui-même
+          `sticky top-0 z-30 h-14` et opaque. À `top-0`, la recherche et les
+          filtres passent DERRIÈRE lui dès le premier défilement — l'outil
+          censé rendre les 121 articles utilisables disparaît. */}
+      <div className="sticky top-14 z-10 -mx-4 mt-4 space-y-2 bg-white/95 px-4 py-3 backdrop-blur">
         <input
           type="search"
           value={recherche}
@@ -366,6 +418,6 @@ export default function MenuDisponibiliteClient() {
           })}
         </div>
       )}
-    </main>
+    </div>
   );
 }

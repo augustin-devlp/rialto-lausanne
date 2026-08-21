@@ -38,11 +38,18 @@ export async function GET(req: NextRequest) {
   if (blocked) return blocked;
 
   const sb = supabaseService();
+  // Le scope passe par les DEUX clés. `menu_items.restaurant_id` est celle
+  // qu'emploie tout le site client (menu/page.tsx, [productSlug]/page.tsx,
+  // api/orders) ; le filtre par catégorie sert en plus au tri. Les filtrer
+  // séparément reviendrait à décrire DEUX ensembles : un plat rattaché à la
+  // catégorie d'un autre restaurant serait vendu par le site et absent de
+  // cet écran — invisible pour Mehmet, donc impossible à retirer.
   const { data, error } = await sb
     .from("menu_items")
     .select(
       "id, name, price, is_out_of_stock, is_available, display_order, menu_categories!inner (id, name, display_order, restaurant_id)",
     )
+    .eq("restaurant_id", RESTAURANT_ID)
     .eq("menu_categories.restaurant_id", RESTAURANT_ID)
     .order("display_order", { ascending: true });
 
@@ -106,9 +113,28 @@ export async function PATCH(req: NextRequest) {
     is_out_of_stock?: unknown;
   } | null;
 
-  // Validation STRICTE : refuser plutôt que corriger en silence. Le body
-  // ne peut porter QUE ces deux champs — tout le reste du menu est figé.
-  if (!body || typeof body.id !== "string" || body.id.length < 10) {
+  // Validation STRICTE : refuser plutôt que corriger en silence. Le body ne
+  // peut porter QUE ces deux champs — et on le VÉRIFIE, au lieu de se
+  // contenter de l'écrire en commentaire : un appelant qui envoie `price` ou
+  // `name` se trompe sur ce que fait cette route, et doit l'apprendre par un
+  // refus. (L'`update` plus bas est un littéral, donc rien ne passerait de
+  // toute façon — mais une garantie écrite doit être tenue par du code.)
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ ok: false, error: "body_invalide" }, { status: 400 });
+  }
+  const clesEnTrop = Object.keys(body).filter(
+    (k) => k !== "id" && k !== "is_out_of_stock",
+  );
+  if (clesEnTrop.length > 0) {
+    return NextResponse.json(
+      { ok: false, error: "champs_interdits", champs: clesEnTrop },
+      { status: 400 },
+    );
+  }
+  // Format UUID : sans ce test, un id court mais non-uuid atteint Postgres
+  // et ressort en 22P02 → 500 bruyant au lieu d'un 400 franc.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (typeof body.id !== "string" || !UUID.test(body.id)) {
     return NextResponse.json({ ok: false, error: "id_invalide" }, { status: 400 });
   }
   if (typeof body.is_out_of_stock !== "boolean") {
@@ -120,13 +146,14 @@ export async function PATCH(req: NextRequest) {
 
   const sb = supabaseService();
 
-  // ⚠️ Le scope restaurant passe par la CATÉGORIE (menu_items n'a pas de
-  // restaurant_id propre) : sans lui, un id forgé écrirait sur le menu
-  // d'un autre restaurant de la base.
+  // ⚠️ Le scope restaurant est vérifié AVANT l'écriture, sur les DEUX clés :
+  // `menu_items.restaurant_id` (celle du site client) ET la catégorie. Sans
+  // ce contrôle, un id forgé écrirait sur le menu d'un autre restaurant.
   const { data: article, error: erreurLecture } = await sb
     .from("menu_items")
     .select("id, name, menu_categories!inner (restaurant_id)")
     .eq("id", body.id)
+    .eq("restaurant_id", RESTAURANT_ID)
     .eq("menu_categories.restaurant_id", RESTAURANT_ID)
     .maybeSingle();
 
@@ -151,7 +178,11 @@ export async function PATCH(req: NextRequest) {
       // Le motif n'est PAS saisissable (le cadrage exclut tout champ de
       // texte) : on le nettoie au retour en stock pour ne pas laisser
       // traîner un motif périmé.
-      out_of_stock_reason: epuise ? "Retiré depuis le dashboard" : null,
+      // ⚠️ Cette colonne part dans la charge utile de la page PUBLIQUE
+      // (`/menu` la sélectionne). Rien ne l'affiche aujourd'hui, mais son
+      // nom invite à le faire : le libellé doit donc être lisible par un
+      // client, jamais du jargon interne.
+      out_of_stock_reason: epuise ? "Épuisé aujourd'hui" : null,
       out_of_stock_auto_reactivate_at: null,
     })
     .eq("id", body.id)

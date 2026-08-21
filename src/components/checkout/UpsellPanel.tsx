@@ -103,9 +103,25 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
     return () => window.removeEventListener("rialto:address-updated", maj);
   }, []);
 
-  // Stable key pour éviter fetch inutile
+  // Clé stable, pour éviter un fetch inutile — MAIS elle doit contenir
+  // TOUT ce qui change le prix, sinon la promesse faite plus bas (« une
+  // carte qui affiche un prix ne survit jamais à un changement de son
+  // assiette », l.176-180) est fausse.
+  // ⚠️ CORRIGÉ 21.08 : la clé ignorait les OPTIONS. Ajouter du fromage à
+  // une pizza laisse `menu_item_id` et `quantity` identiques → aucun
+  // refetch → la carte P2 et son « votre total ne monte que de 8.00 »
+  // restaient affichés sur un panier dont le sous-total avait bougé. Le
+  // serveur relit pourtant bien les suppléments (`api/rialto/upsell/
+  // route.ts`, sousTotalReel) : c'était la clé, pas le calcul.
   const cartKey = cart
-    .map((c) => `${c.menu_item_id}x${c.quantity}`)
+    .map(
+      (c) =>
+        `${c.menu_item_id}x${c.quantity}#` +
+        (c.options ?? [])
+          .map((o) => `${o.group}:${o.name}`)
+          .sort()
+          .join(","),
+    )
     .sort()
     .join("|");
 

@@ -211,11 +211,18 @@ function cheminP3(
  * assiette.
  * IMPLÉMENTÉ par la garde `analysis.hasFriesIncluded` en tête de
  * `cheminP4` (ci-dessous), et par l'absence de branche HAMBURGERS.
- * ⚠️ FORMULATION EXACTE : ce n'est PAS « jamais quand il y a un burger ».
- * Sur un panier burger + pâtes, la branche PÂTES répond avant et propose
- * une salade — elle est pour les pâtes, et c'est le bon comportement.
- * Sans hamburger seul au panier, P4 se tait et le client tombe sur P3
- * (boisson) ou P5 (dessert).
+ * ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08 : « sur un panier burger +
+ * pâtes, la branche PÂTES répond avant et propose une salade ». C'EST
+ * FAUX, et c'est l'inverse de ce que fait le fichier : `hasFriesIncluded`
+ * est calculé sur TOUT le panier (`cartAnalysis.ts:80`) et la garde est en
+ * TÊTE de `cheminP4` (l.242 ci-dessous), donc AVANT le dispatch par
+ * catégorie. Un burger (qui vient avec ses frites) fait donc taire P4
+ * pour le panier ENTIER, pâtes comprises : la branche PÂTES n'est jamais
+ * atteinte, le client tombe sur P3 (boisson) ou P5 (dessert).
+ * ⚠️ ARBITRAGE OUVERT, pas corrigé ici : c'est peut-être le comportement
+ * voulu (on ne propose pas une salade à côté d'un burger-frites), mais
+ * c'est une RÈGLE MÉTIER — déplacer la garde après le dispatch changerait
+ * ce que le client voit. Ne pas le faire sans décision d'Augustin.
  */
 function cheminP4(
   panier: MenuItemFull[],

@@ -87,12 +87,11 @@ export async function POST(
   // (qui n'affiche le bouton qu'en livraison/prête). Un POST direct en
   // début de préparation est donc accepté : au RECALIBRAGE, filtrer les
   // taps implausibles (croiser avec accepted_at + cuisine estimée).
-  // SÉCURITÉ (réévaluée au jalon cross-device, 18.08) : l'uuid v4 est un
-  // jeton de capacité par commande — un abuseur ne peut piloter que
-  // l'affichage de SA propre page et polluer 1 datapoint. Acceptable
-  // SANS auth ni rate limit tant que le tap ne pilote rien d'autre ;
-  // réévaluation OBLIGATOIRE si un jour il déclenche un effet au-delà
-  // de la commande elle-même (SMS, fidélité, dashboard).
+  // ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08, que l'uuid v4 seul était
+  // « acceptable SANS auth ni rate limit ». RETIRÉ : c'est faux depuis
+  // que cette route exige un jeton HMAC (l.46-57 ci-dessus, garde
+  // `verifyOrderToken`), et laisser la phrase invitait le lecteur suivant
+  // à retirer cette garde en croyant l'uuid suffisant.
   const { data: ecrit, error: maj } = await sb
     .from("orders")
     .update({ customer_confirmed_delivered_at: new Date().toISOString() })

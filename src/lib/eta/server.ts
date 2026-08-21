@@ -32,9 +32,22 @@
  *
  * COMPTAGE DES PIZZAS (GO 18.08) : catégorie « Pizza Ø33cm » = pizza ;
  * tout COMBO (dish_role='combo') = UNE pizza par quantité — défaut
- * prudent. TOUTE défaillance de collecte dégrade vers le PRUDENT
- * (relecture 18.08 : les erreurs silencieuses dégradaient vers l'ETA le
- * plus court — l'inverse de la doctrine).
+ * prudent.
+ * ⚠️ LA PHRASE « TOUTE défaillance de collecte dégrade vers le PRUDENT »
+ * ÉTAIT ÉCRITE ICI JUSQU'AU 21.08. Elle est FAUSSE sur le chemin le plus
+ * probable, et c'est une garantie de ma main : l'échec de lecture des
+ * commandes actives (l.167-175) renvoie `pizzas_en_cuisine_devant: 0` ET
+ * `retour_livreur_minutes: 0` — les valeurs les plus OPTIMISTES. La seule
+ * compensation est `degradee: true` → `poids` (l.469, l.506), qui ne
+ * nourrit que `poidsPrior` ; or `prior` vaut 0 hors des fenêtres de rush
+ * (`eta.ts:133-137`). HORS RUSH, UNE PANNE TOTALE DONNE L'ETA LE PLUS
+ * COURT POSSIBLE — exactement ce que la relecture du 18.08 disait avoir
+ * corrigé.
+ * Ce qui reste VRAI : les défaillances PARTIELLES (items, historique,
+ * zones) dégradent bien vers le prudent.
+ * ⚠️ NON CORRIGÉ ICI, VOLONTAIREMENT : le repli d'une panne totale est
+ * l'ANCRAGE DE L'ETA, une règle métier. Ne pas le changer sans décision
+ * d'Augustin.
  */
 
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";

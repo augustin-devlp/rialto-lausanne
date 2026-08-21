@@ -297,16 +297,23 @@ function gaItems(items: TrackedItem[]) {
  * secret qu'on vient de mettre en place — et un lien ouvert depuis l'email
  * est justement le cas où l'URL complète est présente.
  *
- * ⚠️ CETTE RÉDACTION NE COUVRE QUE GOOGLE, PAS META. `page_location` et
- * `page_path` sont des paramètres gtag ; `fbevents.js` construit son
- * paramètre `dl` à partir de `document.location.href`, sans que rien ne
- * puisse le surcharger. **Le jeton part donc encore chez Meta à chaque
- * ouverture de la page de suivi.** Ne pas écrire le contraire tant que ce
- * n'est pas réglé — la seule vraie solution est de sortir le jeton de
- * l'URL (échange contre un cookie httpOnly puis redirection vers l'URL
- * nue), ou de ne pas injecter le pixel Meta sur /confirmation.
- * Correction du 21.08 : le message du commit `cce3b1c` annonçait
- * « Google et Meta ». La moitié Meta était fausse.
+ * ⚠️ CETTE RÉDACTION NE COUVRE QUE GOOGLE. `page_location` et `page_path`
+ * sont des paramètres gtag ; `fbevents.js` construit son paramètre `dl` à
+ * partir de `document.location.href`, sans que rien ne puisse le
+ * surcharger — la redaction d'URL est donc SANS EFFET sur Meta.
+ * ⚠️ CE PARAGRAPHE CONCLUAIT, PLUS TÔT LE 21.08 : « le jeton part donc
+ * encore chez Meta à chaque ouverture de la page de suivi ». CE N'EST
+ * PLUS VRAI, et le laisser coûtait une panique pour rien. La fuite est
+ * fermée autrement, plus haut dans CE fichier : `meta()` (l.83-86) sort
+ * par `if (surPageDeSuivi()) return;` et TOUS les tirs Meta passent par
+ * lui — les 5 `track.*`, le PageView d'injection et les deux signaux de
+ * consentement. Prouvé en prod le 21.08 : 0 requête vers `/tr/` sur
+ * /confirmation avec consentement accordé, 1 sur l'accueil.
+ * Ce qui reste vrai, et qui est un choix : `fbevents.js` et `fbq('init')`
+ * restent CHARGÉS sur /confirmation (l.174-180). Sans ça, un premier
+ * consentement donné sur la page de suivi laisserait le pixel mort pour
+ * toute la session — le Purchase du checkout suivant ne partirait jamais.
+ * On charge donc, et on se tait à l'émission.
  *
  * Bénéfice secondaire acquis : la cardinalité des pages GA4 reste lisible
  * (une ligne « /confirmation » au lieu d'une par commande).

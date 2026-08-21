@@ -177,6 +177,23 @@ export function grantTracking(): void {
       // sauter sur /confirmation laisserait le pixel non initialisé pour
       // TOUTE la session (l'injection est one-shot) — c'est-à-dire le bug
       // qu'on vient de corriger, réintroduit par l'autre bout.
+      // ⚠️ autoConfig COUPÉ, ET C'EST UNE GARDE, PAS UN RÉGLAGE DE CONFORT.
+      // Avec autoConfig, `fbevents.js` pose SES PROPRES écouteurs et tire
+      // seul (`SubscribedButtonClick`, `Microdata`) — des beacons qui ne
+      // passent PAS par `meta()`, puisqu'ils naissent DANS le SDK, avec
+      // `dl = document.location.href`. Sur /confirmation, ce `dl` contient
+      // le JETON D'ACCÈS.
+      // Testé en production le 21.08 : un clic réel sur un bouton, pixel
+      // chargé et config chargée, ne produit AUCUN `SubscribedButtonClick`
+      // — la claim ne se reproduit pas aujourd'hui. MAIS ce qui l'empêche
+      // est un réglage du compte Meta, pas une ligne de ce dépôt : il peut
+      // être rallumé depuis l'Events Manager sans que personne ici ne le
+      // sache. On ne laisse pas une garantie d'étanchéité dépendre d'une
+      // case à cocher hors du code.
+      // Sans effet sur nos événements : on les émet tous explicitement.
+      // Reste INCONDITIONNEL comme `init` — cet appel n'envoie pas de
+      // beacon, et il doit précéder `init` pour valoir.
+      window.fbq!("set", "autoConfig", false, META_PIXEL_ID);
       window.fbq!("init", META_PIXEL_ID);
       // ⚠️ LE PageView, LUI, PASSE PAR LA GARDE. Il utilisait `window.fbq!`
       // et non `window.fbq?.(` : mon premier correctif du 21.08, qui
@@ -305,10 +322,16 @@ function gaItems(items: TrackedItem[]) {
  * encore chez Meta à chaque ouverture de la page de suivi ». CE N'EST
  * PLUS VRAI, et le laisser coûtait une panique pour rien. La fuite est
  * fermée autrement, plus haut dans CE fichier : la fonction `meta()` sort
- * par `if (surPageDeSuivi()) return;` et TOUS les tirs Meta passent par
- * lui — les 5 `track.*`, le PageView d'injection et les deux signaux de
- * consentement. Prouvé en prod le 21.08 : 0 requête vers `/tr/` sur
- * /confirmation avec consentement accordé, 1 sur l'accueil.
+ * par `if (surPageDeSuivi()) return;` et tous les tirs Meta ÉMIS PAR CE
+ * FICHIER passent par lui — les 5 `track.*`, le PageView d'injection et
+ * les deux signaux de consentement. Prouvé en prod le 21.08 : 0 requête
+ * vers `/tr/` sur /confirmation avec consentement accordé, 1 sur l'accueil.
+ * ⚠️ « ÉMIS PAR CE FICHIER » N'EST PAS UNE PRÉCAUTION DE STYLE. Un wrapper
+ * autour de `window.fbq` ne peut rien contre ce que `fbevents.js` tire de
+ * lui-même. C'est pourquoi `autoConfig` est coupé juste avant `init` — et
+ * c'est CETTE ligne, pas `meta()`, qui rend la phrase vraie dans l'état
+ * « le client clique ». Une preuve prise AU CHARGEMENT ne prouve jamais
+ * un claim sur TOUS les états.
  * Ce qui reste vrai, et qui est un choix : `fbevents.js` et `fbq('init')`
  * restent CHARGÉS sur /confirmation (bloc `if (META_PIXEL_ID)`). Sans ça, un premier
  * consentement donné sur la page de suivi laisserait le pixel mort pour

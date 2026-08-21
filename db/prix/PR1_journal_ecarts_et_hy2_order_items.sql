@@ -1,6 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════
 -- NAVETTE PR1 — Lot « re-dérivation des prix serveur » (BLOQUANT go-live,
--- GO Augustin 20.08.2026). Deux volets INDISSOCIABLES :
+-- GO Augustin 20.08.2026). AMENDÉE LE 22.08.2026 : un BLOC 3 ferme la
+-- SECONDE porte publique (« Public insert orders »), restée ouverte —
+-- fermer order_items seul ne servait à rien.
+-- Trois volets INDISSOCIABLES :
 --   1. orders.pricing_adjustments — le journal des écarts client/serveur
 --      exigé par la décision « prix serveur sans bloquer + journaliser » ;
 --   2. HY2 order_items — durcissement grants + policy : SANS lui, la
@@ -82,10 +85,74 @@ CREATE POLICY caisse_insert_order_items ON public.order_items
 --   REVOKE INSERT ON TABLE public.order_items FROM authenticated;
 --   DROP POLICY IF EXISTS caisse_insert_order_items ON public.order_items;
 
+-- ── BLOC 3 : LA SECONDE PORTE, RESTÉE OUVERTE ─────────────────────────
+-- 🔴 AMENDEMENT DU 22.08.2026 (Augustin). PR1 ne fermait QU'UNE porte sur
+-- DEUX. Relevé en base le 22.08 :
+--
+--   orders       | "Public insert orders"       | INSERT | PUBLIC | true
+--   order_items  | "Public insert order_items"  | INSERT | PUBLIC | true
+--
+-- Les deux sont `WITH CHECK (true)` pour PUBLIC — donc pour `anon`,
+-- c'est-à-dire pour la clé publique embarquée dans le bundle du site.
+-- Fermer `order_items` seul ne sert à rien : un INSERT direct dans
+-- `orders` crée une commande de toutes pièces, avec le total_amount qu'on
+-- veut. La re-dérivation des prix serveur — tout l'objet de PR1 — reste
+-- contournable tant que cette ligne existe.
+--
+-- ⚠️ CE QUE ÇA NE CASSE PAS : le site n'est PAS concerné. `POST /api/orders`
+-- écrit avec `supabaseService()` (service_role), qui IGNORE la RLS. Aucune
+-- écriture du site ne passe par une policy.
+-- ⚠️ CLAUSE `caisse_access` OBLIGATOIRE, ET C'EST LA RAISON D'ÊTRE DE
+-- L'AMENDEMENT : sans elle on révoquerait l'INSERT à `authenticated` tout
+-- court, ce qui tuerait le script de fixtures — le seul du projet — qui
+-- s'authentifie en utilisateur caisse. Avec elle, un utilisateur caisse
+-- insère sur SON restaurant, et personne d'autre n'insère rien.
+-- Prédicat : le MÊME que `caisse_read_orders` et `caisse_update_orders`,
+-- déjà en production. On ne réinvente pas un prédicat de sécurité.
+
+REVOKE ALL ON TABLE public.orders FROM anon;
+REVOKE DELETE, TRUNCATE, TRIGGER, REFERENCES
+  ON TABLE public.orders FROM authenticated;
+-- PG17 : MAINTAIN n'est pas couvert par la liste ci-dessus.
+REVOKE MAINTAIN ON TABLE public.orders FROM authenticated;
+-- ⚠️ ON NE RÉVOQUE PAS UPDATE : la caisse écrit les statuts (lot CL1) via
+-- `caisse_update_orders`, et SELECT via `caisse_read_orders`. Les deux
+-- restent intactes.
+
+DROP POLICY IF EXISTS "Public insert orders" ON public.orders;
+CREATE POLICY caisse_insert_orders ON public.orders
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.caisse_access ca
+      WHERE ca.user_id = (SELECT auth.uid())
+        AND ca.restaurant_id = orders.restaurant_id
+    )
+  );
+
+-- Contrôle : les DEUX portes publiques doivent avoir disparu.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    WHERE c.relname IN ('orders','order_items')
+      AND pol.polname LIKE 'Public insert%'
+  ) THEN
+    RAISE EXCEPTION 'PR1 : une policy « Public insert » subsiste, on ne valide pas.';
+  END IF;
+END $$;
+
 -- ═══════════════════════════════════════════════════════════════════════
 -- ROLLBACK (dans l'ordre inverse ; lock_timeout aussi — règle TR1b)
 -- ═══════════════════════════════════════════════════════════════════════
 -- SET lock_timeout = '5s';
+-- DROP POLICY IF EXISTS caisse_insert_orders ON public.orders;
+-- CREATE POLICY "Public insert orders" ON public.orders
+--   FOR INSERT TO public WITH CHECK (true);
+-- GRANT ALL ON TABLE public.orders TO anon;
+-- GRANT ALL ON TABLE public.orders TO authenticated;
 -- DROP POLICY IF EXISTS caisse_insert_order_items ON public.order_items;
 -- CREATE POLICY "Public insert order_items" ON public.order_items
 --   FOR INSERT TO public WITH CHECK (true);

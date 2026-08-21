@@ -267,13 +267,23 @@ function gaItems(items: TrackedItem[]) {
  * ⚠️ NE JAMAIS ENVOYER UNE URL DE COMMANDE TELLE QUELLE À UN TIERS.
  *
  * Depuis le 21.08, `/confirmation/<numéro>` porte un JETON d'accès en
- * paramètre (`?t=…`). Envoyer l'URL brute à GA4 et à Meta publierait chez
- * deux tiers le secret qu'on vient de mettre en place — et un lien ouvert
- * depuis l'email est justement le cas où l'URL complète est présente.
+ * paramètre (`?t=…`). Envoyer l'URL brute publierait chez un tiers le
+ * secret qu'on vient de mettre en place — et un lien ouvert depuis l'email
+ * est justement le cas où l'URL complète est présente.
  *
- * On rédige donc au SEUL point d'étranglement, ici. Bénéfice secondaire :
- * la cardinalité des pages GA4 reste lisible (une ligne « /confirmation »
- * au lieu d'une par commande).
+ * ⚠️ CETTE RÉDACTION NE COUVRE QUE GOOGLE, PAS META. `page_location` et
+ * `page_path` sont des paramètres gtag ; `fbevents.js` construit son
+ * paramètre `dl` à partir de `document.location.href`, sans que rien ne
+ * puisse le surcharger. **Le jeton part donc encore chez Meta à chaque
+ * ouverture de la page de suivi.** Ne pas écrire le contraire tant que ce
+ * n'est pas réglé — la seule vraie solution est de sortir le jeton de
+ * l'URL (échange contre un cookie httpOnly puis redirection vers l'URL
+ * nue), ou de ne pas injecter le pixel Meta sur /confirmation.
+ * Correction du 21.08 : le message du commit `cce3b1c` annonçait
+ * « Google et Meta ». La moitié Meta était fausse.
+ *
+ * Bénéfice secondaire acquis : la cardinalité des pages GA4 reste lisible
+ * (une ligne « /confirmation » au lieu d'une par commande).
  */
 function urlSansSecret(): { href: string; path: string } {
   const path = window.location.pathname;

@@ -34,11 +34,50 @@ export const dynamic = "force-dynamic";
  * lotteries + lottery_participants (already_entered). Divergence de shape
  * assumée vs /api/lottery/current : ce bloc N'inclut PAS prize_description.
  */
+/* ─── Limite de débit (best-effort) ─────────────────────────────────────
+ *
+ * ⚠️ CETTE ROUTE EST OUVERTE, ET ELLE DISTRIBUE DES JETONS D'ACCÈS AUX
+ * COMMANDES (voir plus bas). Sa clé est un NUMÉRO DE TÉLÉPHONE, qui
+ * s'énumère. Sans limite, elle est le chemin le moins protégé du dépôt
+ * vers les données clients — `login-by-phone` en a une, pas elle.
+ *
+ * ⚠️ HONNÊTETÉ SUR CE QUE ÇA VAUT : la Map vit dans la mémoire DU PROCESSUS.
+ * Sur Vercel, chaque lambda a la sienne — un attaquant se distribue donc
+ * tout seul, sans même le vouloir. Ceci RALENTIT une énumération, ça ne la
+ * FERME PAS. La vraie fermeture est une session client signée, et c'est un
+ * chantier à part entière. Ne pas lire cette garde comme une fermeture.
+ *
+ * Même patron que src/app/api/loyalty-cards/login-by-phone/route.ts.
+ */
+const appels = new Map<string, { count: number; firstAt: number }>();
+const FENETRE_MS = 60_000;
+const MAX_APPELS = 10;
+
+function sousLaLimite(cle: string): boolean {
+  const now = Date.now();
+  const e = appels.get(cle);
+  if (!e || now - e.firstAt > FENETRE_MS) {
+    appels.set(cle, { count: 1, firstAt: now });
+    return true;
+  }
+  e.count += 1;
+  return e.count <= MAX_APPELS;
+}
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const phoneRaw = url.searchParams.get("phone")?.trim();
   if (!phoneRaw) {
     return NextResponse.json({ error: "phone requis" }, { status: 400 });
+  }
+
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "inconnue";
+  if (!sousLaLimite(ip)) {
+    return NextResponse.json(
+      { error: "trop_de_requetes" },
+      { status: 429, headers: { "retry-after": "60" } },
+    );
   }
   // Normalise en E.164 pour matcher quelle que soit la façon de saisir
   const phone = normalizePhone(phoneRaw) ?? phoneRaw;
@@ -273,9 +312,15 @@ export async function GET(req: NextRequest) {
     // à « Mes commandes » de construire un lien de suivi valide et
     // d'appeler `reorder`, désormais gardée. Le jeton est DÉRIVÉ, donc
     // recalculé ici sans rien lire de plus en base.
-    // ⚠️ Cette route est bornée par `.eq("customer_id", card.customer_id)`
-    // plus haut : elle ne peut renvoyer que les commandes du porteur de la
-    // carte, jamais celles d'un autre.
+    // ⚠️ CE QUI SUIT N'EST PAS UNE GARANTIE DE SÉCURITÉ, et il ne faut pas
+    // le lire comme telle. Le `.eq("customer_id", …)` plus haut borne les
+    // DONNÉES au porteur de la carte — il ne dit RIEN sur le fait que
+    // l'appelant SOIT ce porteur. Cette route est ouverte : quiconque
+    // connaît (ou devine) un numéro obtient ces jetons, donc l'accès à la
+    // page de suivi et à /api/orders/[id].
+    // Le jeton vaut donc, en pratique, « connaît le numéro de téléphone ».
+    // C'est mieux qu'un numéro de commande séquentiel — ce n'est pas une
+    // fermeture. La vraie fermeture est une session client signée.
     orders: (orders ?? []).map((o) => ({
       ...o,
       access_token: signOrderToken(RESTAURANT_ID, o.order_number as string),

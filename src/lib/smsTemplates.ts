@@ -104,14 +104,76 @@ export type TemplateContext = Partial<Record<TemplateVariableKey, string>>;
  * (é→e aussi, bien que é soit GSM-7 : la simplicité vaut mieux qu'une
  * table d'exceptions). Les URLs (déjà ASCII) ressortent inchangées.
  */
+/**
+ * ⚠️ LES LETTRES QUE LA DÉCOMPOSITION UNICODE NE PEUT PAS ATTEINDRE.
+ *
+ * `normalize("NFD")` sépare une lettre de son ACCENT, puis on retire
+ * l'accent. Ça marche pour `é`, `ç`, `ğ`, `ş`, `ë`, `ã`… mais pas pour les
+ * lettres BARRÉES ni pour les lettres à part entière : `ı` n'est pas un
+ * « i avec un signe », `đ` n'est pas un « d avec un signe ». Elles n'ont
+ * aucune décomposition — il n'y a rien à retirer, donc l'ancienne fonction
+ * les laissait passer, et un seul de ces caractères bascule TOUT le SMS en
+ * UCS-2 (70 caractères par segment au lieu de 160).
+ *
+ * Audit du 21.08.2026 sur Latin-1 Sup + Latin Extended-A + Extended-B,
+ * restreint aux alphabets plausibles dans la clientèle de Rialto :
+ *   · turc         `ı`     — le caractère turc le PLUS fréquent (Işık, Çağrı)
+ *   · serbo-croate `đ` `Đ` — Đorđe, Đukić (bosniaque et croate aussi)
+ *   · polonais     `ł` `Ł` — Łukasz
+ *   · maltais, islandais, same — marginaux ici, couverts gratuitement
+ * L'ALBANAIS EST PROPRE (`ë` et `ç` se décomposent), le portugais aussi.
+ */
+const LETTRES_SANS_DECOMPOSITION: Record<string, string> = {
+  ı: "i", İ: "I", // turc
+  đ: "d", Đ: "D", // serbo-croate / bosniaque
+  ł: "l", Ł: "L", // polonais
+  ħ: "h", Ħ: "H", // maltais
+  ð: "d", Ð: "D", // islandais
+  þ: "th", Þ: "Th", // islandais
+  ŧ: "t", Ŧ: "T", // same
+  ø: "o", Ø: "O", // danois/norvégien (GSM-7 les accepte, mais on uniformise)
+};
+
+/**
+ * Alphabet GSM-7 (norme 03.38). LISTE POSITIVE volontaire : une garde par
+ * EXCLUSION serait insuffisante — le balayage a trouvé 141 caractères latins
+ * qui cassent, on ne peut pas tous les énumérer à la main. On répare ce
+ * qu'on sait réparer, et on SIGNALE le reste au lieu de le découvrir sur
+ * une facture.
+ */
+const GSM7 =
+  "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
+  "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà" +
+  "^{}\\[~]|€";
+
 function translittereGsm7(valeur: string): string {
-  return valeur
+  let out = "";
+  for (const c of valeur) out += LETTRES_SANS_DECOMPOSITION[c] ?? c;
+
+  out = out
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    // Forme ÉCHAPPÉE obligatoire : écrit avec les combinants littéraux, ce
+    // motif est illisible et se fait détruire par le moindre outil qui
+    // renormalise le fichier. Piège déjà rencontré deux fois sur ce repo.
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/œ/g, "oe")
     .replace(/Œ/g, "Oe")
     .replace(/æ/g, "ae")
     .replace(/Æ/g, "Ae");
+
+  // Filet : ce qui sort encore de GSM-7 est laissé INTACT (mieux vaut un
+  // prénom juste qu'un prénom mutilé), mais journalisé — sinon le surcoût
+  // n'apparaît que sur la facture, sans aucune trace de sa cause.
+  const rebelles = [...out].filter((c) => !GSM7.includes(c));
+  if (rebelles.length > 0) {
+    console.warn(
+      "[sms] caractère(s) hors GSM-7 non translittéré(s) — ce SMS partira en " +
+        "UCS-2 (70 caractères/segment au lieu de 160) :",
+      rebelles.map((c) => `${c} (U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")})`).join(", "),
+    );
+  }
+
+  return out;
 }
 
 export function renderTemplate(

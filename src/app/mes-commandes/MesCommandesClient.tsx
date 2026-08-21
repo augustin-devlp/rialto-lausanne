@@ -17,6 +17,34 @@ type OrderRow = {
   created_at: string;
 };
 
+/** Statuts pour lesquels un SUIVI a encore du sens. Une commande d'il y a
+ *  trois semaines n'a rien à suivre — le lien « Voir le suivi » ne doit
+ *  donc apparaître que là (décision Augustin 21.08). Liste POSITIVE. */
+const STATUTS_EN_COURS = ["new", "accepted", "preparing", "ready"];
+
+type LigneDetail = {
+  nom: string;
+  quantite: number;
+  options: string[];
+  notes: string | null;
+  montant: number;
+};
+type Detail = {
+  lignes: LigneDetail[];
+  montants: {
+    sous_total: number;
+    livraison: number;
+    remise: number;
+    total: number;
+  };
+};
+/** État du dépliement d'UNE commande : on ne charge qu'à l'ouverture, et
+ *  on garde en mémoire pour ne pas refetcher au repli/dépli suivant. */
+type EtatDetail =
+  | { statut: "chargement" }
+  | { statut: "ok"; detail: Detail }
+  | { statut: "erreur" };
+
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   new: { label: "En attente", color: "bg-gray-100 text-gray-700" },
   accepted: { label: "Acceptée", color: "bg-blue-50 text-blue-700" },
@@ -39,6 +67,42 @@ export default function MesCommandesClient() {
     "unknown",
   );
   const [reorderingId, setReorderingId] = useState<string | null>(null);
+  // Dépliement sur place (item 4, 21.08) : la ligne s'ouvre SANS quitter
+  // la liste. Chargement paresseux, mémorisé par numéro de commande.
+  const [ouverte, setOuverte] = useState<string | null>(null);
+  const [details, setDetails] = useState<Record<string, EtatDetail>>({});
+
+  async function basculeDetail(orderNumber: string) {
+    if (ouverte === orderNumber) {
+      setOuverte(null);
+      return;
+    }
+    setOuverte(orderNumber);
+    // Déjà chargé (ou en cours) : on ne refetch pas.
+    if (details[orderNumber]?.statut === "ok") return;
+    const session = readCustomerSession();
+    if (!session?.phone) {
+      setDetails((d) => ({ ...d, [orderNumber]: { statut: "erreur" } }));
+      return;
+    }
+    setDetails((d) => ({ ...d, [orderNumber]: { statut: "chargement" } }));
+    try {
+      const url = new URL(
+        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/detail`,
+        window.location.origin,
+      );
+      url.searchParams.set("phone", session.phone);
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(String(res.status));
+      const body = (await res.json()) as Detail;
+      setDetails((d) => ({
+        ...d,
+        [orderNumber]: { statut: "ok", detail: body },
+      }));
+    } catch {
+      setDetails((d) => ({ ...d, [orderNumber]: { statut: "erreur" } }));
+    }
+  }
 
   async function handleReorder(orderNumber: string) {
     setReorderingId(orderNumber);
@@ -196,15 +260,21 @@ export default function MesCommandesClient() {
                   },
                 );
                 const isReordering = reorderingId === order.order_number;
+                const estOuverte = ouverte === order.order_number;
+                const etat = details[order.order_number];
+                const enCours = STATUTS_EN_COURS.includes(order.status);
                 return (
                   <li
                     key={order.id}
                     className="rounded-2xl border border-border bg-white shadow-card transition hover:shadow-pop"
                   >
                     <div className="flex items-center gap-4 p-4">
-                      <Link
-                        href={`/confirmation/${order.order_number}`}
-                        className="flex flex-1 items-center gap-3 hover:opacity-90"
+                      <button
+                        type="button"
+                        onClick={() => void basculeDetail(order.order_number)}
+                        aria-expanded={estOuverte}
+                        aria-controls={`detail-${order.order_number}`}
+                        className="flex flex-1 items-center gap-3 text-left transition hover:opacity-90"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
@@ -221,13 +291,122 @@ export default function MesCommandesClient() {
                             {date}
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-2 text-right">
                           <div className="tabular font-display text-base font-bold">
                             {formatCHF(Number(order.total_amount))}
                           </div>
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            className={`shrink-0 text-mute transition-transform ${
+                              estOuverte ? "rotate-180" : ""
+                            }`}
+                            aria-hidden
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
                         </div>
-                      </Link>
+                      </button>
                     </div>
+
+                    {/* DÉTAIL DÉPLIÉ SUR PLACE — le client voit ce qu'il a
+                        mangé sans quitter sa liste (item 4, 21.08). */}
+                    {estOuverte && (
+                      <div
+                        id={`detail-${order.order_number}`}
+                        className="border-t border-border px-4 py-3"
+                      >
+                        {(!etat || etat.statut === "chargement") && (
+                          <p className="text-sm text-mute">Chargement…</p>
+                        )}
+                        {etat?.statut === "erreur" && (
+                          <p className="text-sm text-rialto">
+                            Impossible d&apos;afficher le détail. Réessayez
+                            dans un instant.
+                          </p>
+                        )}
+                        {etat?.statut === "ok" && (
+                          <>
+                            <ul className="space-y-2">
+                              {etat.detail.lignes.map((l, i) => (
+                                <li
+                                  key={`${order.id}-${i}`}
+                                  className="flex items-start justify-between gap-3 text-sm"
+                                >
+                                  <div className="min-w-0">
+                                    <span className="font-medium text-ink">
+                                      {l.quantite} × {l.nom}
+                                    </span>
+                                    {l.options.length > 0 && (
+                                      <span className="block text-xs text-mute">
+                                        {l.options.join(" · ")}
+                                      </span>
+                                    )}
+                                    {l.notes && (
+                                      <span className="block text-xs italic text-mute">
+                                        « {l.notes} »
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="tabular shrink-0 text-ink">
+                                    {formatCHF(l.montant)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+
+                            <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+                              <div className="flex justify-between text-mute">
+                                <span>Sous-total</span>
+                                <span className="tabular">
+                                  {formatCHF(etat.detail.montants.sous_total)}
+                                </span>
+                              </div>
+                              {etat.detail.montants.livraison > 0 && (
+                                <div className="flex justify-between text-mute">
+                                  <span>Frais de livraison</span>
+                                  <span className="tabular">
+                                    {formatCHF(etat.detail.montants.livraison)}
+                                  </span>
+                                </div>
+                              )}
+                              {etat.detail.montants.remise > 0 && (
+                                <div className="flex justify-between text-mute">
+                                  <span>Remise</span>
+                                  <span className="tabular">
+                                    −{formatCHF(etat.detail.montants.remise)}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="flex justify-between font-bold text-ink">
+                                <span>Total payé</span>
+                                <span className="tabular">
+                                  {formatCHF(etat.detail.montants.total)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* « Voir le suivi » : lien SECONDAIRE, et
+                                seulement tant qu'il y a quelque chose à
+                                suivre. Une commande d'il y a trois
+                                semaines n'a pas de suivi à consulter. */}
+                            {enCours && (
+                              <Link
+                                href={`/confirmation/${order.order_number}`}
+                                className="mt-3 inline-block text-sm font-medium text-mute underline underline-offset-2 transition hover:text-ink"
+                              >
+                                Voir le suivi
+                              </Link>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                     {/* Phase 11 C7 : bouton recommander */}
                     <div className="border-t border-border px-4 py-2.5">
                       <button

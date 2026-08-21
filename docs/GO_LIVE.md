@@ -5,6 +5,19 @@
 
 ## Réglages à (ré)activer au go-live
 
+- [ ] 🔴 **`ORDER_LINK_SECRET` dans Vercel (Production ET Preview), puis
+      redéployer — BLOQUANT, à faire en premier.** Chaîne aléatoire longue
+      (ex. `openssl rand -base64 48`). C'est le secret du JETON D'ACCÈS AUX
+      COMMANDES posé le 21.08 après la découverte d'une fuite de données
+      personnelles : `/confirmation/<numéro>` était publique et les numéros
+      sont séquentiels — 8 requêtes suffisaient à récupérer des mobiles
+      clients en clair, avec nom, adresse, panier et montant.
+      **Tant que la variable manque, le suivi client répond 404 pour tout
+      le monde.** C'est voulu : une garde ne s'inverse jamais, pas d'accès
+      sans secret. PREUVE À FAIRE : ouvrir `/confirmation/R-2026-052` sans
+      paramètre → 404 ; ouvrir le lien reçu par email → 200.
+      `ORDER_LINK_SECRET_PREVIOUS` reste VIDE, sauf le jour d'une rotation
+      (il fait survivre les liens déjà envoyés le temps du recouvrement).
 - [ ] **Loterie : `lotteries.is_active` → true** (désactivée constatée le
       03.08 — la promesse « 1 commande = 1 participation » est affichée
       sur le site). PREUVE : la première vraie commande crée une ligne

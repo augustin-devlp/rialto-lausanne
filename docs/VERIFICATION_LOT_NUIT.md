@@ -8,25 +8,46 @@ L'ordre ci-dessous est celui du risque, pas celui des items.
 
 ---
 
-## 1. 🔴 EN PREMIER — la page de suivi expose des données clients
+## 1. 🔴 EN PREMIER — poser le secret dans Vercel
 
-**URL : `/confirmation/<numéro>` — ouvre-la en navigation privée, sans être connecté.**
+**Rien d'autre ne marche tant que ce n'est pas fait.**
 
-Tu verras la commande de quelqu'un d'autre : nom, adresse, panier,
-montant. Les numéros se suivent (`R-2026-050`, `051`, `052`…), donc on
-peut les parcourir un par un.
+La fuite est fermée par un jeton d'accès (commit `cce3b1c`). Le code est
+en production, mais **il lui faut son secret** :
 
-- [ ] Ouvre `/confirmation/R-2026-050` en navigation privée. Tu ne devrais
-      pas pouvoir voir cette commande, et pourtant tu la vois.
-- [ ] Décide : est-ce qu'on ferme la page avant le go-live ?
+- [ ] Vercel → Settings → Environment Variables → ajouter
+      **`ORDER_LINK_SECRET`** (Production **et** Preview), une chaîne
+      aléatoire longue.
+- [ ] Redéployer.
+- [ ] Laisser **`ORDER_LINK_SECRET_PREVIOUS` vide** (il ne sert qu'au jour
+      d'une rotation).
 
-**Ce que j'ai déjà retiré** (déployé) : le code d'entrée d'immeuble,
-l'étage/porte et les consignes de livraison. Ils partaient dans la page
-alors qu'ils n'y étaient même pas affichés.
-**Ce que je n'ai pas retiré, et pourquoi** : le numéro de téléphone sert à
-retrouver la carte de fidélité sur cette page. L'enlever casserait la
-fidélité. Il faut un vrai verrou sur la page — c'est ton arbitrage, pas
-une correction que je pouvais faire seul.
+**Tant que la variable manque, le suivi client répond 404 pour tout le
+monde.** C'est le comportement voulu — pas de secret, pas d'accès, une
+garde ne s'inverse jamais — mais il faut le savoir.
+
+Ensuite, les trois preuves à faire toi-même :
+
+- [ ] `/confirmation/R-2026-050` **sans rien après** → doit répondre
+      **404**. C'était la fuite.
+- [ ] Passe une commande de bout en bout : après validation, tu dois
+      arriver sur ton suivi (l'URL porte `?t=…`). Si tu tombes sur un 404
+      ici, c'est que le secret manque.
+- [ ] Ouvre le lien « Suivre ma commande » de l'email de confirmation →
+      doit s'ouvrir.
+- [ ] Dans « Mes commandes », déplie une commande, clique « Suivre ma
+      commande » puis « Recommander en 1 clic » → les deux doivent marcher.
+
+**Quatre surfaces étaient ouvertes, pas deux.** Tu en avais signalé une,
+j'en avais signalé une autre, l'audit en a trouvé deux de plus :
+`GET /api/orders/[id]` (qui renvoyait **plus** que la page et qui **écrit**)
+et `POST .../confirm-delivered`. Les quatre sont fermées.
+
+**Ce qui n'est PAS fermé et attend ta décision :**
+`/api/rialto/loyalty/lookup?phone=…` rend le profil client complet (nom,
+prénom, e-mail, carte, 10 dernières commandes) à qui essaie des numéros de
+téléphone. Elle ne dépend d'aucun numéro de commande, donc **le jeton ne
+la ferme pas**. Voir la question en fin de rapport.
 
 ---
 

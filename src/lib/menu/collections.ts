@@ -7,7 +7,7 @@
  * `menu_collections` ne donnerait donc pas plus d'autonomie — elle
  * déplacerait l'édition de « un fichier + un déploiement » vers « des
  * lignes dans Supabase Studio ». Elle coûterait une navette DDL, un seed
- * de 145 lignes et des policies, pour zéro gain tant que l'écran manque.
+ * de 144 lignes et des policies, pour zéro gain tant que l'écran manque.
  * Le jour où cet écran existe, la bascule est mécanique : la forme des
  * données ci-dessous (slug, titre, liste ordonnée d'ids) est exactement
  * celle d'un couple de tables.
@@ -20,7 +20,14 @@
  * Si vous supprimez cet appel, supprimez aussi cette phrase.
  *
  * RÈGLES DE COMPOSITION (Augustin) :
- *   · 12 plats par rail — en dessous, les flèches ne servent à rien ;
+ *   · 12 plats par rail, EXACTEMENT — en dessous, les flèches ne servent
+ *     à rien ; au-dessus, c'est une coquille (le rail « Le goût de la mer »
+ *     en a eu 13 jusqu'au 21.08) ;
+ *   · JAMAIS D'ALCOOL. Un rail placé au-dessus de la carte est une
+ *     recommandation, pas un catalogue : la règle « jamais d'alcool en
+ *     upsell » (CLAUDE.md) s'y applique. Trois vins/bières ont été retirés
+ *     le 21.08 ; vérifié depuis : zéro article des catégories Vins/Bières
+ *     dans les 12 rails ;
  *   · un plat PEUT figurer dans plusieurs rails ;
  *   · JAMAIS PREMIER DEUX FOIS : s'il ouvre un rail, il ferme l'autre.
  *     Vérifié : les 12 têtes de rail sont 12 articles distincts.
@@ -65,9 +72,13 @@ export const COLLECTIONS: Collection[] = [
       "7da2f3e2-eb1a-4a11-8553-a3cb2e09d083", // Falafels (11 p.)
       "72fe013f-6b63-40db-923e-65600c26d875", // Agneau
       "9a40203f-8005-4914-8f1e-47076ebdab50", // Baklava
-      "8a4d4342-ab6a-4e3e-a4b2-728cac24e441", // Cankaya blanc
-      "44413b62-e906-4d29-8498-34ee61059af6", // Yakut rouge
-      "9d17ef6a-d132-4d8d-83c7-173cd15dcf53", // Efes draft
+      // ⚠️ Cankaya blanc, Yakut rouge et Efes draft ONT ÉTÉ RETIRÉS d'ici le
+      // 21.08.2026 (arbitrage Augustin). Un rail placé AU-DESSUS de la carte
+      // n'est pas un catalogue : c'est une recommandation, et la règle du
+      // projet dit « JAMAIS d'alcool en upsell ». Ne pas les réintroduire.
+      "04931fef-67d7-4ffb-a0e3-772b794bd0e0", // Pizza à la turca
+      "55112e92-bcf9-4e01-b1c7-ec4e2a1b67e0", // Grillade mixte
+      "7982d1e7-4186-4aa9-80d3-b33863434d0a", // Feuilles de vigne (5 p.)
       "eb211daa-b84c-4656-b89f-cae7ed196a30", // Falafels (4 p.)
       "86470efb-5551-48dd-a068-394116d337a5", // Tajine Anatolienne
     ],
@@ -92,7 +103,10 @@ export const COLLECTIONS: Collection[] = [
   },
   {
     slug: "fondant",
-    titre: "Envie de fondant",
+    // « Envie de fondant » le 21.08 : formule abstraite, remplacée par ce
+    // qu'il y a réellement dans le rail (arbitrage Augustin — la clientèle
+    // n'est pas un public à français soutenu). Les 11 autres titres restent.
+    titre: "Fromage et crème",
     itemIds: [
       "9bc6e5c3-09ce-4492-9791-edd42bc3bb5b", // Lasagne bolognaise
       "4203af3d-ddf5-44b7-874e-e34c246a4d82", // Tortellonis fromages
@@ -146,9 +160,8 @@ export const COLLECTIONS: Collection[] = [
   },
   {
     slug: "gout-de-la-mer",
-    // ⚠️ 13 PLATS, pas 12 : le Pavé de saumon a été ajouté en 2e position
-    // (consigne Augustin) SANS qu'un autre soit retiré. À trancher par
-    // lui — Marinara et Tajine sont les deux plus discutables sur le thème.
+    // Ramené à 12 le 21.08.2026 : Calamars (5 p.) retiré comme redondant
+    // avec les 11 pièces (arbitrage Augustin). Le Pavé de saumon reste 2e.
     titre: "Le goût de la mer",
     itemIds: [
       "d75759f4-13c6-4839-a533-51fccd4c11c5", // Sautés de Crevettes Provençale
@@ -161,7 +174,6 @@ export const COLLECTIONS: Collection[] = [
       "b5a428b0-e3b9-4331-8449-f89ff72997fd", // Pizza Espagnol
       "44ad8193-8991-4558-ba30-ee4ebadc996c", // Pâtes moules safranée
       "df18a882-c0f9-44cc-85de-cd15fc76f2af", // Calamars (11 p.)
-      "a37d5e71-ae83-48ff-ad27-fcb0cbe8a75e", // Calamars (5 p.)
       "86470efb-5551-48dd-a068-394116d337a5", // Tajine Anatolienne
       "3b4aac47-9b1b-4e28-bebe-80c98f5a5801", // Pizza Marinara
     ],

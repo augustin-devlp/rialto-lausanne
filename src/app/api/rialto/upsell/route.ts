@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseService } from '@/lib/supabase';
+import { supabaseService, RESTAURANT_ID } from '@/lib/supabase';
+import { getFreeDeliveryMilestone } from '@/lib/delivery/milestones';
+import { toFreeDeliveryRule } from '@/lib/delivery/rule';
 import { generateUpsell } from '@/lib/upsell';
 import { buildContext } from '@/lib/upsell/contextBuilder';
 import { fetchFullMenu } from '@/lib/upsell/supabaseMenu';
-import type { MenuItemFull } from '@/lib/upsell/types';
+import type { MenuItemFull, PalierLivraison } from '@/lib/upsell/types';
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,11 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => null)) as {
       cart_items?: Array<{ menu_item_id: string; quantity: number }>;
       customer_id?: string;
+      /** Code postal de l'adresse qualifiée. Sert UNIQUEMENT à résoudre la
+       *  zone SERVEUR pour le chemin P2 (palier de livraison offerte).
+       *  ⚠️ On ne reçoit PAS les frais ni le seuil : ils sont relus en base.
+       *  Un montant qui s'affiche au client ne se croit jamais sur parole. */
+      postal_code?: string;
     } | null;
 
     if (!body?.cart_items) {
@@ -40,7 +47,52 @@ export async function POST(req: NextRequest) {
       supabase: admin,
     });
 
-    const result = await generateUpsell(cart, context);
+    // ═══ PALIER DE LIVRAISON OFFERTE (chemin P2) ═══════════════════════
+    // Résolu ICI, côté serveur, à partir du seul code postal : on relit la
+    // zone et la règle en base, puis on passe par `getFreeDeliveryMilestone`
+    // — LA dérivation unique du seuil (src/lib/delivery/milestones.ts).
+    // Aucune formule n'est recopiée, aucun montant n'est cru du client.
+    // Null si : pas d'adresse, zone à frais nul, ou toggle coupé — le
+    // chemin P2 se tait alors, et les autres chemins reprennent.
+    let palierLivraison: PalierLivraison | null = null;
+    if (body.postal_code) {
+      const [zoneRes, restoRes] = await Promise.all([
+        admin
+          .from("delivery_zones")
+          .select("min_order_amount, delivery_fee")
+          .eq("restaurant_id", RESTAURANT_ID)
+          .eq("postal_code", body.postal_code.trim())
+          .eq("is_active", true)
+          .maybeSingle(),
+        admin
+          .from("restaurants")
+          .select("free_delivery_threshold, free_delivery_enabled")
+          .eq("id", RESTAURANT_ID)
+          .maybeSingle(),
+      ]);
+      const zone = zoneRes.data
+        ? {
+            min_order_amount: Number(zoneRes.data.min_order_amount),
+            delivery_fee: Number(zoneRes.data.delivery_fee),
+          }
+        : null;
+      const jalon = getFreeDeliveryMilestone(
+        cart.reduce((n, i) => n + i.price * (i.quantity ?? 1), 0),
+        zone,
+        toFreeDeliveryRule(restoRes.data ?? null),
+      );
+      if (jalon && !jalon.reached && zone) {
+        palierLivraison = {
+          remaining: jalon.remaining,
+          delivery_fee: zone.delivery_fee,
+        };
+      }
+    }
+
+    const result = await generateUpsell(cart, {
+      ...context,
+      palierLivraison,
+    });
 
     // ⚠️ ON JOURNALISE LE CHEMIN. Le champ `chemin` était écrit sur chaque
     // suggestion avec le commentaire « c'est la seule chose qui rendra la

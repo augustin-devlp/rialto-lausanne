@@ -88,6 +88,14 @@ export interface CartAnalysis {
 export type TimeOfDay = 'lunch' | 'afternoon' | 'dinner' | 'late_night';
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
 
+/** Palier de livraison offerte, RÉSOLU CÔTÉ SERVEUR. */
+export interface PalierLivraison {
+  /** Reste à ajouter pour franchir (> 0 : pas encore atteint). */
+  remaining: number;
+  /** Frais de livraison de la zone, supprimés au franchissement. */
+  delivery_fee: number;
+}
+
 export interface UpsellContext {
   timeOfDay: TimeOfDay;
   season: Season;
@@ -102,6 +110,9 @@ export interface UpsellContext {
   customerLastOrderedIds: string[];
   customerTopCategoryIds: string[];
   blacklistedCategories: string[];
+  /** Palier de livraison offerte, résolu SERVEUR depuis le code postal.
+   *  `null` = pas d'adresse, zone à frais nul, ou toggle coupé. */
+  palierLivraison?: PalierLivraison | null;
 }
 
 export interface UpsellCandidate {
@@ -119,6 +130,21 @@ export interface UpsellSuggestion {
   category: string;
   score: number;
   reasons: string[];
+  /**
+   * Économie liée au franchissement d'un PALIER (chemin P2). Présent
+   * UNIQUEMENT quand la suggestion fait franchir le seuil de livraison
+   * offerte. Le panneau s'en sert pour afficher le COÛT NET et sa
+   * décomposition — condition de véracité ② d'Augustin : la décomposition
+   * s'affiche TOUJOURS, jamais le coût net seul.
+   */
+  palier?: {
+    /** Ce qu'il manquait pour franchir le seuil. */
+    ecart: number;
+    /** Frais de livraison que le franchissement supprime. */
+    frais_economises: number;
+    /** prix − frais économisés. Peut être NÉGATIF : la facture baisse. */
+    cout_net: number;
+  } | null;
   /** Le CHEMIN qui a déclenché cette suggestion (P3, P4…), ou null si c'est
    *  le scoreur historique. Augustin n'a aucun historique de commandes : les
    *  associations sont écrites à la main et seront approximatives au début.

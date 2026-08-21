@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeCart } from "./cartAnalysis";
 import {
+  ECART_MAX_PALIER,
   choisitChemin,
   idsInconnus,
   interditAvecLePanier,
@@ -384,5 +385,74 @@ describe("🔴 le BURGER : une boisson ou un dessert, JAMAIS un accompagnement",
     expect(ids).not.toContain(ID.FRITES);
     expect(ids).not.toContain(ID.SALADE);
     expect(ids).not.toContain(ID.POTATOES);
+  });
+});
+
+
+describe("P2 — la distance au palier", () => {
+  const palier = (remaining: number, fee: number) => ({
+    remaining,
+    delivery_fee: fee,
+  });
+  const p2 = (panier: MenuItemFull[], remaining: number, fee: number) =>
+    choisitChemin(panier, analyzeCart(panier), CATALOGUE, palier(remaining, fee));
+
+  it("se déclenche quand il reste peu pour franchir le seuil", () => {
+    const r = p2([pizza()], 7, 5);
+    expect(r?.chemin).toBe("P2");
+  });
+
+  it("🔴 CONDITION ① — ne propose QUE des articles dont le prix couvre l'écart", () => {
+    // Écart de 12 : les frites (8), potatoes (9) et rösti (10) ne suffisent
+    // PAS. Les proposer promettrait un seuil qui ne serait pas franchi.
+    const r = p2([pizza()], 12, 5);
+    const prix = r?.candidats.map((c) => c.price) ?? [];
+    expect(prix.length).toBeGreaterThan(0);
+    expect(Math.min(...prix)).toBeGreaterThanOrEqual(12);
+  });
+
+  it("propose le MOINS CHER qui satisfait — on ne pousse jamais au maximum", () => {
+    const r = p2([pizza()], 7, 5);
+    const prix = r?.candidats.map((c) => c.price) ?? [];
+    expect(prix).toEqual([...prix].sort((a, b) => a - b));
+    expect(prix[0]).toBe(8); // les frites, le moins cher au-dessus de 7
+  });
+
+  it("se tait si l'écart est trop grand — on ne demande pas trop d'un coup", () => {
+    const r = p2([pizza()], ECART_MAX_PALIER + 1, 5);
+    expect(r?.chemin).not.toBe("P2");
+  });
+
+  it("se tait si le seuil est déjà franchi", () => {
+    const r = p2([pizza()], 0, 5);
+    expect(r?.chemin).not.toBe("P2");
+  });
+
+  it("se tait sans palier — pas d'adresse, zone gratuite, ou toggle coupé", () => {
+    const panier = [pizza()];
+    const r = choisitChemin(panier, analyzeCart(panier), CATALOGUE, null);
+    expect(r?.chemin).not.toBe("P2");
+  });
+
+  it("PASSE DEVANT P3 : franchir un palier vaut mieux que combler un trou", () => {
+    // Pizza seule : P3 (boisson) matcherait aussi. P2 doit gagner.
+    const r = p2([pizza()], 7, 5);
+    expect(r?.chemin).toBe("P2");
+  });
+
+  it("porte le palier pour que l'affichage puisse décomposer", () => {
+    const r = p2([pizza()], 7, 12);
+    expect(r?.palier).toEqual({ remaining: 7, delivery_fee: 12 });
+  });
+
+  it("ne propose jamais un plat principal — on comble, on ne redouble pas le repas", () => {
+    const r = p2([pizza()], 7, 5);
+    expect(r?.candidats.every((c) => c.dish_role !== "main")).toBe(true);
+  });
+
+  it("ne propose jamais un article DÉJÀ au panier", () => {
+    const panier = [pizza(), salade()];
+    const r = choisitChemin(panier, analyzeCart(panier), CATALOGUE, palier(7, 5));
+    expect(r?.candidats.some((c) => c.id === ID.SALADE)).toBe(false);
   });
 });

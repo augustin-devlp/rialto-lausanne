@@ -22,6 +22,27 @@ export const UPSELL_SILENCE_THRESHOLD_CHF = 80; // silence total au-dessus (conf
  * - Top-K (5) envoyé à Gemini pour wording + possible down-trim
  * - Plafond décidé par decideSuggestionBudget
  */
+/**
+ * Économie du franchissement de palier, pour UNE suggestion.
+ *
+ * ⚠️ NE RENVOIE QUELQUE CHOSE QUE POUR LE CHEMIN P2. Les autres chemins ne
+ * font franchir aucun seuil : leur attacher une économie serait une
+ * promesse fausse. `cout_net` peut être NÉGATIF — c'est le cas vendeur :
+ * la facture baisse.
+ */
+function economiePalier(
+  prix: number,
+  chemin: ReturnType<typeof choisitChemin>,
+): { ecart: number; frais_economises: number; cout_net: number } | null {
+  if (!chemin || chemin.chemin !== "P2" || !chemin.palier) return null;
+  const frais = chemin.palier.delivery_fee;
+  return {
+    ecart: chemin.palier.remaining,
+    frais_economises: frais,
+    cout_net: Math.round((prix - frais) * 100) / 100,
+  };
+}
+
 export async function generateUpsell(
   cart: MenuItemFull[],
   context: UpsellContext,
@@ -62,8 +83,7 @@ export async function generateUpsell(
   // 11 pièces paient. Constaté en production le 21.08 : trois plats à 29
   // font déjà 87, donc le mode le plus rentable du moteur était muet
   // exactement sur les tablées les plus chères.
-  const estTablee =
-    panierEstUneTablee(cart) ;
+  const estTablee = panierEstUneTablee(cart);
   if (!estTablee && subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
@@ -89,7 +109,7 @@ export async function generateUpsell(
   //
   // ⚠️ Les chemins ne filtrent PAS : leurs candidats repassent obligatoirement
   // par `passesHardFilters`, seul endroit où vivent les gardes dures.
-  const resultatChemin = choisitChemin(cart, analysis, menu);
+  const resultatChemin = choisitChemin(cart, analysis, menu, context.palierLivraison);
   let cheminRetenu: string | null = resultatChemin?.chemin ?? null;
 
   // P8 — le silence est une réponse valable.
@@ -191,6 +211,7 @@ export async function generateUpsell(
       score: cand.score,
       reasons: cand.reasons,
       chemin: cheminRetenu,
+      palier: economiePalier(cand.item.price, resultatChemin),
     });
     if (suggestions.length >= budget) break;
   }
@@ -210,6 +231,7 @@ export async function generateUpsell(
         score: c.score,
         reasons: c.reasons,
         chemin: cheminRetenu,
+        palier: economiePalier(c.item.price, resultatChemin),
       });
     }
   }

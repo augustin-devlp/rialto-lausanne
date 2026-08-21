@@ -1,4 +1,4 @@
-import type { CartAnalysis, MenuItemFull } from "./types";
+import type { CartAnalysis, MenuItemFull, PalierLivraison } from "./types";
 
 /**
  * LES CHEMINS D'UPSELL — moteur à priorité (spec Augustin, 21.08.2026).
@@ -74,13 +74,20 @@ export const ART = {
   GLACE_COOKIE: "3598fbf8-f1f9-4431-bf79-24dca6f56e0f", // 17.00 · 3 pers.
 } as const;
 
-export type Chemin = "P3" | "P4" | "P5" | "P8";
+export type Chemin = "P2" | "P3" | "P4" | "P5" | "P8";
 
 export interface ResultatChemin {
   chemin: Chemin;
   /** Candidats DANS L'ORDRE DE PRÉFÉRENCE. Vide si le chemin dit « rien ». */
   candidats: MenuItemFull[];
+  /** Renseigné par P2 seulement : de quoi afficher le coût net et sa
+   *  décomposition. Voir `cheminP2`. */
+  palier?: PalierLivraison;
 }
+
+/** Au-delà de cet écart, on ne propose plus de combler : on demanderait
+ *  trop d'un coup, et la suggestion devient une injonction. */
+export const ECART_MAX_PALIER = 12;
 
 /** Seuil de la tablée (P6). Au-delà, on passe aux grands formats. */
 export const SEUIL_TABLEE = 3;
@@ -263,6 +270,58 @@ function fait(chemin: Chemin, candidats: MenuItemFull[]): ResultatChemin | null 
 }
 
 /**
+ * P2 — LA DISTANCE AU PALIER, AVEC LE PRIX NET.
+ *
+ * Déclencheur : il reste entre 0 (exclu) et ~12 CHF pour franchir le seuil
+ * de livraison offerte.
+ *
+ * 🌟 CE QU'ON AFFICHE N'EST PAS L'ÉCART À COMBLER, C'EST LE COÛT NET :
+ *      coût_net = prix_article − frais_de_livraison_économisés
+ * Un dessert à 9 CHF qui supprime 12 CHF de frais fait BAISSER la facture
+ * de 3 francs. Dire « ajoutez 8 CHF » serait vrai et stupide ; dire
+ * « ajoutez un dessert et payez 3 CHF de MOINS » est vrai et vendeur.
+ *
+ * 🔴 CONDITION DE VÉRACITÉ ① (Augustin) : ON NE PROPOSE QUE DES ARTICLES
+ * DONT LE PRIX ≥ L'ÉCART. En dessous, le seuil n'est PAS franchi et la
+ * promesse est fausse — en Suisse le prix affiché engage. C'est le filtre
+ * ci-dessous, et c'est la raison d'être de ce chemin.
+ * Les conditions ② (décomposition toujours affichée) et ③ (recalcul si le
+ * client retire un article) vivent dans l'affichage : `UpsellPanel`.
+ * La condition ④ (palier fidélité, aucune math de prix) n'est pas encore
+ * implémentée — ce chemin ne traite QUE la livraison offerte.
+ *
+ * ⚠️ Le palier est résolu CÔTÉ SERVEUR (route upsell → code postal →
+ * `getFreeDeliveryMilestone`, la dérivation unique). On ne croit RIEN du
+ * client sur un montant qui s'affiche.
+ *
+ * Départage : le MOINS CHER qui satisfait la contrainte. On ne pousse
+ * jamais au maximum — ça se voit, et ça décrédibilise le reste.
+ */
+function cheminP2(
+  analysis: CartAnalysis,
+  catalogue: MenuItemFull[],
+  palier: PalierLivraison | null | undefined,
+): ResultatChemin | null {
+  if (!analysis.hasMain) return null;
+  if (!palier) return null;
+  const ecart = palier.remaining;
+  if (!(ecart > 0) || ecart > ECART_MAX_PALIER) return null;
+
+  const candidats = catalogue
+    // ① le prix DOIT couvrir l'écart, sinon le seuil n'est pas franchi
+    .filter((i) => i.price >= ecart)
+    // jamais un plat principal : on comble, on ne redouble pas le repas
+    .filter((i) => i.dish_role !== "main" && i.dish_role !== "combo")
+    .filter((i) => !analysis.itemIds.has(i.id))
+    // le moins cher d'abord
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 4);
+
+  if (candidats.length === 0) return null;
+  return { chemin: "P2", candidats, palier };
+}
+
+/**
  * P5 — REPAS COMPLET SANS DESSERT.
  *
  * Déclencheur : un plat ET une boisson au panier, aucun dessert.
@@ -332,6 +391,7 @@ export function choisitChemin(
   panier: MenuItemFull[],
   analysis: CartAnalysis,
   catalogue: MenuItemFull[],
+  palier?: PalierLivraison | null,
 ): ResultatChemin | null {
   // Filtre d'entrée : jamais un épuisé, jamais un alcool. Même geste que
   // `resoudCollections` pour les rails — la garde vit dans la fonction.
@@ -345,6 +405,9 @@ export function choisitChemin(
   const get = parId(sains);
   return (
     cheminP8(analysis) ??
+    // P2 passe devant P3/P4/P5 : franchir un palier vaut mieux que combler
+    // un trou de composition, parce qu'il fait BAISSER la facture.
+    cheminP2(analysis, sains, palier) ??
     cheminP3(panier, analysis, get) ??
     cheminP4(panier, analysis, get) ??
     cheminP5(panier, analysis, get) ??

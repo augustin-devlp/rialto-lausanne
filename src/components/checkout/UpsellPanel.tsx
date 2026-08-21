@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CartItem } from "@/lib/types";
 import { formatCHF } from "@/lib/format";
+import { readAddress } from "@/lib/clientStore";
 import { readCustomerSession } from "@/lib/customerSession";
 
 const DEBOUNCE_MS = 800;
@@ -51,6 +52,13 @@ type Suggestion = {
   category: string;
   score: number;
   reasons: string[];
+  /** Renseigné UNIQUEMENT par le chemin P2 : de quoi afficher le coût net
+   *  et sa décomposition. Voir le rendu plus bas. */
+  palier?: {
+    ecart: number;
+    frais_economises: number;
+    cout_net: number;
+  } | null;
 };
 
 // Carte fidélité minimale, capturée au passage du lookup existant (aucun
@@ -154,6 +162,9 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
               quantity: c.quantity,
             })),
             customer_id: customerId,
+            // Le SEUL montant qu'on envoie est… aucun. On envoie le code
+            // postal, le serveur relit la zone et le seuil en base.
+            postal_code: readAddress()?.postal_code,
           }),
           signal: ac.signal,
         });
@@ -313,9 +324,36 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
               <p className="truncate font-display text-base font-bold text-rialto-dark">
                 {s.name}
               </p>
-              <p className="tabular text-sm font-semibold text-ink">
-                {formatCHF(s.price)}
-              </p>
+              {s.palier ? (
+                /* ═══ CHEMIN P2 — LE COÛT NET, PAS L'ÉCART ═══════════════
+                   Le prix plein est BARRÉ, le coût net en gras, et la
+                   DÉCOMPOSITION est toujours dessous (condition ② : on
+                   n'affiche jamais un coût net tout seul, sinon le client
+                   ne peut pas vérifier).
+                   `cout_net` peut être NÉGATIF : la facture baisse. C'est
+                   le cas le plus vendeur, et il se dit en clair. */
+                <>
+                  <p className="tabular text-sm font-semibold text-ink">
+                    <span className="mr-1.5 font-normal text-mute line-through">
+                      {formatCHF(s.price)}
+                    </span>
+                    {s.palier.cout_net < 0
+                      ? `et payez ${formatCHF(Math.abs(s.palier.cout_net))} de moins`
+                      : s.palier.cout_net === 0
+                        ? "offert"
+                        : `pour ${formatCHF(s.palier.cout_net)}`}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-mute">
+                    {formatCHF(s.price)} l&apos;article, livraison{" "}
+                    {formatCHF(0)} au lieu de{" "}
+                    {formatCHF(s.palier.frais_economises)}
+                  </p>
+                </>
+              ) : (
+                <p className="tabular text-sm font-semibold text-ink">
+                  {formatCHF(s.price)}
+                </p>
+              )}
             </div>
             <button
               type="button"

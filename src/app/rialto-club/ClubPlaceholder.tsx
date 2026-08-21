@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import LienAccueil from "@/components/layout/LienAccueil";
 import SiteFooter from "@/components/home/SiteFooter";
 
 type Props = {
@@ -40,9 +41,7 @@ export default function ClubPlaceholder({
               <Link href={cta.href} className="btn-primary">
                 {cta.label}
               </Link>
-              <Link href="/" className="btn-ghost">
-                Retour accueil
-              </Link>
+              <LienAccueil className="btn-ghost" />
             </div>
           </div>
         </div>

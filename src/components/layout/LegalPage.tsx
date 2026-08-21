@@ -6,6 +6,7 @@
  */
 
 import Link from "next/link";
+import LienAccueil from "@/components/layout/LienAccueil";
 import SiteFooter from "@/components/home/SiteFooter";
 
 type Props = {
@@ -20,23 +21,7 @@ export default function LegalPage({ title, subtitle, updatedAt, children }: Prop
     <>
       <main className="min-h-screen bg-white pb-16 pt-8">
         <div className="container-hero">
-          <Link
-            href="/"
-            className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            Retour à l&apos;accueil
-          </Link>
+          <LienAccueil className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink" avecFleche />
 
           <header className="mb-10 max-w-prose-wide">
             <span className="eyebrow">Informations légales</span>

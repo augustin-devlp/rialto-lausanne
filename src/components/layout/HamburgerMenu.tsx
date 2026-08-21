@@ -15,7 +15,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { cartCount, readCart } from "@/lib/clientStore";
+import { cartCount, readCart, readAddress } from "@/lib/clientStore";
 import {
   clearCustomerSession,
   readCustomerSession,
@@ -38,6 +38,12 @@ const LANGUES_A_VENIR: ReadonlyArray<{ code: string; label: string; flag: string
 
 export default function HamburgerMenu({ inline = false }: { inline?: boolean }) {
   const [open, setOpen] = useState(false);
+  // Client qualifié = il a déjà donné son adresse. Pour lui, « Accueil »
+  // et « Menu » mènent au MÊME endroit (la home le rebondit vers /menu) :
+  // on retire le doublon au lieu de le rediriger (décision Augustin
+  // 21.08 — 4e occurrence de cette famille, on supprime la contradiction
+  // plutôt que d'ajouter une exemption).
+  const [qualifie, setQualifie] = useState(false);
   const [cartItems, setCartItems] = useState(0);
   const [session, setSession] = useState<CustomerSession | null>(null);
   const [languesOuvertes, setLanguesOuvertes] = useState(false);
@@ -45,6 +51,13 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
   const pathname = usePathname();
 
   // Ferme automatiquement quand on navigue
+  useEffect(() => {
+    const sync = () => setQualifie(readAddress() !== null);
+    sync();
+    window.addEventListener("rialto:address-updated", sync);
+    return () => window.removeEventListener("rialto:address-updated", sync);
+  }, []);
+
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
@@ -122,7 +135,7 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
         {/* Header sidebar */}
         <header className="flex items-center justify-between border-b border-border px-5 py-4">
           <Link
-            href="/"
+            href={qualifie ? "/menu" : "/"}
             className="flex items-center gap-2"
             onClick={() => setOpen(false)}
           >
@@ -180,7 +193,11 @@ export default function HamburgerMenu({ inline = false }: { inline?: boolean }) 
 
           {/* ─── Navigation ─────────────────────────── */}
           <Section title="Navigation">
-            <Item href="/" icon="🏠" label="Accueil" />
+            {/* « Accueil » n'a de sens QUE pour un client sans adresse :
+                c'est là qu'il la donne. Une fois qualifié, la home le
+                rebondit vers /menu — l'item ferait doublon avec « Menu »
+                juste en dessous, et mènerait au même écran. */}
+            {!qualifie && <Item href="/" icon="🏠" label="Accueil" />}
             <Item href="/menu" icon="🍕" label="Menu" />
             {cartItems > 0 && (
               <Item

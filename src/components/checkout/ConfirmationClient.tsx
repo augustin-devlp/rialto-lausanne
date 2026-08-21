@@ -1050,9 +1050,10 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       {/* Actions retour */}
       <section className="container-hero mt-8">
         <div className="mx-auto flex max-w-xl flex-col gap-3 sm:flex-row">
-          <Link href="/" className="btn-ghost flex-1">
-            Retour à l&apos;accueil
-          </Link>
+          {/* « Retour à l'accueil » retiré (21.08) : pour un client
+              qualifié — et il l'est forcément ici, il vient de commander
+              — la home rebondit vers /menu, donc ce bouton faisait
+              doublon avec « Voir le menu » juste à côté. */}
           <Link href="/menu" className="btn-ghost flex-1">
             Voir le menu
           </Link>

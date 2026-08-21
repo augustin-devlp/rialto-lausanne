@@ -11,6 +11,7 @@
  */
 
 import Link from "next/link";
+import LienAccueil from "@/components/layout/LienAccueil";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import ReviewGateModal from "@/components/ReviewGateModal";
@@ -174,9 +175,7 @@ export default function RoueClient() {
               <Link href="/rialto-club/join" className="btn-primary">
                 Rejoindre Rialto Club
               </Link>
-              <Link href="/" className="btn-ghost">
-                Retour accueil
-              </Link>
+              <LienAccueil className="btn-ghost" />
             </div>
           </div>
         </main>
@@ -480,9 +479,7 @@ function StateWrapper({ children }: { children: React.ReactNode }) {
 function BackHome() {
   return (
     <div className="mt-4 text-center">
-      <Link href="/" className="text-sm text-mute underline hover:text-ink">
-        ← Retour à l&apos;accueil
-      </Link>
+      <LienAccueil className="text-sm text-mute underline hover:text-ink" avecFleche />
     </div>
   );
 }

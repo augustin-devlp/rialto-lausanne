@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import LienAccueil from "@/components/layout/LienAccueil";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
@@ -173,23 +174,7 @@ export default function MesCommandesClient() {
     <>
       <main className="min-h-screen bg-white pb-12 pt-8">
         <div className="container-hero">
-          <Link
-            href="/"
-            className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            Retour
-          </Link>
+          <LienAccueil className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-mute hover:text-ink" avecFleche />
 
           <header className="mb-5 max-w-prose-wide">
             <span className="eyebrow">Rialto Club</span>

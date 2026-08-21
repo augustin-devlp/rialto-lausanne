@@ -16,7 +16,19 @@ type OrderRow = {
   status: string;
   total_amount: number;
   created_at: string;
+  /** Jeton d'accès fourni par /api/rialto/loyalty/lookup (21.08). Sans lui,
+   *  ni le lien de suivi ni « Recommander » ne fonctionnent : les deux
+   *  routes visées sont gardées. Optionnel par prudence — un cache client
+   *  antérieur au 21.08 n'en porte pas. */
+  access_token?: string | null;
 };
+
+/** Suffixe `?t=…` d'une commande, ou chaîne vide si le jeton manque. */
+function qs(order: OrderRow): string {
+  return order.access_token
+    ? `?t=${encodeURIComponent(order.access_token)}`
+    : "";
+}
 
 /** Statuts pour lesquels un SUIVI a encore du sens. Une commande d'il y a
  *  trois semaines n'a rien à suivre — le lien « Voir le suivi » ne doit
@@ -105,11 +117,15 @@ export default function MesCommandesClient() {
     }
   }
 
-  async function handleReorder(orderNumber: string) {
+  async function handleReorder(order: OrderRow) {
+    const orderNumber = order.order_number;
     setReorderingId(orderNumber);
     try {
+      // La route reorder est gardée par jeton depuis le 21.08 : elle
+      // renvoyait le panier complet — notes libres du client comprises — à
+      // qui devinait un numéro de commande.
       const res = await fetch(
-        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder`,
+        `/api/rialto/orders/${encodeURIComponent(orderNumber)}/reorder${qs(order)}`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as {
@@ -316,7 +332,7 @@ export default function MesCommandesClient() {
                             bouton, pas en lien gris tout en bas. */}
                         {enCours && (
                           <Link
-                            href={`/confirmation/${order.order_number}`}
+                            href={`/confirmation/${order.order_number}${qs(order)}`}
                             className="mb-3 flex w-full items-center justify-center rounded-xl bg-rialto px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rialto-dark"
                           >
                             Suivre ma commande
@@ -411,7 +427,7 @@ export default function MesCommandesClient() {
                     <div className="border-t border-border px-4 py-2.5">
                       <button
                         type="button"
-                        onClick={() => handleReorder(order.order_number)}
+                        onClick={() => handleReorder(order)}
                         disabled={isReordering}
                         className="flex w-full items-center justify-center gap-2 rounded-xl bg-rialto/10 px-3 py-2 text-sm font-semibold text-rialto transition hover:bg-rialto hover:text-white disabled:opacity-60"
                       >

@@ -728,7 +728,13 @@ export default function CheckoutPageClient({
       }
 
       clearCart();
-      router.push(`/confirmation/${body.order.order_number}`);
+      // Le jeton d'accès vient du serveur (21.08) : sans lui, le client
+      // atterrirait sur un 404 juste après avoir payé sa commande.
+      const jeton = (body as { access_token?: string | null }).access_token;
+      router.push(
+        `/confirmation/${body.order.order_number}` +
+          (jeton ? `?t=${encodeURIComponent(jeton)}` : ""),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
       setLoading(false);

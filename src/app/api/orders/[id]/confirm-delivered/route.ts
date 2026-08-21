@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
 import { TAP_AGE_MIN_MIN, TAP_AGE_MAX_H } from "@/lib/eta/constants";
 import { estColonneAbsente } from "@/lib/dbErrors";
+import { PARAM_JETON, verifyOrderToken } from "@/lib/orderAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function POST(
   const sb = supabaseService();
   const { data: order, error } = await sb
     .from("orders")
-    .select("id, status, created_at")
+    .select("id, order_number, status, created_at")
     .eq("id", params.id)
     .eq("restaurant_id", RESTAURANT_ID)
     .maybeSingle();
@@ -40,6 +41,18 @@ export async function POST(
     return NextResponse.json({ ok: false }, { status: 404 });
   }
   if (!order) {
+    return NextResponse.json({ ok: false }, { status: 404 });
+  }
+  // ⚠️ JETON EXIGÉ (21.08.2026). L'en-tête de cette route pariait sur
+  // « l'UUID v4 fait office de jeton de capacité ». Le pari était FAUX tant
+  // que la page de confirmation, publique et énumérable, publiait cet UUID
+  // dans son HTML. Il redevient vrai maintenant qu'elle est fermée — mais
+  // les UUID déjà diffusés le restent, donc on vérifie pour de bon.
+  // Avant l'écriture : ce handler pose customer_confirmed_delivered_at,
+  // qui nourrit le recalibrage de l'ETA. Un tiers pourrait fausser la
+  // mesure de tous les délais de livraison.
+  const jetonTap = new URL(_req.url).searchParams.get(PARAM_JETON);
+  if (!verifyOrderToken(RESTAURANT_ID, order.order_number as string, jetonTap)) {
     return NextResponse.json({ ok: false }, { status: 404 });
   }
   if (order.status === "new") {

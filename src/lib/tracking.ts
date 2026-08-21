@@ -117,11 +117,21 @@ export function grantTracking(): void {
       analytics_storage: "granted",
     });
     gtag("js", new Date());
+    // ⚠️ `config` émet la page_view INITIALE avec l'URL réelle — exactement
+    // le cas du lien de confirmation ouvert à froid depuis l'email, jeton
+    // compris. On impose donc l'URL rédigée dès l'initialisation ; sans ça,
+    // la rédaction de `track.pageView` ne couvrirait que les navigations
+    // internes et laisserait fuir la seule qui compte.
+    const { href: pageLocation, path: pagePath } = urlSansSecret();
     if (GA_ID) {
-      gtag("config", GA_ID, { cookie_expires: 33696000 });
+      gtag("config", GA_ID, {
+        cookie_expires: 33696000,
+        page_location: pageLocation,
+        page_path: pagePath,
+      });
     }
     if (ADS_ID) {
-      gtag("config", ADS_ID);
+      gtag("config", ADS_ID, { page_location: pageLocation });
     }
     if (GA_ID || ADS_ID) {
       appendScript(
@@ -253,13 +263,36 @@ function gaItems(items: TrackedItem[]) {
   }));
 }
 
+/**
+ * ⚠️ NE JAMAIS ENVOYER UNE URL DE COMMANDE TELLE QUELLE À UN TIERS.
+ *
+ * Depuis le 21.08, `/confirmation/<numéro>` porte un JETON d'accès en
+ * paramètre (`?t=…`). Envoyer l'URL brute à GA4 et à Meta publierait chez
+ * deux tiers le secret qu'on vient de mettre en place — et un lien ouvert
+ * depuis l'email est justement le cas où l'URL complète est présente.
+ *
+ * On rédige donc au SEUL point d'étranglement, ici. Bénéfice secondaire :
+ * la cardinalité des pages GA4 reste lisible (une ligne « /confirmation »
+ * au lieu d'une par commande).
+ */
+function urlSansSecret(): { href: string; path: string } {
+  const path = window.location.pathname;
+  if (path.startsWith("/confirmation/")) {
+    return { href: `${window.location.origin}/confirmation`, path: "/confirmation" };
+  }
+  // Ailleurs, on garde l'URL réelle mais jamais la query : rien n'en a
+  // besoin pour l'analytics, et c'est là que vivent les secrets.
+  return { href: `${window.location.origin}${path}`, path };
+}
+
 export const track = {
   /** Navigation SPA (l'initiale est couverte par config/snippet). NON bufferisé. */
   pageView(): void {
     emit(() => {
+      const { href, path } = urlSansSecret();
       window.gtag?.("event", "page_view", {
-        page_location: window.location.href,
-        page_path: window.location.pathname,
+        page_location: href,
+        page_path: path,
       });
       window.fbq?.("track", "PageView");
     }, false);

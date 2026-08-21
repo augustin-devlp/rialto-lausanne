@@ -3,6 +3,7 @@ import { supabaseService } from "@/lib/supabase";
 import { settleForOrder, SOLID_STATUSES } from "@/lib/loyalty/settle";
 import { intrantsPourCommande } from "@/lib/eta/server";
 import { ACTIVE_WINDOW_MIN } from "@/lib/eta/constants";
+import { PARAM_JETON, verifyOrderToken } from "@/lib/orderAccess";
 
 // Empêche Next.js de cacher cet endpoint — on veut toujours la valeur DB
 // fraîche (surtout pour le polling timeline depuis /confirmation).
@@ -33,6 +34,30 @@ export async function GET(
 
   if (error || !order) {
     console.warn(`[timeline-api] GET order id=${params.id} NOT_FOUND`, error);
+    return NextResponse.json(
+      { error: "Commande introuvable" },
+      { status: 404, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  // ⚠️ JETON EXIGÉ (21.08.2026). Cette route renvoyait PLUS que la page de
+  // confirmation — `payer_phone`, `notes`, `delivery_floor_door`,
+  // `delivery_instructions` — sans le moindre contrôle. Elle rendait donc
+  // inopérant le retrait de ces colonnes fait le même jour sur la page.
+  // Ici l'URL porte un UUID, pas le numéro : on ne peut vérifier qu'APRÈS
+  // avoir lu la commande. Mais la vérification passe IMPÉRATIVEMENT AVANT
+  // `settleForOrder` plus bas, qui ÉCRIT : sans cela, un tiers déclenche
+  // une écriture de tampons sur une commande qui n'est pas la sienne.
+  const jeton = new URL(req.url).searchParams.get(PARAM_JETON);
+  if (
+    !verifyOrderToken(
+      order.restaurant_id as string,
+      order.order_number as string,
+      jeton,
+    )
+  ) {
+    console.warn(`[timeline-api] GET order id=${params.id} JETON_REFUSE`);
+    // Même réponse que « introuvable » : ne rien dire de l'existence.
     return NextResponse.json(
       { error: "Commande introuvable" },
       { status: 404, headers: { "cache-control": "no-store" } },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
+import { signOrderToken } from "@/lib/orderAccess";
 import {
   deriveOrderPricing,
   stripLotOffert,
@@ -863,7 +864,19 @@ export async function POST(req: NextRequest) {
     })();
   }
 
-  return NextResponse.json({ order });
+  // Jeton d'accès à la commande (21.08) : le client en a besoin pour être
+  // redirigé vers son suivi. Il est DÉRIVÉ, donc recalculable à volonté —
+  // on le renvoie plutôt que de laisser le checkout fabriquer une URL nue
+  // qui serait refusée à l'ouverture, juste après le paiement.
+  const accessToken = signOrderToken(RESTAURANT_ID, order.order_number as string);
+  if (!accessToken) {
+    // Fail-fast VISIBLE : la commande est créée (ne jamais la perdre pour
+    // un secret manquant), mais l'exploitation doit le savoir tout de suite.
+    console.error(
+      "[orders] ORDER_LINK_SECRET absent — le client ne pourra pas ouvrir son suivi",
+    );
+  }
+  return NextResponse.json({ order, access_token: accessToken });
 }
 
 /**

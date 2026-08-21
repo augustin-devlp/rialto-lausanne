@@ -79,6 +79,10 @@ type OrderData = {
 
 type Props = {
   order: OrderData;
+  /** Jeton d'accès à la commande (21.08). Le polling de statut et le tap
+   *  « ma commande est arrivée » interrogent des routes désormais gardées :
+   *  sans lui, le suivi se figerait sur son rendu initial. */
+  accessToken: string;
 };
 
 /**
@@ -176,7 +180,14 @@ type LoyaltyCardState =
   | { status: "signing_up" }
   | { status: "error"; message: string };
 
-export default function ConfirmationClient({ order: initialOrder }: Props) {
+export default function ConfirmationClient({
+  order: initialOrder,
+  accessToken,
+}: Props) {
+  /** Suffixe de requête portant le jeton, à coller aux appels gardés. */
+  const qsJeton = accessToken
+    ? `?t=${encodeURIComponent(accessToken)}`
+    : "";
   const [order, setOrder] = useState<OrderData>(initialOrder);
   const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
 
@@ -356,7 +367,9 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
       // le refetch sur visibilitychange rattrape au retour au premier plan.
       if (source === "poll" && document.visibilityState === "hidden") return;
       try {
-        const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+        const res = await fetch(`/api/orders/${orderId}${qsJeton}`, {
+          cache: "no-store",
+        });
         if (!res.ok) {
           console.warn(`[timeline] ${source} http=${res.status}`);
           return;
@@ -450,9 +463,10 @@ export default function ConfirmationClient({ order: initialOrder }: Props) {
   const posteTap = useCallback(async (): Promise<
     "fait" | "pending" | "erreur"
   > => {
-    const res = await fetch(`/api/orders/${order.id}/confirm-delivered`, {
-      method: "POST",
-    });
+    const res = await fetch(
+      `/api/orders/${order.id}/confirm-delivered${qsJeton}`,
+      { method: "POST" },
+    );
     if (res.ok) return "fait";
     const body = (await res.json().catch(() => null)) as {
       error?: string;

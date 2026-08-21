@@ -8,6 +8,7 @@ import {
   RIALTO_PLACE_ID,
 } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
+import { signOrderToken } from "@/lib/orderAccess";
 import { computeSpinAvailability } from "@/lib/spinAvailability";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 import { toStampRule } from "@/lib/loyalty/rule";
@@ -268,7 +269,17 @@ export async function GET(req: NextRequest) {
           require_google_review: !!(lottery as { require_google_review?: boolean }).require_google_review,
         }
       : null,
-    orders: orders ?? [],
+    // Chaque commande porte son JETON D'ACCÈS (21.08). C'est ce qui permet
+    // à « Mes commandes » de construire un lien de suivi valide et
+    // d'appeler `reorder`, désormais gardée. Le jeton est DÉRIVÉ, donc
+    // recalculé ici sans rien lire de plus en base.
+    // ⚠️ Cette route est bornée par `.eq("customer_id", card.customer_id)`
+    // plus haut : elle ne peut renvoyer que les commandes du porteur de la
+    // carte, jamais celles d'un autre.
+    orders: (orders ?? []).map((o) => ({
+      ...o,
+      access_token: signOrderToken(RESTAURANT_ID, o.order_number as string),
+    })),
     review_gate: {
       place_id: RIALTO_PLACE_ID,
       active_claim: activeClaim,

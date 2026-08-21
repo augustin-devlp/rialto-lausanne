@@ -1,4 +1,6 @@
 import { toZurichHHMM } from "./timezone";
+import { buildConfirmationUrl } from "./orderAccess";
+import { RESTAURANT_ID } from "./supabase";
 
 /**
  * Email de confirmation « commande bien reçue » envoyé au CLIENT (lot E1,
@@ -119,9 +121,17 @@ export function buildCustomerOrderEmail(params: {
 
   const subject = `Rialto — votre commande ${order.order_number} est bien reçue`;
 
-  const trackUrl = `${siteUrl.replace(/\/$/, "")}/confirmation/${encodeURIComponent(
-    order.order_number,
-  )}`;
+  // ⚠️ PASSE PAR LA FABRIQUE UNIQUE. Cette URL portait le numéro de commande
+  // nu, et la page était publique : n'importe qui pouvait lire la commande
+  // du voisin en incrémentant le numéro. `buildConfirmationUrl` y ajoute le
+  // jeton signé — ne JAMAIS reconstruire cette URL à la main ici.
+  // Le lien est rendu deux fois plus bas (bouton HTML et version texte) :
+  // les deux lisent cette même variable, donc suivent automatiquement.
+  const trackUrl = buildConfirmationUrl({
+    siteUrl,
+    restaurantId: RESTAURANT_ID,
+    orderNumber: order.order_number,
+  });
 
   // ── Règlement (client, SANS calcul de rendu — c'était pour le resto) ──
   let paiement: string;

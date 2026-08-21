@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
+import { PARAM_JETON, verifyOrderToken } from "@/lib/orderAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,19 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { orderNumber: string } },
 ) {
+  // ⚠️ JETON EXIGÉ (21.08.2026). Cette route n'avait AUCUN contrôle : le
+  // numéro de commande — séquentiel — suffisait à obtenir le panier
+  // complet, NOTES LIBRES DU CLIENT COMPRISES (voir le select plus bas).
+  // Elle est fermée par le même jeton que la page de confirmation, et non
+  // par le téléphone : le téléphone ne prouve rien ici, puisque c'est
+  // précisément ce que la page publiait.
+  // Vérification AVANT le SELECT — un jeton faux ne coûte pas une requête.
+  const jeton = new URL(req.url).searchParams.get(PARAM_JETON);
+  if (!verifyOrderToken(RESTAURANT_ID, params.orderNumber, jeton)) {
+    // 404 et non 403 : ne pas confirmer qu'un numéro deviné existe.
+    return NextResponse.json({ error: "order_not_found" }, { status: 404 });
+  }
+
   const admin = supabaseService();
 
   const { data: order } = await admin

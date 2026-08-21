@@ -2,10 +2,22 @@ import { notFound } from "next/navigation";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
 import ConfirmationClient from "@/components/checkout/ConfirmationClient";
 import { intrantsPourCommande } from "@/lib/eta/server";
+import { PARAM_JETON, verifyOrderToken } from "@/lib/orderAccess";
 
 export const dynamic = "force-dynamic";
 
-async function loadOrder(orderNumber: string) {
+async function loadOrder(orderNumber: string, jeton: string | undefined) {
+  // ⚠️ LA GARDE VIT ICI, DANS LA FONCTION DE CHARGEMENT, ET AVANT LE SELECT.
+  // Deux raisons, dans cet ordre :
+  //   1. règle d'office du 21.08 (CLAUDE.md) — une garde qui protège une
+  //      règle métier vit dans la fonction, jamais chez celui qui l'appelle.
+  //      Placée dans le composant, un futur appelant de loadOrder l'oublie.
+  //   2. le jeton se vérifie sans toucher la base : un lien forgé ne coûte
+  //      donc pas une requête Supabase, et l'énumération ne charge rien.
+  // Le refus est un notFound() — jamais un 403, qui confirmerait qu'un
+  // numéro deviné correspond à une vraie commande.
+  if (!verifyOrderToken(RESTAURANT_ID, orderNumber, jeton)) return null;
+
   const sb = supabaseService();
   const { data: order } = await sb
     .from("orders")
@@ -51,11 +63,18 @@ async function loadOrder(orderNumber: string) {
 
 export default async function ConfirmationPage({
   params,
+  searchParams,
 }: {
   params: { orderNumber: string };
+  searchParams: { [key: string]: string | string[] | undefined };
 }) {
-  const order = await loadOrder(decodeURIComponent(params.orderNumber));
+  const brut = searchParams?.[PARAM_JETON];
+  const jeton = Array.isArray(brut) ? brut[0] : brut;
+  const order = await loadOrder(decodeURIComponent(params.orderNumber), jeton);
   if (!order) return notFound();
 
-  return <ConfirmationClient order={order as any} />;
+  // Le jeton descend au client : il en a besoin pour le polling de statut
+  // (/api/orders/[id]) et pour le tap « ma commande est arrivée », qui sont
+  // désormais gardés eux aussi. Sans lui, le suivi se figerait.
+  return <ConfirmationClient order={order as any} accessToken={jeton ?? ""} />;
 }

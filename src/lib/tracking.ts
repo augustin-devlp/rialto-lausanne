@@ -73,6 +73,18 @@ declare global {
   }
 }
 
+function surPageDeSuivi(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/confirmation/")
+  );
+}
+
+function meta(...args: unknown[]): void {
+  if (surPageDeSuivi()) return;
+  window.fbq?.(...args);
+}
+
 function appendScript(src: string): void {
   const s = document.createElement("script");
   s.async = true;
@@ -161,8 +173,18 @@ export function grantTracking(): void {
         window._fbq = fbq;
         appendScript("https://connect.facebook.net/en_US/fbevents.js");
       }
+      // `init` reste INCONDITIONNEL : il n'envoie pas de beacon, et le
+      // sauter sur /confirmation laisserait le pixel non initialisé pour
+      // TOUTE la session (l'injection est one-shot) — c'est-à-dire le bug
+      // qu'on vient de corriger, réintroduit par l'autre bout.
       window.fbq!("init", META_PIXEL_ID);
-      window.fbq!("track", "PageView");
+      // ⚠️ LE PageView, LUI, PASSE PAR LA GARDE. Il utilisait `window.fbq!`
+      // et non `window.fbq?.(` : mon premier correctif du 21.08, qui
+      // remplaçait la seconde forme, l'a RATÉ. Une arrivée à froid sur
+      // /confirmation avec un consentement déjà stocké envoyait donc
+      // toujours le jeton dans le `dl` de Meta. Trouvé en vérifiant mon
+      // propre correctif.
+      meta("track", "PageView");
     }
   }
 
@@ -176,7 +198,7 @@ export function grantTracking(): void {
     ad_personalization: "granted",
     analytics_storage: "granted",
   });
-  window.fbq?.("consent", "grant");
+  meta("consent", "grant");
 
   // Rejoue les événements funnel accumulés avant le choix.
   while (queue.length > 0) {
@@ -210,7 +232,7 @@ export function denyTracking(): void {
       ad_personalization: "denied",
       analytics_storage: "denied",
     });
-    window.fbq?.("consent", "revoke");
+    meta("consent", "revoke");
   }
 }
 
@@ -320,18 +342,6 @@ function urlSansSecret(): { href: string; path: string } {
  * /confirmation n'obtenait jamais `window.fbq` — tous ses événements
  * suivants, `Purchase` COMPRIS, étaient des no-op silencieux.
  */
-function surPageDeSuivi(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/confirmation/")
-  );
-}
-
-function meta(...args: unknown[]): void {
-  if (surPageDeSuivi()) return;
-  window.fbq?.(...args);
-}
-
 export const track = {
   /** Navigation SPA (l'initiale est couverte par config/snippet). NON bufferisé. */
   pageView(): void {

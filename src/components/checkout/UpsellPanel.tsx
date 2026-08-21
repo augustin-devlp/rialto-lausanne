@@ -257,7 +257,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
   return (
     <section className="mt-6 space-y-2">
       {showLoyaltyBanner && (
-        <div className="flex items-center gap-2 rounded-xl bg-[#F9F1E4] px-3.5 py-2.5 text-xs font-medium text-ink ring-1 ring-saffron/40">
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-white px-3.5 py-2.5 text-xs font-medium text-ink">
           <span>
             Plus que {stampsLeft} tampon{stampsLeft > 1 ? "s" : ""} avant votre
             récompense 🎁
@@ -272,13 +272,15 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
       {suggestions.map((s) => (
         <div
           key={s.menu_item_id}
-          className="animate-fade-up relative flex items-center gap-3 overflow-hidden rounded-2xl border-l-4 border-saffron bg-[#F9F1E4] p-4 pr-8 shadow-card"
+          className="animate-fade-up relative overflow-hidden rounded-2xl border border-border bg-white shadow-card"
         >
           <button
             type="button"
             onClick={() => handleDismiss(s)}
             aria-label="Ignorer"
-            className="absolute right-2 top-2 text-mute hover:text-ink"
+            // Sur la photo : pastille blanche pour rester lisible quelle que
+            // soit l'image.
+            className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-mute shadow-sm transition hover:text-ink"
           >
             <svg
               width="14"
@@ -294,29 +296,35 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
             </svg>
           </button>
           {s.image_url && (
+            // LA PHOTO EST L'ELEMENT PRINCIPAL (spec Augustin 21.08) :
+            // bandeau pleine largeur en 16/9 au lieu d'une vignette 56 px
+            // qui ne donnait pas envie. Hauteur bornee pour ne pas manger
+            // le tiroir sur les petits ecrans.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={s.image_url}
               alt={s.name}
-              className="h-14 w-14 shrink-0 rounded-lg object-cover"
+              className="aspect-[16/9] max-h-44 w-full object-cover"
             />
           )}
-          <div className="min-w-0 flex-1">
-            <p className="mb-0.5 text-xs italic text-mute">{s.message}</p>
-            <p className="truncate text-sm font-display font-bold text-rialto-dark">
-              {s.name}
-              <span className="ml-2 font-normal text-mute">
-                · {formatCHF(s.price)}
-              </span>
-            </p>
+          <div className="flex items-end justify-between gap-3 p-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="mb-0.5 text-xs italic text-mute">{s.message}</p>
+              <p className="truncate font-display text-base font-bold text-rialto-dark">
+                {s.name}
+              </p>
+              <p className="tabular text-sm font-semibold text-ink">
+                {formatCHF(s.price)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleAdd(s)}
+              className="shrink-0 rounded-full bg-rialto px-3 py-2 text-xs font-bold text-white transition hover:bg-rialto-dark"
+            >
+              + Ajouter
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => handleAdd(s)}
-            className="shrink-0 rounded-full bg-rialto px-3 py-2 text-xs font-bold text-white transition hover:bg-rialto-dark"
-          >
-            + Ajouter
-          </button>
         </div>
       ))}
     </section>
@@ -325,13 +333,13 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
 
 function UpsellSkeleton() {
   return (
-    <div className="rounded-2xl border-l-4 border-saffron bg-[#F9F1E4] p-4">
-      <div className="flex items-center gap-3">
-        <div className="h-14 w-14 shrink-0 animate-pulse rounded-lg bg-border" />
-        <div className="flex-1 space-y-2">
-          <div className="h-3 w-3/4 animate-pulse rounded bg-border" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-border" />
-        </div>
+    // Meme forme que la carte reelle (photo dominante) : un squelette qui
+    // annonce autre chose que ce qui arrive est un texte perime visuel.
+    <div className="overflow-hidden rounded-2xl border border-border bg-white">
+      <div className="aspect-[16/9] max-h-44 w-full animate-pulse bg-border" />
+      <div className="space-y-2 p-3.5">
+        <div className="h-3 w-3/4 animate-pulse rounded bg-border" />
+        <div className="h-4 w-1/2 animate-pulse rounded bg-border" />
       </div>
     </div>
   );

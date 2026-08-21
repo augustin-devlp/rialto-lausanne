@@ -62,6 +62,21 @@
 
 ## Grand ménage des données de test (DERNIÈRE étape avant ouverture)
 
+> 🔴 **NE PAS SUPPRIMER LES COMMANDES DE TEST AVANT D'AVOIR EXÉCUTÉ NU1.**
+> Relevé en base le 22.08 : 52 commandes 2026, dont **33 seulement** au
+> format `R-2026-NNN` et **19 en `TEST-…`**. `generate_order_number` fait
+> `count(*)+1`, et `order_number` porte un index **UNIQUE**.
+> Supprimer les 19 tests fait retomber le compte à 33 → la fonction rend
+> `R-2026-034` → **ce numéro existe déjà** → l'index refuse → **la commande
+> est perdue**. Et ça recommence : environ **dix-neuf commandes refusées
+> d'affilée**, le soir du lancement, sans rien dans le code pour l'expliquer.
+> La suppression d'**une seule** commande suffit à armer le même piège.
+>
+> Navette : [`db/orders/NU1_numerotation_sans_course.sql`](../db/orders/NU1_numerotation_sans_course.sql)
+> · inventaire : [`docs/INVENTAIRES_MIGRATIONS.md`](INVENTAIRES_MIGRATIONS.md)
+> **Ordre imposé : NU1 d'abord, ménage ensuite.**
+
+
 - [ ] **Inventaire chiffré PUIS purge en une fois, sur GO explicite** —
       ouvrir sur une base 100 % réelle. Identification : téléphones de
       test d'Augustin (+33676549598/99, +41791342996/97 — compléter la
@@ -388,3 +403,29 @@ jamais détecté.
   consommateur) — à vouvoyer le jour où l'i18n est câblée.
 - Branche VIP anniversaire (`birthday_wish_vip`) — attend des paliers
   dans `vip_tiers` (table vide).
+
+---
+
+## PV des relectures — état de couverture
+
+| Lot | Relecture adversariale | Couverture |
+|---|---|---|
+| 21.08 (nuit) | complète | 8 points, 1 relecteur |
+| **22.08** | ⚠️ **INCOMPLÈTE** | **1 dimension sur 5** |
+
+⚠️ **Le lot du 22.08 n'est relu que sur UNE dimension sur CINQ.** La
+relecture a été lancée sur 5 dimensions (dérivation du minimum, durcissement
+des PIN, navette SQL, textes × états, respect de R8), chaque finding devant
+survivre à 3 sceptiques. **180 agents sur 203 sont morts sur la limite
+d'usage.** Seule la dimension « durcissement des PIN » a été jugée
+jusqu'au bout.
+
+**Ce qui n'a jamais été verdicté** : la navette CU1 et le SQL de PR1/NU1,
+les textes juridiques posés en production, la conformité R8 des commentaires
+de ce lot, et la moitié de la dérivation du minimum.
+
+Le seul finding qui a survécu — la phase `non_configure` en cul-de-sac —
+était de la main de ce lot même, et il est corrigé.
+
+**À relancer quand le budget le permet.** Ne pas considérer ce lot comme
+relu.

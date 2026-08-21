@@ -89,7 +89,11 @@ export async function GET(req: NextRequest) {
     : await query.eq("short_code", shortCode).maybeSingle();
 
   if (!data) {
-    // Messages VERBATIM : QR non reconnu (ScanPage L61) vs carte introuvable.
+    // Messages VERBATIM : QR non reconnu vs carte introuvable.
+    // ⚠️ CE COMMENTAIRE CITAIT « ScanPage L61 » : FAUX, `src/app/scan/page.tsx`
+    // fait 17 lignes. Le vrai consommateur est le callback `lookup` de
+    // `ScanClient` (`src/app/scan/ScanClient.tsx`), qui affiche le message
+    // tel quel. Corrigé le 22.08 avec l'amendement R8.
     return byQr
       ? NextResponse.json(
           { ok: false, error: "QR code non reconnu. Veuillez réessayer." },

@@ -214,7 +214,8 @@ function cheminP3(
  * ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08 : « sur un panier burger +
  * pâtes, la branche PÂTES répond avant et propose une salade ». C'EST
  * FAUX, et c'est l'inverse de ce que fait le fichier : `hasFriesIncluded`
- * est calculé sur TOUT le panier (`cartAnalysis.ts:80`) et la garde est en
+ * est calculé sur TOUT le panier (`cartAnalysis.ts`, affectation de
+ * `a.hasFriesIncluded` dans `analyzeCart`) et la garde est en
  * TÊTE de `cheminP4` (première instruction de la fonction, ci-dessous),
  * donc AVANT le dispatch par
  * catégorie. Un burger (qui vient avec ses frites) fait donc taire P4

@@ -15,7 +15,8 @@ ALTER TABLE public.push_subscriptions
 --
 -- ADD CONSTRAINT UNIQUE(endpoint) → répare un BUG LATENT ACTIF : le POST
 --   /api/push/subscribe du site fait un upsert onConflict('endpoint')
---   (subscribe/route.ts:72-88) or PostgREST refuse un ON CONFLICT sans
+--   (subscribe/route.ts, le `.upsert(..., { onConflict: "endpoint" })`)
+--   or PostgREST refuse un ON CONFLICT sans
 --   contrainte unique correspondante ("no unique or exclusion constraint
 --   matching the ON CONFLICT specification"). L'opt-in push du site est
 --   donc cassé aujourd'hui — invisible car 0 abonné (vérifié :

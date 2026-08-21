@@ -28,7 +28,8 @@
 --     accepted  → completed :  15 commandes, 1 054.00 CHF
 --     cancelled → completed :  37 commandes, 2 175.50 CHF   ⚠️
 -- 37 commandes REFUSÉES sont devenues « terminées ». Le chiffre
--- d'affaires du dashboard (src/app/api/dashboard/summary/route.ts:79-81)
+-- d'affaires du dashboard (src/app/api/dashboard/summary/route.ts,
+-- const `revenue`)
 -- ne filtre QUE `status !== 'cancelled'` : ces 2 175.50 CHF de refus sont
 -- désormais comptés comme du CA.
 --

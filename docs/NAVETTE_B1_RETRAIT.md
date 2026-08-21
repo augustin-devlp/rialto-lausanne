@@ -41,7 +41,12 @@ Elle écrit `printed_at` sur de vraies commandes — dernier ticket imprimé le
 
 La logique caisse n'est jamais « si retrait », c'est toujours
 **« livraison, sinon à emporter »** — donc toute valeur inattendue bascule
-vers l'affichage « à emporter ». Quatre endroits :
+vers l'affichage « à emporter ».
+
+**Correction du 21.08, remontée par la caisse elle-même : ce sont HUIT
+points d'affichage dans CINQ fichiers, pas quatre.** Mon inventaire initial
+en comptait quatre — il sous-estimait. Le compte de la caisse fait foi, et
+c'est son dépôt.
 
 | Fichier | Ce qu'il fait |
 |---|---|
@@ -49,6 +54,11 @@ vers l'affichage « à emporter ». Quatre endroits :
 | `src/lib/printTicket.ts` | **ticket papier** : bloc livraison (adresse, code d'entrée, étage, sonnette) vs « A EMPORTER » en double hauteur |
 | `src/lib/labels.ts` | « Espèces au livreur » vs « Espèces au retrait » |
 | `src/lib/types.ts` | type miroir |
+| *(cinquième fichier — à nommer par la caisse)* | |
+
+⚠️ **Le ticket « à emporter » n'imprime qu'UNE ligne.** C'est ce qui rend
+le mode de panne n°1 si discret : le livreur reçoit un ticket qui a l'air
+normal, simplement sans le bloc adresse.
 
 **Deux modes de panne, très différents :**
 
@@ -65,9 +75,12 @@ vers l'affichage « à emporter ». Quatre endroits :
 
 ### Le script de fixtures casse aussi
 
-`creer-commande-test.mjs` prend littéralement `pickup` en argument. Il
-échouera dès que la contrainte `CHECK` sera réduite à une seule valeur.
-À corriger **dans le même lot** que le reste, sinon la recette est bloquée.
+`creer-commande-test.mjs` prend littéralement `pickup` en argument.
+
+**Proposition de la caisse, ACCEPTÉE par Augustin le 21.08 : renommer cet
+argument `minimal`, en livraison.** Le script garde son rôle (créer une
+commande de test dépouillée) sans porter le nom d'un mode qui n'existe
+plus. À faire dans le même lot que le reste.
 
 ---
 
@@ -98,16 +111,25 @@ un service perdu.
 Elle n'est **pas** nécessaire pour supprimer le retrait — le site l'impose
 déjà. Elle sert à empêcher qu'il revienne par la base.
 
+🔴 **DÉCISION D'AUGUSTIN, 21.08 : LE `CHECK` EN BASE RESTE À DEUX VALEURS.
+La suppression du retrait est APPLICATIVE, pas structurelle.**
+
+Raison : le resserrer exigerait de traiter les 8 lignes de fixtures, et la
+caisse a montré que les toucher est risqué. On le resserrera au **grand
+ménage du go-live**, quand ces lignes partiront de toute façon.
+
+Il reste donc UNE seule ligne utile, et elle n'est pas urgente :
+
 ```sql
 -- ⚠️ Obligatoire sur toute migration touchant `orders`
 SET lock_timeout = '5s';
 
--- 1. Le DEFAULT 'pickup' est le second défaut aligné dans le mauvais sens.
+-- Le DEFAULT 'pickup' est le second défaut aligné dans le mauvais sens.
+-- Le serveur impose déjà « delivery » à l'INSERT ; ceci ferme la porte
+-- côté base pour tout écrivain futur (import, script, autre repo).
 ALTER TABLE public.orders ALTER COLUMN fulfillment_type SET DEFAULT 'delivery';
 
--- 2. Backfill des 8 commandes de TEST (voir « le sort des 8 » ci-dessous).
--- 3. Puis, seulement une fois la caisse à jour :
---    resserrer le CHECK à ('delivery'), ou DROP COLUMN.
+-- PAS de resserrement du CHECK. PAS de DROP COLUMN. Voir ci-dessus.
 ```
 
 ⚠️ Le rôle `authenticated` — celui de la caisse — **ne peut pas écrire cette

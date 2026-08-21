@@ -156,7 +156,14 @@ export default function ProductPageClient({
     const required = opts.some((o) => o.is_required);
     return required && (selected[group]?.length ?? 0) === 0;
   });
-  const canAdd = missingRequiredGroups.length === 0 && item.is_available;
+  // ⚠️ CORRIGÉ 21.08 (lot écran menu) : is_out_of_stock n'était PAS testé
+  // ici. La grille du menu voilait bien le plat épuisé et lui retirait son
+  // bouton, mais SA PAGE PRODUIT — accessible par le lien de la carte
+  // elle-même — laissait « Ajouter au panier » ACTIF. Un plat retiré par
+  // Mehmet en plein service restait donc commandable d'un clic.
+  // Miroir de MenuItemCard : unavailable = !is_available || is_out_of_stock.
+  const indisponible = !item.is_available || item.is_out_of_stock === true;
+  const canAdd = missingRequiredGroups.length === 0 && !indisponible;
 
   const extras = flatSelected.reduce((s, o) => s + o.extra_price, 0);
   const total = (Number(item.price) + extras) * qty;
@@ -247,7 +254,7 @@ export default function ProductPageClient({
             <span className="tabular font-display text-3xl font-bold text-rialto md:text-4xl">
               {formatCHF(Number(item.price))}
             </span>
-            {!item.is_available && (
+            {indisponible && (
               <span className="rounded-full bg-ink/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-mute">
                 Épuisé
               </span>

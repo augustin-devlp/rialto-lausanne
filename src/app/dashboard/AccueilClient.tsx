@@ -82,6 +82,22 @@ export default function AccueilClient() {
       </div>
 
       <div className="space-y-3">
+        {/* Le MENU en premier : c'est le geste de plein service (retirer
+            un plat en rupture), il doit etre le plus accessible. */}
+        <Link
+          href="/dashboard/menu"
+          className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"
+        >
+          <div>
+            <div className="font-display font-semibold text-ink">
+              Menu — plats disponibles
+            </div>
+            <div className="text-xs text-mute">
+              Retirer un plat en rupture, le remettre ensuite
+            </div>
+          </div>
+          <Arrow />
+        </Link>
         <Link
           href="/dashboard/commandes"
           className="flex items-center justify-between rounded-2xl border border-border bg-white p-4 shadow-card transition hover:shadow-pop"

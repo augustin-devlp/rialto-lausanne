@@ -261,7 +261,18 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
         const msg = err instanceof Error ? err.name : String(err);
         if (msg !== "AbortError") setSuggestions([]);
       } finally {
-        setLoading(false);
+        // 🔴 LE `finally` EST SCELLÉ SUR SON PROPRE RUN (mineur relevé le
+        // 21.08, corrigé le 22.08).
+        // Sans ce test : le client touche « + » pendant qu'un fetch est en
+        // vol → le corps de l'effet fait `setSuggestions([])`, `abort()`,
+        // `setLoading(true)` → le fetch avorté rejette au tick SUIVANT →
+        // son `finally` remettait `loading` à false PAR-DESSUS le `true`
+        // du nouveau run. Rendu : `loading=false`, `suggestions=[]`,
+        // `blocage=null` → le composant rend `null` et LE PANNEAU ENTIER
+        // DISPARAÎT pendant 800 ms + réseau, puis revient. Un saut de mise
+        // en page dans le tiroir à chaque tick de quantité.
+        // `abortRef.current === ac` : « suis-je encore le run courant ? ».
+        if (abortRef.current === ac) setLoading(false);
       }
     }, DEBOUNCE_MS);
 
@@ -327,7 +338,14 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
   if (blocage) {
     return (
       <div className="mt-3 rounded-2xl border border-border bg-white p-3.5">
-        <p className="text-sm font-semibold text-ink">
+        {/* `aria-live` : ce montant CHANGE à chaque modification du panier,
+            et il conditionne la possibilité de commander. Sans annonce, un
+            lecteur d'écran ne signale jamais qu'il ne manque plus que deux
+            francs — ni qu'il n'en manque plus du tout.
+            Calqué sur le bandeau frère de `CartPanel` (le palier de
+            livraison offerte), qui l'a depuis toujours : les deux vivent
+            dans le même tiroir, ils doivent se comporter pareil. */}
+        <p className="text-sm font-semibold text-ink" aria-live="polite">
           Il manque {formatCHF(blocage.manque)} pour livrer chez vous.
         </p>
         <p className="mt-0.5 text-[11px] text-mute">

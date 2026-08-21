@@ -1,161 +1,114 @@
-# À vérifier toi-même — lot de nuit du 21.08.2026
+# À vérifier toi-même — état au 21.08.2026 (soir)
 
-Écran par écran. Coche au fur et à mesure. Ce qui est marqué **PREUVE
-FAITE** a déjà été vérifié en production par moi ; relis-le quand même si
-tu veux, mais ce n'est pas là que le risque se trouve.
-
-L'ordre ci-dessous est celui du risque, pas celui des items.
+Coche au fur et à mesure. **PREUVE FAITE** = déjà vérifié en production par
+moi ; le risque n'est pas là. Classé par risque, pas par numéro d'item.
 
 ---
 
-## 1. 🔴 EN PREMIER — poser le secret dans Vercel
+## 1. Le jeton d'accès aux commandes
 
-**Rien d'autre ne marche tant que ce n'est pas fait.**
+Le secret est posé, et **le chemin légitime marche** — c'est ce que tu
+demandais.
 
-La fuite est fermée par un jeton d'accès (commit `cce3b1c`). Le code est
-en production, mais **il lui faut son secret** :
+- [x] **PREUVE FAITE** — `/confirmation/R-2026-052` **sans rien** → 404.
+- [x] **PREUVE FAITE** — avec son jeton → **200**, la page s'affiche.
+- [x] **PREUVE FAITE** — `reorder` : 404 sans, **200 avec** (panier rendu).
+- [x] **PREUVE FAITE** — `GET /api/orders/[id]` : 404 sans, **200 avec**.
+- [x] **PREUVE FAITE** — `confirm-delivered` : 404 sans ; avec le jeton, la
+      garde passe et c'est la règle d'âge qui refuse (410 « trop tard »).
+- [x] **PREUVE FAITE** — **étanchéité croisée** : le jeton de la commande
+      052 n'ouvre PAS la 051, et réciproquement.
+- [x] **PREUVE FAITE** — énumérer R-2026-045 à 052 ne rend plus **aucune**
+      donnée client.
 
-- [ ] Vercel → Settings → Environment Variables → ajouter
-      **`ORDER_LINK_SECRET`** (Production **et** Preview), une chaîne
-      aléatoire longue.
-- [ ] Redéployer.
-- [ ] Laisser **`ORDER_LINK_SECRET_PREVIOUS` vide** (il ne sert qu'au jour
-      d'une rotation).
+**À faire toi-même, une seule fois :**
 
-**Tant que la variable manque, le suivi client répond 404 pour tout le
-monde.** C'est le comportement voulu — pas de secret, pas d'accès, une
-garde ne s'inverse jamais — mais il faut le savoir.
+- [ ] Passe une commande de bout en bout. Après validation tu dois arriver
+      sur ton suivi (l'URL porte `?t=…`). Un 404 ici voudrait dire que le
+      secret manque en Preview.
+- [ ] Ouvre le lien « Suivre ma commande » de l'email reçu.
+- [ ] Dans « Mes commandes » : déplie, puis « Suivre ma commande », puis
+      « Recommander en 1 clic ». Les deux doivent marcher.
 
-Ensuite, les trois preuves à faire toi-même :
+**Toujours ouvert, et c'est ta décision :**
+`/api/rialto/loyalty/lookup?phone=…` rend le profil client complet à qui
+essaie des numéros. Le jeton ne la ferme pas. Idem
+`referrals/stats?customer_id=`.
 
-- [ ] `/confirmation/R-2026-050` **sans rien après** → doit répondre
-      **404**. C'était la fuite.
-- [ ] Passe une commande de bout en bout : après validation, tu dois
-      arriver sur ton suivi (l'URL porte `?t=…`). Si tu tombes sur un 404
-      ici, c'est que le secret manque.
-- [ ] Ouvre le lien « Suivre ma commande » de l'email de confirmation →
-      doit s'ouvrir.
-- [ ] Dans « Mes commandes », déplie une commande, clique « Suivre ma
-      commande » puis « Recommander en 1 clic » → les deux doivent marcher.
+## 2. Les carrousels — 2 par jour
 
-**Quatre surfaces étaient ouvertes, pas deux.** Tu en avais signalé une,
-j'en avais signalé une autre, l'audit en a trouvé deux de plus :
-`GET /api/orders/[id]` (qui renvoyait **plus** que la page et qui **écrit**)
-et `POST .../confirm-delivered`. Les quatre sont fermées.
+- [x] **PREUVE FAITE** — exactement **2 rails** affichés, dans le bon ordre
+      (aujourd'hui : « À partager à plusieurs » puis « Fromage et crème »).
+- [x] **PREUVE FAITE** — `/menu` est en `force-dynamic` : le rail ne peut
+      pas se figer sur celui de la veille.
 
-**Ce qui n'est PAS fermé et attend ta décision :**
-`/api/rialto/loyalty/lookup?phone=…` rend le profil client complet (nom,
-prénom, e-mail, carte, 10 dernières commandes) à qui essaie des numéros de
-téléphone. Elle ne dépend d'aucun numéro de commande, donc **le jeton ne
-la ferme pas**. Voir la question en fin de rapport.
+- [ ] **Demain matin, regarde `/menu`.** La paire doit avoir changé — et
+      changé **à 5 h**, pas à minuit.
+- [ ] **À TRANCHER :** le cycle démarre aujourd'hui sur la paire **J5**,
+      pas J1. C'est arbitraire (l'index vient du numéro de jour absolu). Si
+      tu veux que J1 tombe un jour précis — le 01.09, par exemple — c'est
+      un décalage d'une ligne. Dis-le-moi.
 
----
+## 3. Livraison seulement
 
-## 2. L'écran Menu du dashboard (le nouveau)
+- [ ] Commande depuis un NPA **hors zone** : le message ne doit plus dire
+      « optez pour le retrait en magasin » (ce service n'existe pas) mais
+      donner le téléphone du restaurant.
+- [ ] Ouvre le tiroir panier : le badge doit dire « Livraison », jamais
+      « Retrait », **même une fraction de seconde au chargement**.
+- [ ] Vérifie que l'option **« Planifié »** du checkout marche toujours.
+      C'est le piège que j'ai évité : `requested_pickup_time` n'est PAS du
+      retrait, c'est le créneau de livraison sur un champ mal nommé.
 
-**URL : `/dashboard/menu`, sur ton téléphone, pas sur l'ordinateur.**
+**Bloqué sur toi :** la colonne en base et la caisse. Voir
+[NAVETTE_B1_RETRAIT.md](NAVETTE_B1_RETRAIT.md). **La caisse bouge en
+premier, toujours** — elle n'a pas d'OTA, un correctif s'y réinstalle à la
+main sur la Sunmi.
 
-- [ ] Fais défiler la liste. La recherche et les trois filtres doivent
-      **rester visibles** en haut. (Ils passaient sous l'en-tête ; corrigé.)
-- [ ] Retire un plat. Va sur `/menu` dans un autre onglet : le plat doit
-      être grisé, **et il doit avoir disparu des carrousels du haut**.
-      ⚠️ **C'est le test le plus important de la nuit** : les carrousels
-      vendaient les plats épuisés avec un bouton « + » actif. C'était ma
-      régression. Je l'ai corrigée mais je n'ai **pas pu la tester** — il
-      aurait fallu écrire en base, et tu me l'as interdit.
-- [ ] Ouvre la fiche du plat retiré (`/menu/<le-plat>`). Le bouton
-      « Ajouter » doit être inactif. ⚠️ **Attends jusqu'à 2 minutes** :
-      cette page est en cache. La grille, elle, est instantanée.
-- [ ] Remets-le. Puis « Tout remettre en vente » : le compteur doit
-      retomber à zéro.
-- [ ] Coupe le wifi de ton téléphone, tape un interrupteur. Tu dois voir
-      un message, et l'interrupteur doit revenir en arrière.
+## 4. L'upsell
 
----
+- [x] **PREUVE FAITE** — pizza seule → **Coca 0.5l** (P3).
+- [x] **PREUVE FAITE** — pizza + coca → **Salade mêlée** (P4). **Jamais de
+      frites avec une pizza.**
+- [x] **PREUVE FAITE** — 3 pizzas → **Coca 1.5l** (mode tablée).
+- [x] **PREUVE FAITE** — Pizza à la turca + coca → **Feuilles de vigne**
+      (le signal anatolien l'emporte sur « c'est une pizza »).
+- [x] **PREUVE FAITE** — repas complet → **silence**.
 
-## 3. Le suivi de commande (client)
+- [ ] **À TRANCHER — le mode tablée se heurte au seuil de silence.** Le
+      moteur se tait au-dessus de **80 CHF** de panier. Or 3 plats à 29 CHF
+      font déjà 87. Le mode le plus rentable ne se déclenche donc que sur
+      les tablées les moins chères. Monter le seuil ? L'ignorer en mode
+      tablée ? C'est ton arbitrage.
+- [ ] **À TRANCHER — le Tiramisu est marqué alcoolisé en base**, donc
+      éliminé par le premier filtre. Ton chemin dessert serait mort en
+      silence. Vrai ou erreur de saisie ?
+- [ ] **À TRANCHER — les hamburgers.** Ta table dit « → Frites ». Ils
+      portent déjà `fries_included`. Je n'ai rien implémenté pour eux.
 
-**URL : `/confirmation/<une commande à toi>`**
+Le reste des écarts spec/base est dans
+[UPSELL_MOTEUR.md](UPSELL_MOTEUR.md), dont : « 33 pizzas à 25 » = 31 à 25
+et 2 à 22 · « 10 pâtes » = 9 · la formule combo n'est pas « 28.50 vs 28 »
+mais « économie = 0.50 ».
 
-- [ ] **PREUVE FAITE** : 4 étapes, l'étape « Livrée » a disparu.
-- [ ] **PREUVE FAITE** : la dernière étape dit « devrait être arrivée »
-      quand c'est l'horloge qui parle, et « est arrivée » seulement si le
-      client a tapé le bouton.
-- [ ] À relire toi-même : sur une commande **annulée**, le bas de page ne
-      doit plus réclamer « Total à régler au livreur » ni afficher
-      l'encart « Paiement au livreur ». (Corrigé cette nuit.)
+## 5. Les SMS
 
-## 4. Mes commandes
-
-**URL : `/mes-commandes`**
-
-- [ ] Déplie une commande **terminée** → doit dire « Total payé ».
-- [ ] Déplie une commande **annulée** → doit dire « Montant de la commande
-      annulée ». Elle ne doit **jamais** dire « payé » : le client n'a rien
-      payé.
-- [ ] Déplie une commande **en cours** → « Total à régler au livreur », et
-      un bouton **« Suivre ma commande »** bien visible en haut du
-      dépliement. (Avant, ce lien disparaissait si le détail échouait à
-      charger — le client perdait l'accès au suivi de sa pizza en route.)
-
-## 5. La carte et les 12 carrousels
-
-**URL : `/menu`**
-
-- [ ] **PREUVE FAITE** : les 12 carrousels s'affichent, et les 91 plats
-      qu'ils citent existent tous en base (0 orphelin).
-- [ ] **PREUVE FAITE** : les 12 plats du carrousel « Sans viande » sont
-      tous marqués végétariens en base. La promesse du titre tient.
-- [ ] **À TRANCHER — « Le goût de la mer » a 13 plats**, les 11 autres en
-      ont 12. Volontaire ou coquille ?
-- [ ] **À TRANCHER — trois alcools** dans « Les saveurs anatoliennes » :
-      Çankaya blanc, Yakut rouge, Efes draft. La règle du projet dit
-      « jamais d'alcool en recommandation ». Un carrousel placé au-dessus
-      de la carte est une recommandation, pas un catalogue. À valider ou à
-      retirer.
-- [ ] **À MESURER — le poids de la page.** 12 carrousels, c'est environ
-      2 800 px de défilement avant d'atteindre la carte sur téléphone. Un
-      Lighthouse mobile avant le gel serait prudent (objectif > 90).
-- [ ] **À RELIRE — le registre des titres.** « Les incontournables »,
-      « Envie de fondant », « Le goût de la mer », « Les pizzas
-      généreuses » sont imagés. Si ta règle « mots courants, jamais de
-      formule littéraire » s'applique aussi ici, il faut les revoir.
-      Si ces titres sont de toi, dis-le et je n'y touche plus.
-
-## 6. Ce qui n'a pas bougé, et c'est voulu
-
-- [ ] **PREUVE FAITE** : aucune règle métier n'a été touchée. Les cinq
-      fichiers (prix, seuil de gratuité, anneaux de livraison, fidélité,
-      route de commande) sont **intacts** au diff.
-- [ ] **PREUVE FAITE** : les trois nouvelles routes du dashboard refusent
-      tout appel non authentifié (401), y compris avec un identifiant de
-      plat valide.
-- [ ] **PREUVE FAITE** : la route de détail ne révèle jamais l'existence
-      d'une commande. Même code et même corps de réponse pour une commande
-      réelle avec mauvais téléphone et pour une commande inexistante.
+- [x] **PREUVE FAITE** — 16 tests : `ı`, `đ`, `Đ`, `ł`, `Ł` sont
+      translittérés ; l'albanais et le portugais étaient déjà propres.
+- [ ] Rien à vérifier à l'œil. Surveille juste tes logs Vercel : un
+      avertissement `[sms]` signalera tout caractère qu'on ne sait pas
+      encore translittérer, **avant** que ça n'apparaisse sur une facture.
 
 ---
 
-## Pour jeudi — rien de tout ça n'est fait, et rien ne doit l'être avant ton signal
+## Rappels permanents
 
-Ordre imposé : **F7** (retrait des tampons), puis **CL1** (clôture
-nocturne). Les deux fichiers sont écrits et relus.
-
-- [ ] **À SAVOIR AVANT DE LANCER F7** : les deux clients concernés sont à
-      **9 tampons sur 10** — à une pizza gratuite. Après F7 ils
-      retomberont à **6** et **7**. Ils le verront. Aucune récompense n'a
-      été consommée sur ces cartes, donc la garde protectrice de F7 ne se
-      déclenchera pas : le retrait aura bien lieu.
-- [ ] Les deux migrations commencent bien par `SET lock_timeout = '5s'`,
-      côté migration **et** côté rollback. Vérifié.
-
-## Rappel permanent
-
-La livraison offerte est **activée** en ce moment
-(`free_delivery_enabled = true`, offset 15.00). Aujourd'hui les seuils
-réels sont 40 / 50 / 60 / 70 CHF selon la zone.
-
-**Si tu dois revenir en arrière sur le code cette semaine, COUPE le
-toggle AVANT.** Sinon le 15.00 est relu comme un seuil absolu — et comme
-le minimum de commande le plus bas est déjà de 25 CHF, la livraison
-deviendrait gratuite sur **100 % des commandes livrées**.
+- **La livraison offerte est activée.** Si tu reviens en arrière sur le
+  code, **coupe le toggle AVANT** — sinon la livraison devient gratuite sur
+  100 % des commandes.
+- **`NEXT_PUBLIC_RIALTO_BASE_URL`** doit valoir la même chose que
+  `NEXT_PUBLIC_SITE_URL`. C'est la **deuxième** fabrique d'URL (les liens de
+  carte de fidélité). N'en poser qu'une les fera diverger le jour du vrai
+  domaine.
+- **Expéditeur email** : encore `noreply@stampify.ch`. À changer au go-live.
+- **Jeudi** : F7 puis CL1, sur ton signal.

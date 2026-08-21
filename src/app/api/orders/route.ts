@@ -724,6 +724,13 @@ export async function POST(req: NextRequest) {
         first_name: firstName || "Client",
         last_name: lastName,
         phone: body.customer_phone, // déjà normalisé E.164 avec "+" côté client
+        // ⚠️ L'E-MAIL ÉTAIT PERDU ICI (corrigé 21.08). Le client le saisit
+        // au checkout, il partait dans `orders.customer_email`… et le
+        // dossier CLIENT se créait sans. La base clients — celle qu'on
+        // vend au restaurateur — restait donc vide d'adresses, même après
+        // avoir rendu le champ obligatoire. Constaté : 5 clients en base,
+        // 5 sans e-mail.
+        email: body.customer_email?.trim() || null,
       })
       .select("id")
       .single();
@@ -810,6 +817,23 @@ export async function POST(req: NextRequest) {
   // d'envoi). Fire-and-forget : un échec Brevo ne bloque JAMAIS la commande.
   // Remplace l'ancien email « nouvelle commande » au restaurateur, devenu
   // obsolète (la caisse sonne + affiche + imprime automatiquement).
+  // ⚠️ ON COMPLÈTE UN E-MAIL MANQUANT, ON N'ÉCRASE JAMAIS UN E-MAIL EXISTANT.
+  // Les 5 clients déjà en base n'ont pas d'adresse : sans ce rattrapage,
+  // ils resteraient sans, même en commandant à nouveau avec le champ
+  // désormais obligatoire.
+  // Le `.is("email", null)` porte la garde EN BASE : deux commandes
+  // simultanées ne peuvent pas se marcher dessus, et un client qui a déjà
+  // une adresse ne se la fait pas remplacer par une faute de frappe d'un
+  // soir. (`signup` écrase, lui — c'est un défaut connu, pas un modèle.)
+  const emailSaisi = body.customer_email?.trim();
+  if (customerId && emailSaisi) {
+    await sb
+      .from("customers")
+      .update({ email: emailSaisi })
+      .eq("id", customerId)
+      .is("email", null);
+  }
+
   const customerEmail = body.customer_email?.trim();
   // Garde de format légère : une saisie manifestement invalide n'appelle
   // pas Brevo pour rien (fire-and-forget → l'erreur serait muette).

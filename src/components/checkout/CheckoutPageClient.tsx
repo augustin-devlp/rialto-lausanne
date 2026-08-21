@@ -468,8 +468,19 @@ export default function CheckoutPageClient({
     paymentMethod === "card"
       ? cardTiming !== null
       : paymentMethod === "cash" || paymentMethod === "twint";
+  // ⚠️ L'E-MAIL EST OBLIGATOIRE DEPUIS LE 21.08 (décision Augustin).
+  // Raison, pour qu'aucune session future ne le repasse en optionnel :
+  // le SUIVI de commande exige un jeton, et ce jeton ne voyage que par
+  // deux canaux — la redirection après paiement, et le lien de l'e-mail.
+  // Un client sans e-mail qui ferme son onglet PERD l'accès à sa propre
+  // commande. Tant que la session client signée n'existe pas, l'e-mail
+  // n'est pas un confort : c'est le seul filet.
+  // Validation volontairement PERMISSIVE (un `@` et un point après) :
+  // refuser une adresse valide mais exotique coûterait une commande, et
+  // c'est l'envoi qui tranchera pour de bon.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const contactValid =
-    firstName.trim().length >= 2 && phone.trim().length >= 8;
+    firstName.trim().length >= 2 && phone.trim().length >= 8 && emailValid;
   const amountValid = missing === 0;
   // Restauration du garde de l'ancien <input type=time required> (le
   // picker roues n'a pas de required natif) : en « Planifié » sans heure
@@ -1096,26 +1107,33 @@ export default function CheckoutPageClient({
                   />
                 </div>
                 <div>
-                  {/* ⚠️ JURIDIQUE (décisions Augustin 20.08) : la promesse
-                      « jamais de publicité » ne vaut QUE POUR L'EMAIL — le
-                      marketing Rialto passe ACTIVEMENT par SMS sur le
-                      numéro. Elle vit dans le LIBELLÉ du champ email et
-                      NULLE PART ailleurs : sous le téléphone ou en pied de
-                      section, elle engloberait le numéro et promettrait
-                      par écrit l'inverse de ce que nous faisons. */}
+                  {/* ⚠️ LA PROMESSE « JAMAIS DE PUBLICITÉ » A ÉTÉ RETIRÉE
+                      DU LIBELLÉ LE 21.08, sur décision d'Augustin qui a
+                      réécrit ce texte pour dire à quoi sert l'adresse.
+                      Ce n'est pas une perte : une promesse retirée ne
+                      ment pas, alors qu'une promesse déplacée, si.
+                      ⚠️ CE QUI RESTE VRAI ET NE DOIT PAS BOUGER : si on la
+                      réintroduit un jour, elle ne peut vivre QUE dans le
+                      libellé de CE champ. Le marketing Rialto passe
+                      ACTIVEMENT par SMS sur le NUMÉRO — la même phrase
+                      posée sous le téléphone ou en pied de section
+                      engloberait le numéro et promettrait par écrit
+                      l'inverse de ce que nous faisons (décision 20.08). */}
                   <label
                     htmlFor="checkout-email"
                     className="mb-1 block text-xs font-medium text-mute"
                   >
-                    Email (optionnel — uniquement pour votre reçu, jamais
-                    de publicité)
+                    Email — pour suivre votre commande et recevoir votre
+                    reçu
                   </label>
                   <input
                     id="checkout-email"
                     type="email"
+                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="email"
+                    placeholder="prenom@exemple.ch"
                     className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                   />
                 </div>

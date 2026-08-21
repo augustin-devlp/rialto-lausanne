@@ -1130,8 +1130,26 @@ export default function CheckoutPageClient({
                     htmlFor="checkout-email"
                     className="mb-1 block text-xs font-medium text-mute"
                   >
+                    {/* ⚠️ « Jamais de publicité » EST UNE PROMESSE JURIDIQUE,
+                        PAS UN ARGUMENT DE VENTE. Elle a été retirée par
+                        inadvertance le 21.08 en réécrivant ce libellé, et
+                        remise sur décision d'Augustin le 22.08.
+                        Elle est TENUE PAR L'ARCHITECTURE, pas par la bonne
+                        volonté, et c'est VÉRIFIÉ : `sendEmail`
+                        (`src/lib/brevo.ts`) est la SEULE fonction d'envoi
+                        d'e-mail du dépôt, et elle a EXACTEMENT UN appelant —
+                        le reçu de commande dans `src/app/api/orders/route.ts`
+                        (bloc `buildCustomerOrderEmail`). Aucun chemin
+                        marketing par e-mail n'existe ; le marketing passe par
+                        le SMS (`src/lib/smsTemplates.ts`), canaux séparés
+                        depuis le 21.07.2026.
+                        🔴 SI UN JOUR UN ENVOI MARKETING PAR E-MAIL EST
+                        BRANCHÉ, CETTE PHRASE DOIT TOMBER DANS LE MÊME
+                        COMMIT. Elle vit aussi dans la politique de
+                        confidentialité (`src/app/privacy/page.tsx`) : les
+                        deux doivent bouger ensemble. */}
                     Email — pour suivre votre commande et recevoir votre
-                    reçu
+                    reçu. Jamais de publicité.
                   </label>
                   <input
                     id="checkout-email"

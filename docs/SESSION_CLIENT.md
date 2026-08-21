@@ -8,6 +8,35 @@ est le go-live lui-même.
 
 ---
 
+## En cinq minutes
+
+**Le problème.** Six routes traitent le numéro de téléphone comme un mot de
+passe. Ce n'en est pas un : c'est un identifiant.
+
+**La menace.** Pas l'énumération de masse — le **ciblage**. Un ex, un
+voisin connaît déjà le numéro et obtient nom, adresse et code d'entrée.
+
+**Ce qu'une session signée règle.** Elle déplace le contrôle de « chaque
+requête » vers « une connexion » : on peut journaliser, expirer, révoquer.
+Elle rend aussi « Suivre ma commande », retiré le 21.08.
+
+**Ce qu'elle ne règle pas.** Elle prouve la CONTINUITÉ, pas la POSSESSION
+du numéro. Si la connexion ne demande rien, celui qui connaît le numéro se
+connecte et repart avec tout.
+
+**Le coût.** Un module (patron existant), six routes, quatre écrans, et un
+écran de plus dans le parcours de connexion.
+
+**Ce qui casse.** Tous les « connectés » actuels sont déconnectés. Coût nul
+aujourd'hui — zéro client réel. Après le go-live, ce serait une
+reconnexion forcée pour tout le monde, un soir de service.
+
+**Ce que j'ai besoin que tu tranches** : la preuve de possession se fait
+par SMS ou par **e-mail** (voir la section dédiée — ta décision de rendre
+l'e-mail obligatoire vient d'ouvrir cette seconde voie, moins chère).
+
+---
+
 ## 🔴 La menace n'est pas celle qu'on croit
 
 Ce n'est **pas** l'énumération de masse. C'est le **CIBLAGE**.
@@ -74,9 +103,39 @@ livrer la session en croyant avoir fermé :
 
 1. **La session signée** — cookie HMAC httpOnly, patron `scanAuth.ts` déjà
    validé sur ce repo.
-2. **Un code à 4 ou 6 chiffres par SMS à la connexion** — c'est lui qui
-   prouve la possession du numéro. Sans lui, la session n'est qu'un
-   souvenir mieux rangé.
+2. **Une preuve de possession à la connexion.** Sans elle, la session
+   n'est qu'un souvenir mieux rangé.
+
+### Deux façons de prouver la possession — et l'e-mail change la donne
+
+**(a) Un code par SMS.** Prouve la possession du NUMÉRO, qui est la clé du
+compte aujourd'hui. C'est la voie la plus directe. Coût : un template SMS
+de plus, un envoi par connexion, et un canal à surveiller le soir du
+go-live.
+
+**(b) Un lien de connexion par E-MAIL.** ⚠️ Cette voie **n'existait pas
+avant le 21.08** : l'e-mail était optionnel, donc inutilisable comme
+canal de preuve. Depuis qu'il est **obligatoire au checkout**, tout client
+qui a commandé une fois en a un — et il est déjà écrit sur sa fiche.
+
+Ce qu'elle change concrètement :
+- **moins cher** : pas de SMS par connexion, on réutilise Brevo qui envoie
+  déjà les reçus ;
+- **plus simple à saisir** : un lien qu'on clique, pas un code qu'on
+  recopie ;
+- ⚠️ **elle prouve l'e-mail, pas le numéro.** Ce n'est pas un détail : si
+  le compte reste indexé par téléphone, un attaquant qui connaît le numéro
+  ne peut plus se connecter — c'est bien l'effet voulu — mais un client
+  qui change d'e-mail perd son accès, et il faut un chemin de récupération.
+- ⚠️ **elle ne couvre pas les clients d'avant.** Les 5 fiches en base n'ont
+  pas d'e-mail. Sans clients réels, la question est théorique aujourd'hui ;
+  elle ne le sera plus après le 01.09.
+
+**Ma recommandation : (b), l'e-mail.** Elle coûte moins, elle s'appuie sur
+une décision que tu viens déjà de prendre, et elle évite d'ajouter un
+canal SMS à surveiller le soir du lancement. Mais c'est **ton arbitrage** :
+elle déplace la clé d'identité du téléphone vers l'e-mail, et ça se décide
+une fois pour toutes, pas à moitié.
 
 ---
 
@@ -150,8 +209,17 @@ bord sur le parcours client.
 1. **Minimisation de `lookup`** — court, sans effet de bord, à condition
    d'avoir vérifié qu'aucune autre route ne rend les mêmes champs.
 2. **La session signée** — le socle, puis les six routes, puis les écrans.
-3. **Le code par SMS** — sans lui, l'étape 2 n'est pas une fermeture, et
-   il ne faut pas l'écrire comme si elle l'était.
+3. **La preuve de possession** (SMS ou lien e-mail — à trancher). Sans
+   elle, l'étape 2 n'est pas une fermeture, et il ne faut pas l'écrire
+   comme si elle l'était.
 
 Le point 3 est celui qu'on est tenté de repousser. C'est aussi le seul
 qui répond à la menace décrite en tête de ce document.
+
+---
+
+## Ce que je n'ai PAS fait, et pourquoi
+
+Aucune ligne de code. Tu as demandé un cadrage écrit, et le choix entre
+SMS et e-mail change la forme du socle — le coder avant l'arbitrage
+reviendrait à le coder deux fois.

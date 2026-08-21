@@ -32,6 +32,7 @@ import {
 import { PictoImmeuble, PictoMaison } from "@/components/ui/Pictos";
 
 import { minimumDeZone } from "@/lib/delivery/minimum";
+import AutocompleteAdresse from "@/components/address/AutocompleteAdresse";
 /** Valeurs copiées dans le brouillon à l'ouverture. */
 export type GraineAdresse = {
   housingType: HousingType | null;
@@ -410,13 +411,20 @@ export default function AdresseLivraisonPopup({
 
           {dHousingType !== null && (
             <>
-              <input
-                type="text"
-                value={dStreet}
-                onChange={(e) => setDStreet(e.target.value)}
+              {/* Autocomplétion GeoAdmin — confort de saisie uniquement.
+                  La qualification de zone se fait toujours sur le NPA
+                  côté serveur (`/api/delivery-zones/check`), et la saisie
+                  reste entièrement libre : la liste n'oblige à rien. */}
+              <AutocompleteAdresse
+                valeur={dStreet}
+                onChangeValeur={setDStreet}
+                onChoisir={(sug) => {
+                  // On ne remplit que ce qui est VIDE : on n'écrase jamais
+                  // une saisie du client.
+                  if (!dNpa.trim()) setDNpa(sug.npa);
+                  if (!dVille.trim() && sug.ville) setDVille(sug.ville);
+                }}
                 placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
-                aria-label="Rue et numéro"
-                required
                 className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
               />
               <div className="grid grid-cols-3 gap-3">

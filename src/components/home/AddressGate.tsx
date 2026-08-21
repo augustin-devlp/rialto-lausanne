@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { writeAddress, readAddress, villeSeedable } from "@/lib/clientStore";
 import { DELIVERY_CITIES } from "@/lib/rialto-data";
 
+import AutocompleteAdresse from "@/components/address/AutocompleteAdresse";
 type Props = {
   restaurantId: string;
   minOrderFallback: number;
@@ -143,16 +144,29 @@ export default function AddressGate({
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
-          <input
-            type="text"
-            value={streetAddress}
-            onChange={(e) => setStreetAddress(e.target.value)}
-            placeholder="Votre rue et numéro"
-            autoComplete="street-address"
-            data-address-input
-            className="w-full border-0 bg-transparent py-2 text-sm text-ink placeholder-mute outline-none sm:text-base"
-            required
-          />
+          {/* Autocomplétion GeoAdmin (22.08.2026).
+              🔴 CONFORT DE SAISIE, JAMAIS SOURCE DE VÉRITÉ : choisir une
+              ligne remplit deux champs de texte, rien de plus. La zone
+              reste qualifiée par `/api/delivery-zones/check` sur le NPA,
+              côté serveur — sinon on rouvre le bug de la zone chimère.
+              🔴 ET LA SAISIE RESTE LIBRE : `required` mais aucun
+              `readOnly`, aucune obligation de choisir dans la liste. Un
+              immeuble neuf que Swisstopo ne connaît pas ne doit jamais
+              empêcher de commander. */}
+          <div className="w-full">
+            <AutocompleteAdresse
+              valeur={streetAddress}
+              onChangeValeur={setStreetAddress}
+              onChoisir={(sug) => {
+                // ⚠️ On ne remplit le NPA QUE si le client n'en a pas déjà
+                // mis un. Choisir une ligne est une demande de remplissage,
+                // pas une autorisation d'écraser une saisie.
+                if (!postalCode.trim()) setPostalCode(sug.npa);
+              }}
+              placeholder="Votre rue et numéro"
+              className="w-full border-0 bg-transparent py-2 text-sm text-ink placeholder-mute outline-none sm:text-base"
+            />
+          </div>
         </div>
 
         {/* Code postal */}

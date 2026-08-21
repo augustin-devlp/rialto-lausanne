@@ -52,10 +52,15 @@
  * FORMULE, pas la MATIÈRE.
  */
 
+import { atteint as seuilAtteint, manqueJusqua } from "@/lib/money";
+
 /**
- * Tolérance d'un demi-centime, identique à celle du seuil de gratuité
- * (`rule.ts`). Elle absorbe les résidus flottants d'une somme de prix.
- * Sans elle, « atteint » est faux sur un panier exactement au minimum.
+ * ⚠️ CONSERVÉ POUR LES APPELANTS EXISTANTS, MAIS PLUS UTILISÉ ICI.
+ * La tolérance d'un demi-centime a été remplacée le 22.08 par une
+ * comparaison en CENTIMES ENTIERS (`src/lib/money.ts`) — règle gravée par
+ * Augustin : aucune comparaison d'argent ne se fait en flottant.
+ * Une tolérance marche, mais elle laisse ouverte la question « combien ? »
+ * à chaque nouvel appelant ; les centimes ne laissent rien d'ouvert.
  */
 export const TOLERANCE_CHF = 0.005;
 
@@ -113,16 +118,13 @@ export function ecartAuMinimum(
   const minimum = minimumDeZone(zone);
   const montant = Number.isFinite(sousTotal) ? sousTotal : 0;
 
-  // La tolérance vit ICI, pas chez l'appelant : c'est elle qui évite le
-  // « Encore 0.00 CHF » avec bouton désactivé.
-  const atteint = montant >= minimum - TOLERANCE_CHF;
-
-  const remaining = atteint
-    ? 0
-    : Math.max(
-        0.01,
-        Math.ceil(Math.round((minimum - montant) * 10000) / 100) / 100,
-      );
-
-  return { minimum, atteint, remaining };
+  // 🔴 COMPARAISON EN CENTIMES ENTIERS (`src/lib/money.ts`). Le
+  // « Encore 0.00 CHF » avec bouton désactivé ne peut plus exister : soit
+  // le seuil est atteint et il manque 0, soit il manque au moins 1 centime.
+  // C'est une propriété de la représentation, plus une garde à maintenir.
+  return {
+    minimum,
+    atteint: seuilAtteint(montant, minimum),
+    remaining: manqueJusqua(montant, minimum),
+  };
 }

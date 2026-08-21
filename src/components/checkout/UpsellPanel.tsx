@@ -21,6 +21,7 @@ import { formatCHF } from "@/lib/format";
 import { readAddress } from "@/lib/clientStore";
 import { readCustomerSession } from "@/lib/customerSession";
 
+import { estNul } from "@/lib/money";
 const DEBOUNCE_MS = 800;
 
 // D3 — clé de garde de session (accepté OU ignoré → panneau clos pour la session).
@@ -418,7 +419,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
                   <p className="text-sm font-semibold text-ink">
                     {s.palier.cout_net > 0
                       ? `votre total ne monte que de ${formatCHF(s.palier.cout_net)}`
-                      : s.palier.cout_net === 0
+                      : estNul(s.palier.cout_net)
                         ? "votre total ne bouge pas"
                         : `et payez ${formatCHF(Math.abs(s.palier.cout_net))} de MOINS`}
                   </p>

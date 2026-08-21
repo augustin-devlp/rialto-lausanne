@@ -11,6 +11,7 @@ import { passesHardFilters, scoreItem, decideSuggestionBudget } from './scoring'
 import { callGeminiForMessages, genericPairingMessage } from './geminiCall';
 import { choisitChemin, idsInconnus, panierEstUneTablee } from './chemins';
 
+import { auDessus } from "@/lib/money";
 export const UPSELL_SILENCE_THRESHOLD_CHF = 80;
 /** Plafond de la TABLÉE (≥ 3 plats). Au-delà, on se tait aussi : quelqu'un
  *  qui commande pour dix personnes n'a pas besoin d'une boisson de plus. */
@@ -125,7 +126,9 @@ export async function generateUpsell(
     : UPSELL_SILENCE_THRESHOLD_CHF;
   // `bloque` est calculé en tête de fonction, au-dessus de TOUTES les
   // sorties silencieuses — c'est le sens de la garde.
-  if (!bloque && subtotal > plafondSilence) {
+  // Comparaison en centimes (`src/lib/money.ts`) : un panier à 80.00 pile
+  // ne doit pas basculer d'un côté ou de l'autre selon un résidu binaire.
+  if (!bloque && auDessus(subtotal, plafondSilence)) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
 

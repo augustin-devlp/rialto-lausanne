@@ -1,0 +1,638 @@
+[
+ {
+  "f": "src/app/api/dashboard/jeux/route.ts",
+  "l": 116,
+  "op": ">",
+  "t": "(Number(c.discount_value) > 0"
+ },
+ {
+  "f": "src/app/api/dashboard/livraison/rule/route.ts",
+  "l": 96,
+  "op": ">",
+  "t": "if (z.delivery_fee > 0) mins.add(z.min_order_amount);"
+ },
+ {
+  "f": "src/app/api/dashboard/loyalty/rule/route.ts",
+  "l": 99,
+  "op": "!==",
+  "t": "if (mode !== \"per_amount\" && mode !== \"per_order\") {"
+ },
+ {
+  "f": "src/app/api/dashboard/push/status/route.ts",
+  "l": 68,
+  "op": "===",
+  "t": "if (isMissingTableError(lErr) || lErr.code === \"42P01\") {"
+ },
+ {
+  "f": "src/app/api/orders/route.ts",
+  "l": 228,
+  "op": "===",
+  "t": "typeof body.expected_total === \"number\" &&"
+ },
+ {
+  "f": "src/app/api/orders/route.ts",
+  "l": 420,
+  "op": "===",
+  "t": "freeDeliveryApplied = zoneFee > 0 && deliveryFee === 0;"
+ },
+ {
+  "f": "src/app/api/orders/route.ts",
+  "l": 471,
+  "op": "===",
+  "t": "validation.code.discount_type === \"free_item\" &&"
+ },
+ {
+  "f": "src/app/api/orders/route.ts",
+  "l": 488,
+  "op": ">",
+  "t": "if (totalAttendu !== null && Math.round(total * 100) > totalAttendu + 1) {"
+ },
+ {
+  "f": "src/app/api/promo-codes/validate/route.ts",
+  "l": 26,
+  "op": "!==",
+  "t": "if (!body?.code || typeof body.subtotal !== \"number\") {"
+ },
+ {
+  "f": "src/app/c/[shortCode]/LoyaltyCardView.tsx",
+  "l": 121,
+  "op": "===",
+  "t": "const isComplete = remaining === 0;"
+ },
+ {
+  "f": "src/app/c/[shortCode]/LoyaltyCardView.tsx",
+  "l": 283,
+  "op": "===",
+  "t": "{remaining === 1 ? \"tampon\" : \"tampons\"} pour{\" \"}"
+ },
+ {
+  "f": "src/app/dashboard/commandes/[id]/CommandeDetailClient.tsx",
+  "l": 199,
+  "op": "==",
+  "t": "{order.delivery_fee == null"
+ },
+ {
+  "f": "src/app/dashboard/commandes/[id]/CommandeDetailClient.tsx",
+  "l": 202,
+  "op": ">",
+  "t": "Number(order.delivery_fee) > 0"
+ },
+ {
+  "f": "src/app/dashboard/commandes/[id]/CommandeDetailClient.tsx",
+  "l": 208,
+  "op": ">",
+  "t": "{Number(order.promo_discount_amount) > 0 && ("
+ },
+ {
+  "f": "src/app/dashboard/commandes/[id]/CommandeDetailClient.tsx",
+  "l": 219,
+  "op": ">",
+  "t": "className={`flex items-center justify-between ${order.fulfillment_type === \"delivery\" || Number(order.promo_discount_amount) > 0 ?"
+ },
+ {
+  "f": "src/app/dashboard/fidelite/FideliteReglageClient.tsx",
+  "l": 307,
+  "op": ">",
+  "t": "<li key={montant} className=\"flex justify-between py-1.5\">"
+ },
+ {
+  "f": "src/app/dashboard/fidelite/FideliteReglageClient.tsx",
+  "l": 310,
+  "op": "===",
+  "t": "{rule.mode === \"per_amount\" && rule.basis === \"goods\""
+ },
+ {
+  "f": "src/app/dashboard/livraison/LivraisonReglageClient.tsx",
+  "l": 246,
+  "op": ">",
+  "t": "<li key={g.min_order_amount}>"
+ },
+ {
+  "f": "src/app/dashboard/livraison/LivraisonReglageClient.tsx",
+  "l": 346,
+  "op": "!=",
+  "t": "{a.seuilGratuite != null"
+ },
+ {
+  "f": "src/app/dashboard/push/PushComposerClient.tsx",
+  "l": 83,
+  "op": ">",
+  "t": "`Envoyé à ${body.sent}/${body.recipients_total} client${(body.recipients_total ?? 0) > 1 ? \"s\" : \"\"}` +"
+ },
+ {
+  "f": "src/app/menu/[productSlug]/ProductPageClient.tsx",
+  "l": 392,
+  "op": ">",
+  "t": "{o.extra_price > 0 && ("
+ },
+ {
+  "f": "src/app/mes-commandes/MesCommandesClient.tsx",
+  "l": 385,
+  "op": ">",
+  "t": "{etat.detail.montants.livraison > 0 && ("
+ },
+ {
+  "f": "src/app/mes-commandes/MesCommandesClient.tsx",
+  "l": 393,
+  "op": ">",
+  "t": "{etat.detail.montants.remise > 0 && ("
+ },
+ {
+  "f": "src/app/rialto-club/roue/RoueClient.tsx",
+  "l": 415,
+  "op": ">",
+  "t": "{data.wait_info && data.wait_info.days_remaining > 0 && ("
+ },
+ {
+  "f": "src/app/rialto-club/roue/RoueClient.tsx",
+  "l": 425,
+  "op": ">",
+  "t": "{data.wait_info.days_remaining > 1 ? \"s\" : \"\"}"
+ },
+ {
+  "f": "src/components/ReviewGateModal.tsx",
+  "l": 123,
+  "op": "===",
+  "t": "const canVerify = startedReviewAt !== null && remainingSec === 0;"
+ },
+ {
+  "f": "src/components/ReviewGateModal.tsx",
+  "l": 292,
+  "op": ">",
+  "t": ": remainingSec > 0"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 183,
+  "op": "<",
+  "t": "const lastValidatedSubtotal = useRef<number | null>(null);"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 286,
+  "op": "===",
+  "t": "const freeDelivery = zoneFee > 0 && deliveryFee === 0;"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 332,
+  "op": "<=",
+  "t": "if (!promo || subtotal <= 0) return;"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 333,
+  "op": "===",
+  "t": "if (lastValidatedSubtotal.current === subtotal) return;"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 532,
+  "op": "===",
+  "t": "remiseMode === \"main_propre\""
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 608,
+  "op": "!==",
+  "t": "remiseMode !== \"main_propre\" ||"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 609,
+  "op": "!==",
+  "t": "remiseOption !== \"porte\""
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1245,
+  "op": ">",
+  "t": "Récapitulatif du panier ({count} article{count > 1 ? \"s\" : \"\"})"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1331,
+  "op": ">",
+  "t": "label={`Sous-total (${count} article${count > 1 ? \"s\" : \"\"})`}"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1339,
+  "op": ">",
+  "t": "{promo && promoDiscount > 0 && ("
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1364,
+  "op": ">",
+  "t": "{missing > 0 && ("
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1499,
+  "op": "===",
+  "t": "dRemiseMode === \"main_propre\""
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1516,
+  "op": "===",
+  "t": "dRemiseMode === \"laisser_porte\""
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1538,
+  "op": "===",
+  "t": "dRemiseOption === o.cle"
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1545,
+  "op": "===",
+  "t": "dRemiseOption === o.cle ? \"bg-rialto\" : \"bg-border\""
+ },
+ {
+  "f": "src/components/checkout/CheckoutPageClient.tsx",
+  "l": 1554,
+  "op": "===",
+  "t": "{dRemiseMode === \"laisser_porte\" && ("
+ },
+ {
+  "f": "src/components/checkout/ConfirmationClient.tsx",
+  "l": 577,
+  "op": "<",
+  "t": "const remainingPlancher = useRef<number>(Infinity);"
+ },
+ {
+  "f": "src/components/checkout/ConfirmationClient.tsx",
+  "l": 579,
+  "op": "!=",
+  "t": "if (remainingAffiche != null) {"
+ },
+ {
+  "f": "src/components/checkout/ConfirmationClient.tsx",
+  "l": 593,
+  "op": "!=",
+  "t": ": remainingAffiche != null"
+ },
+ {
+  "f": "src/components/checkout/UpsellPanel.tsx",
+  "l": 419,
+  "op": ">",
+  "t": "{s.palier.cout_net > 0"
+ },
+ {
+  "f": "src/components/checkout/UpsellPanel.tsx",
+  "l": 421,
+  "op": "===",
+  "t": ": s.palier.cout_net === 0"
+ },
+ {
+  "f": "src/components/layout/AppHeader.tsx",
+  "l": 339,
+  "op": ">",
+  "t": "aria-label={`Panier${monte && nbArticles > 0 ? ` (${nbArticles})` : \"\"}`}"
+ },
+ {
+  "f": "src/components/layout/HamburgerMenu.tsx",
+  "l": 202,
+  "op": ">",
+  "t": "{cartItems > 0 && ("
+ },
+ {
+  "f": "src/components/menu-v2/CartPanel.tsx",
+  "l": 94,
+  "op": "===",
+  "t": "if (params.get(\"panier\") === \"1\") {"
+ },
+ {
+  "f": "src/components/menu-v2/CartPanel.tsx",
+  "l": 241,
+  "op": ">",
+  "t": "{o.extra_price > 0 && ` (+${formatCHF(o.extra_price)})`}"
+ },
+ {
+  "f": "src/components/menu-v2/CartPanel.tsx",
+  "l": 337,
+  "op": ">",
+  "t": "{missing > 0 ? ("
+ },
+ {
+  "f": "src/components/menu-v2/DishModal.tsx",
+  "l": 180,
+  "op": ">",
+  "t": "{o.extra_price > 0 && ("
+ },
+ {
+  "f": "src/components/menu-v2/MenuClient.tsx",
+  "l": 348,
+  "op": ">=",
+  "t": "const seuil = (window.innerWidth >= 1024 ? 72 : 120) + 40;"
+ },
+ {
+  "f": "src/lib/delivery/anneaux.ts",
+  "l": 79,
+  "op": "<=",
+  "t": "offerteDOffice: fee <= 0,"
+ },
+ {
+  "f": "src/lib/delivery/milestones.ts",
+  "l": 54,
+  "op": "<=",
+  "t": "if (Number(zone.delivery_fee) <= 0) return null;"
+ },
+ {
+  "f": "src/lib/delivery/minimum.ts",
+  "l": 118,
+  "op": ">=",
+  "t": "const atteint = montant >= minimum - TOLERANCE_CHF;"
+ },
+ {
+  "f": "src/lib/delivery/rule.ts",
+  "l": 99,
+  "op": ">=",
+  "t": "subtotalGoods >="
+ },
+ {
+  "f": "src/lib/delivery/rule.ts",
+  "l": 119,
+  "op": "<=",
+  "t": "if (zoneFee <= 0) return 0; // zone à frais nul (Chailly) : rien à offrir"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 100,
+  "op": "<=",
+  "t": "if (totalMinutes <= 25) return 25;"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 103,
+  "op": "<=",
+  "t": "if (totalMinutes <= 65) return 65;"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 104,
+  "op": "<=",
+  "t": "if (totalMinutes <= 80) return 80;"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 202,
+  "op": "<=",
+  "t": "if (totalMinutes <= 25) return \"~20–25 min\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 205,
+  "op": "<=",
+  "t": "if (totalMinutes <= 65) return \"environ une heure\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 206,
+  "op": "<=",
+  "t": "if (totalMinutes <= 80) return \"un peu plus d'une heure\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 226,
+  "op": "<=",
+  "t": "if (remainingMinutes <= ROUND_TO_MIN) return \"d'une minute à l'autre\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 227,
+  "op": "<=",
+  "t": "if (remainingMinutes <= NEAR_WINDOW_MIN) {"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 232,
+  "op": "<=",
+  "t": "if (remainingMinutes <= 25) return \"~20–25 min\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 233,
+  "op": "<=",
+  "t": "if (remainingMinutes <= 60) {"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 240,
+  "op": "<=",
+  "t": "if (remainingMinutes <= 65) return \"environ une heure\";"
+ },
+ {
+  "f": "src/lib/eta/eta.ts",
+  "l": 241,
+  "op": "<=",
+  "t": "if (remainingMinutes <= 80) return \"un peu plus d'une heure\";"
+ },
+ {
+  "f": "src/lib/eta/server.ts",
+  "l": 530,
+  "op": ">=",
+  "t": "pizzasPanier != null && pizzasPanier >= 0"
+ },
+ {
+  "f": "src/lib/loyalty/rule.ts",
+  "l": 66,
+  "op": "===",
+  "t": "const basis = row.stamp_amount_basis === \"total\" ? \"total\" : \"goods\";"
+ },
+ {
+  "f": "src/lib/orderEmail.ts",
+  "l": 177,
+  "op": ">",
+  "t": "deliveryFee > 0"
+ },
+ {
+  "f": "src/lib/orderEmail.ts",
+  "l": 194,
+  "op": ">",
+  "t": "promoDiscount > 0"
+ },
+ {
+  "f": "src/lib/orderEmail.ts",
+  "l": 259,
+  "op": ">",
+  "t": "deliveryFee > 0"
+ },
+ {
+  "f": "src/lib/orderEmail.ts",
+  "l": 264,
+  "op": ">",
+  "t": "promoDiscount > 0 ? `${promoLabel} : −${chf(promoDiscount)}` : \"\","
+ },
+ {
+  "f": "src/lib/pricing/deriveOrderPricing.ts",
+  "l": 264,
+  "op": ">",
+  "t": "if (cents(subtotalServeur) > cents(subtotalClient) + 1) hausseLigne = true;"
+ },
+ {
+  "f": "src/lib/pricing/deriveOrderPricing.ts",
+  "l": 267,
+  "op": ">",
+  "t": "Math.abs(cents(subtotalServeur) - cents(subtotalClient)) > 1 ||"
+ },
+ {
+  "f": "src/lib/pricing/deriveOrderPricing.ts",
+  "l": 313,
+  "op": ">",
+  "t": "hausse: hausseLigne || cents(totalServeur) > cents(totalClient) + 1,"
+ },
+ {
+  "f": "src/lib/promoCodes.ts",
+  "l": 191,
+  "op": "!=",
+  "t": "row.min_order_amount != null &&"
+ },
+ {
+  "f": "src/lib/promoCodes.ts",
+  "l": 192,
+  "op": "<",
+  "t": "params.subtotal < Number(row.min_order_amount)"
+ },
+ {
+  "f": "src/lib/spinAvailability.ts",
+  "l": 205,
+  "op": "===",
+  "t": "promo.discount_type === \"percent\""
+ },
+ {
+  "f": "src/lib/spinAvailability.ts",
+  "l": 207,
+  "op": "===",
+  "t": ": promo.discount_type === \"fixed\""
+ },
+ {
+  "f": "src/lib/spinAvailability.ts",
+  "l": 279,
+  "op": ">",
+  "t": "message: `Vous avez déjà tourné la roue. Prochaine chance le ${dateFR} (dans ${daysRemaining} jour${daysRemaining > 1 ? \"s\" : \"\"})"
+ },
+ {
+  "f": "src/lib/upsell/cartAnalysis.ts",
+  "l": 85,
+  "op": ">",
+  "t": "a.avgRichnessLevel = totalQty > 0 ? richSum / totalQty : 0;"
+ },
+ {
+  "f": "src/lib/upsell/cartAnalysis.ts",
+  "l": 86,
+  "op": ">=",
+  "t": "a.isHeavyMeal = a.avgRichnessLevel >= 4 || a.totalCaloricDensity >= 10;"
+ },
+ {
+  "f": "src/lib/upsell/cartAnalysis.ts",
+  "l": 87,
+  "op": "<=",
+  "t": "a.isLightMeal = a.avgRichnessLevel <= 1.5 && totalQty <= 2;"
+ },
+ {
+  "f": "src/lib/upsell/cartAnalysis.ts",
+  "l": 90,
+  "op": ">=",
+  "t": "if (topCuisine && topCuisine[1] / totalQty >= 0.66) {"
+ },
+ {
+  "f": "src/lib/upsell/cartAnalysis.ts",
+  "l": 99,
+  "op": ">=",
+  "t": "if (totalMainish >= 3) a.estimatedPax = Math.max(a.estimatedPax, totalMainish);"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 141,
+  "op": "===",
+  "t": "if (total === 0) return false;"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 157,
+  "op": ">=",
+  "t": "return nbPlats(panier) >= SEUIL_TABLEE;"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 185,
+  "op": ">=",
+  "t": "const tablee = nbPlats(panier) >= SEUIL_TABLEE;"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 241,
+  "op": ">=",
+  "t": "const tablee = nbPlats(panier) >= SEUIL_TABLEE;"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 332,
+  "op": ">",
+  "t": "if (!(ecart > 0) || ecart > ECART_MAX_PALIER) return null;"
+ },
+ {
+  "f": "src/lib/upsell/chemins.ts",
+  "l": 419,
+  "op": ">",
+  "t": "if (!(manque > 0)) return null;"
+ },
+ {
+  "f": "src/lib/upsell/index.ts",
+  "l": 56,
+  "op": "===",
+  "t": "if (analysis.totalItems === 0) {"
+ },
+ {
+  "f": "src/lib/upsell/index.ts",
+  "l": 70,
+  "op": ">",
+  "t": "context.ecartMinimum && context.ecartMinimum.remaining > 0,"
+ },
+ {
+  "f": "src/lib/upsell/index.ts",
+  "l": 91,
+  "op": ">=",
+  "t": "if (!bloque && analysis.totalItems >= 8) {"
+ },
+ {
+  "f": "src/lib/upsell/index.ts",
+  "l": 128,
+  "op": ">",
+  "t": "if (!bloque && subtotal > plafondSilence) {"
+ },
+ {
+  "f": "src/lib/upsell/scoring.ts",
+  "l": 77,
+  "op": ">=",
+  "t": "if (totalMainsAndCombos >= 2 && (item.dish_role === 'main' || item.dish_role === 'combo')) {"
+ },
+ {
+  "f": "src/lib/upsell/scoring.ts",
+  "l": 227,
+  "op": ">",
+  "t": "if (analysis.totalPrice > 0 && Number(item.price) > analysis.totalPrice * 0.6) {"
+ },
+ {
+  "f": "src/lib/upsell/scoring.ts",
+  "l": 275,
+  "op": "===",
+  "t": "if (analysis.totalItems === 0) return 0;"
+ },
+ {
+  "f": "src/lib/upsell/scoring.ts",
+  "l": 281,
+  "op": ">=",
+  "t": "if (analysis.totalItems >= 5) {"
+ },
+ {
+  "f": "src/lib/upsell/scoring.ts",
+  "l": 293,
+  "op": "<=",
+  "t": "if (!analysis.hasMain && analysis.totalItems <= 2) missingRoles.push('main');"
+ }
+]

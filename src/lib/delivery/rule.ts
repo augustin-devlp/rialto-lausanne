@@ -32,6 +32,7 @@
  * (milestones.ts retourne null si zoneFee ≤ 0).
  */
 
+import { atteint } from "@/lib/money";
 export type FreeDeliveryRule = {
   enabled: boolean;
   /** OFFSET en CHF au-dessus du minimum de zone (seuil = min + offset). */
@@ -88,16 +89,21 @@ export function isFreeDeliveryReached(
   zoneMinOrderAmount: number,
   rule: FreeDeliveryRule,
 ): boolean {
-  // Tolérance d'un demi-centime (décision Augustin 29.07.2026) : les sommes
-  // de prix ne sont pas représentables en binaire — un panier composé à
-  // 40.00 pile peut valoir 39.999999999999993. Facturer la livraison sur un
-  // résidu binaire serait indéfendable au comptoir. Le prédicat étant
-  // UNIQUE, la tolérance s'applique partout d'un coup (serveur, client,
-  // paliers).
+  // Le besoin (décision Augustin 29.07.2026) : les sommes de prix ne sont
+  // pas représentables en binaire — un panier composé à 40.00 pile peut
+  // valoir 39.999999999999993. Facturer la livraison sur un résidu binaire
+  // serait indéfendable au comptoir.
+  // ⚠️ LA PARADE A CHANGÉ LE 22.08 : c'était une tolérance d'un
+  // demi-centime (`- 0.005`), c'est maintenant une comparaison en CENTIMES
+  // ENTIERS (`src/lib/money.ts`, fonction `atteint`). Même résultat, mais
+  // une seule façon de comparer de l'argent dans tout le dépôt au lieu de
+  // deux. Le prédicat reste UNIQUE : serveur, client et paliers d'un coup.
   return (
     rule.enabled &&
-    subtotalGoods >=
-      freeDeliveryThresholdForZone(zoneMinOrderAmount, rule) - 0.005
+    atteint(
+      subtotalGoods,
+      freeDeliveryThresholdForZone(zoneMinOrderAmount, rule),
+    )
   );
 }
 

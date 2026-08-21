@@ -19,6 +19,7 @@
  */
 import { supabaseService } from "@/lib/supabase";
 
+import { enDessous } from "@/lib/money";
 const BUSINESS_ID = "59b10af2-5dbc-4ddd-a659-c49f44804bff";
 
 export type PromoSource =
@@ -187,9 +188,17 @@ export async function validatePromoCode(params: {
   if (row.uses_count >= row.max_uses) {
     return { ok: false, error: "Code déjà utilisé" };
   }
+  // 🔴 MÊME BUG QUE LE MINIMUM DE ZONE, TROUVÉ PAR LE BALAYAGE DU
+  // 22.08 : c'était `params.subtotal < Number(row.min_order_amount)`, une
+  // comparaison FLOTTANTE sur un REFUS. Un panier à 19.90 + 12.20 + 12.90
+  // vaut 45 francs et pèse 44.99999999999999 : le code promo à 45 de
+  // minimum était refusé, avec le message « Panier minimum : 45.00 CHF »
+  // affiché à côté d'un panier qui affiche 45.00. Le client voit deux fois
+  // le même nombre et se fait refuser.
+  // Comparaison en centimes entiers (`src/lib/money.ts`).
   if (
     row.min_order_amount != null &&
-    params.subtotal < Number(row.min_order_amount)
+    enDessous(params.subtotal, Number(row.min_order_amount))
   ) {
     return {
       ok: false,

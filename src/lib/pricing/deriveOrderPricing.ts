@@ -26,6 +26,7 @@
  * src/lib/pricing/deriveOrderPricing.test.ts.
  */
 
+import { centimes } from "@/lib/money";
 export const TOLERANCE_CHF = 0.01;
 export const MAX_LIGNES = 50;
 export const MAX_QUANTITE = 30;
@@ -46,8 +47,15 @@ export function stripLotOffert(texte: string): string {
 
 /** Centimes entiers : toute comparaison monétaire passe par là — la
  *  soustraction flottante faisait mordre le seuil sur un écart
- *  d'exactement 1 centime (2.01 + 0.01 < 2.02 en IEEE 754). */
-const cents = (x: number) => Math.round(x * 100);
+ *  d'exactement 1 centime (2.01 + 0.01 < 2.02 en IEEE 754).
+ *  ⚠️ CETTE FONCTION ÉTAIT LOCALE ET NON EXPORTÉE, alors que son
+ *  commentaire disait « TOUTE comparaison monétaire passe par là ». La
+ *  phrase était donc fausse hors de ce fichier — et le reste du dépôt
+ *  comparait bien en flottant. Elle délègue maintenant au module partagé
+ *  (`src/lib/money.ts`, fonction `centimes`), qui est ce que la phrase
+ *  décrivait depuis le début. L'alias local est conservé pour ne pas
+ *  toucher aux quinze appels de ce fichier. */
+const cents = centimes;
 
 /** Ligne telle que postée par le client (montants NON fiables). */
 export type LigneClient = {

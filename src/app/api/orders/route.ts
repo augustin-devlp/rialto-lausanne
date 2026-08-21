@@ -12,6 +12,7 @@ import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 import { ecartAuMinimum } from "@/lib/delivery/minimum";
+import { auDessus, estNul } from "@/lib/money";
 import {
   validatePromoCode,
   consumePromoCode,
@@ -417,7 +418,11 @@ export async function POST(req: NextRequest) {
       Number(zone.min_order_amount),
       toFreeDeliveryRule(restaurant as Record<string, unknown>),
     );
-    freeDeliveryApplied = zoneFee > 0 && deliveryFee === 0;
+    // `estNul` plutôt que `=== 0` : c'est un montant, et un montant se
+  // compare en centimes (`src/lib/money.ts`). Sûr aujourd'hui parce que
+  // `effectiveDeliveryFee` rend le littéral 0 — mais la sûreté ne doit pas
+  // dépendre de ce que fait l'implémentation d'à côté.
+  freeDeliveryApplied = auDessus(zoneFee, 0) && estNul(deliveryFee);
     deliveryZoneId = zone.id as string;
     // La ville SAISIE par le client prime : zone.city peut être un libellé
     // multi-communes (« Bottens / Poliez-Pittet / … », grille ZL1) qui n'a

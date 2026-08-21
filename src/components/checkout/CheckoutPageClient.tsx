@@ -69,6 +69,7 @@ import { readAttribution } from "@/lib/attribution";
 import { cheminConfirmation, suffixeJeton } from "@/lib/orderAccessShared";
 
 import { ecartAuMinimum, minimumDeZone } from "@/lib/delivery/minimum";
+import { auDessus, estNul, memeMontant } from "@/lib/money";
 type Props = {
   restaurantId: string;
   accepting: boolean;
@@ -283,7 +284,8 @@ export default function CheckoutPageClient({
           fdRule,
         )
       : zoneFee;
-  const freeDelivery = zoneFee > 0 && deliveryFee === 0;
+  // Même comparaison qu'au serveur (`api/orders/route.ts`) : en centimes.
+  const freeDelivery = auDessus(zoneFee, 0) && estNul(deliveryFee);
   const fdMilestone = getFreeDeliveryMilestone(
     subtotal,
     address
@@ -330,7 +332,14 @@ export default function CheckoutPageClient({
   // saisie du code faisait diverger l'écran du montant réellement facturé.
   useEffect(() => {
     if (!promo || subtotal <= 0) return;
-    if (lastValidatedSubtotal.current === subtotal) return;
+    // `memeMontant` : deux sommes de panier qui valent le même montant
+    // peuvent différer en flottant. L'égalité stricte relançait une
+    // validation de code promo pour rien.
+    if (
+      lastValidatedSubtotal.current !== null &&
+      memeMontant(lastValidatedSubtotal.current, subtotal)
+    )
+      return;
     const code = promo.code;
     // AbortController : clearTimeout n'annule QUE le timer, jamais un fetch
     // déjà parti — une réponse périmée (panier re-modifié pendant le vol)

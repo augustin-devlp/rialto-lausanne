@@ -87,7 +87,17 @@ export default function HeroSection({ restaurantId, minOrderFallback }: Props) {
             >
               <polyline points="20 6 9 17 4 12" />
             </svg>
-            Dès 25 CHF
+            {/* ⚠️ DISAIT « Dès 25 CHF », en dur. FAUX pour trois anneaux
+                sur quatre : relevé en base le 22.08, la grille est à 25 sur
+                15 NPA, 35 sur 11, 45 sur 19 et 55 sur 19 — donc faux pour
+                49 des 64 NPA desservis. Et c'est la PREMIÈRE information de
+                prix que lit un visiteur, avant toute qualification.
+                🔴 « selon votre adresse » n'est pas une précaution de
+                style : c'est ce qui transforme une promesse fausse en
+                accroche vraie. Ne pas le retirer pour raccourcir.
+                Les CGV portent la même grille (`src/app/cgv/page.tsx`) :
+                toute navette qui touche les zones repasse aux deux. */}
+            Dès 25 CHF selon votre adresse
           </li>
           <li className="flex items-center gap-1.5">
             <svg

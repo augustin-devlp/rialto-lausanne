@@ -1,8 +1,19 @@
 -- ============================================================================
 -- CL0 — RÉPARATION : 37 REFUS ÉCRASÉS EN « TERMINÉES » LE 20.08
 -- Projet cible : ymnhfdkyqbhucxdrnyzq (base active Rialto)
--- STATUT : NON EXÉCUTÉE — en attente du GO d'Augustin (21.08.2026).
---   ⚠️ Mettre ce statut à jour LE JOUR de l'exécution (piège F3b).
+-- STATUT : ✅ EXÉCUTÉE le 21.08.2026 (GO explicite d'Augustin, priorité
+--   absolue — il montre le CA à Mehmet ce soir).
+--   RÉSULTAT MESURÉ : 37 lignes restaurées en `cancelled` (le DO block
+--   levait une exception si le compte n'était pas EXACTEMENT 37).
+--     AVANT : completed 52 / 3 229.50 CHF
+--     APRÈS : cancelled 37 / 2 175.50 CHF · completed 15 / 1 054.00 CHF
+--   Historique : 37 lignes `completed -> cancelled` signées
+--   « cron-reparation ». Contrôles négatifs : transactions 16 (inchangé),
+--   Σ current_stamps 19 (inchangé), sms_logs 1 (inchangé), 0 commande
+--   `new` créée. Les 4 lignes stamp_added / 5 tampons sont redevenues
+--   détectables (R-2026-042, 043, 045, 051 sur HTEF9Z5K et PSPVUQ7X).
+--   ⚠️ NE PAS REJOUER : le prédicat ne matcherait plus rien, mais le
+--   fichier reste l'archive du geste.
 --
 -- ⚠️ À EXÉCUTER **AVANT** CL1 ET **AVANT** F7. Ordre imposé, voir §ORDRE.
 --

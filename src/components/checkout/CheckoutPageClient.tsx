@@ -66,6 +66,7 @@ import { comptePizzasPanier } from "@/lib/eta/pizzas";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
 import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 import { readAttribution } from "@/lib/attribution";
+import { cheminConfirmation, suffixeJeton } from "@/lib/orderAccessShared";
 
 type Props = {
   restaurantId: string;
@@ -732,10 +733,10 @@ export default function CheckoutPageClient({
       // Le jeton d'accès vient du serveur (21.08) : sans lui, le client
       // atterrirait sur un 404 juste après avoir payé sa commande.
       const jeton = (body as { access_token?: string | null }).access_token;
-      router.push(
-        `/confirmation/${body.order.order_number}` +
-          (jeton ? `?t=${encodeURIComponent(jeton)}` : ""),
-      );
+      // Fabrique UNIQUE du chemin — jamais `?t=` en dur : le jour où le nom
+      // du paramètre change, les lecteurs serveur suivent et un littéral
+      // client, non. Le client tomberait en 404 juste après avoir commandé.
+      router.push(cheminConfirmation(body.order.order_number, jeton));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur");
       setLoading(false);

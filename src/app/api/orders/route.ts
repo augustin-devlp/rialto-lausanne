@@ -7,11 +7,7 @@ import {
 } from "@/lib/pricing/deriveOrderPricing";
 import { sendEmail } from "@/lib/brevo";
 import { buildCustomerOrderEmail } from "@/lib/orderEmail";
-import {
-  hhmmToMinutes,
-  toZurichDate,
-  toZurichHHMM,
-} from "@/lib/timezone";
+import { toZurichDate, toZurichHHMM } from "@/lib/timezone";
 import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
@@ -98,6 +94,19 @@ export async function POST(req: NextRequest) {
     !Array.isArray(body.items) ||
     body.items.length === 0
   ) {
+    return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
+  }
+
+  // ⚠️ MÊME INVARIANT QUE `fulfillment_type` (voir plus bas) : le serveur
+  // n'accepte du client que ce qu'il ne peut pas savoir lui-même — et le
+  // restaurant, il le sait. Sans cette ligne, un POST portant un autre
+  // `restaurant_id` lisait les ZONES de l'autre restaurant (frais et
+  // minimums différents) tout en achetant le catalogue Rialto, s'insérait
+  // sous l'autre identifiant — donc invisible au dashboard — et recevait un
+  // jeton signé Rialto que la route de suivi refuserait : 404 permanent sur
+  // une commande pourtant bien réelle. Inoffensif tant que la base est
+  // mono-restaurant ; c'est justement pour ça qu'il faut le fermer avant.
+  if (body.restaurant_id !== RESTAURANT_ID) {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
@@ -374,15 +383,17 @@ export async function POST(req: NextRequest) {
     const villeSaisie =
       typeof body.delivery_city === "string" ? body.delivery_city.trim() : "";
     deliveryCity = villeSaisie || (zone.city as string | null) || null;
-  } else {
-    // Pickup : validation du panier min restaurant
-    if (subtotal < Number(restaurant.order_min_amount)) {
-      return NextResponse.json(
-        { error: `Commande minimum : ${restaurant.order_min_amount} CHF` },
-        { status: 400 },
-      );
-    }
   }
+  // ⚠️ BRANCHE RETIRÉE LE 21.08 — « Pickup : validation du panier min
+  // restaurant ». `fulfillmentType` vaut désormais toujours « delivery » :
+  // elle était inatteignable.
+  // Ce qu'elle vérifiait n'est PAS perdu : le minimum de ZONE est contrôlé
+  // plus haut, et il est plus élevé (25 à 55 CHF selon la zone, contre
+  // `restaurants.order_min_amount`). On le note pour qu'une future session
+  // ne « restaure » pas la garde en croyant colmater un trou.
+  // Conséquence : `restaurants.order_min_amount` n'est plus lu nulle part
+  // dans ce handler — il reste sélectionné ligne 122, c'est du transport
+  // inutile mais inoffensif.
 
   // --- Code promo : VALIDATION ici, CONSOMMATION juste avant l'INSERT ---
   // Deux temps volontaires : toutes les validations 400 qui suivent (heure,

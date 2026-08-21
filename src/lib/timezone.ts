@@ -1,4 +1,4 @@
-import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import { formatInTimeZone } from "date-fns-tz";
 
 export const TIMEZONE = "Europe/Zurich";
 

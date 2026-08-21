@@ -121,18 +121,38 @@ describe("la sélection des rails à afficher", () => {
     expect(rendus).toEqual([premier, second]);
   });
 
-  it("laisse tomber en silence un rail vidé par les filtres, sans casser l'autre", () => {
+  it("COMPLÈTE avec le jour suivant si un rail du jour a disparu", () => {
     const jour = "2026-08-21";
-    const [premier] = paireDuJour(jour);
-    // Le second rail a disparu (tous ses plats filtrés ou épuisés).
-    const partiel = tous.filter((r) => r.slug === premier);
-    const rendus = railsDuJour(partiel, jour);
-    expect(rendus).toHaveLength(1);
-    expect(rendus[0].slug).toBe(premier);
+    const [premier, second] = paireDuJour(jour);
+    // Le second rail du jour a été vidé par les filtres client.
+    const partiel = tous.filter((r) => r.slug !== second);
+    const rendus = railsDuJour(partiel, jour).map((r) => r.slug);
+    // On garde le premier ET on complète : jamais un seul rail à l'écran.
+    expect(rendus).toHaveLength(2);
+    expect(rendus[0]).toBe(premier);
+    expect(rendus[1]).not.toBe(second);
   });
 
-  it("ne rend rien plutôt que n'importe quoi si les deux rails ont disparu", () => {
+  it("complète même si TOUTE la paire du jour a disparu", () => {
+    const jour = "2026-08-21";
+    const [premier, second] = paireDuJour(jour);
+    const partiel = tous.filter((r) => r.slug !== premier && r.slug !== second);
+    const rendus = railsDuJour(partiel, jour);
+    expect(rendus, "la zone haute ne doit JAMAIS être vide").toHaveLength(2);
+  });
+
+  it("ne rend rien plutôt que n'importe quoi si TOUS les rails ont disparu", () => {
     expect(railsDuJour([], "2026-08-21")).toEqual([]);
+  });
+
+  it("ne duplique jamais un rail en complétant", () => {
+    for (let i = 0; i < 6; i++) {
+      const jour = new Date(Date.UTC(2026, 7, 21 + i)).toISOString().slice(0, 10);
+      // Un seul rail survit : on ne doit pas l'afficher deux fois.
+      const unSeul = tous.slice(0, 1);
+      const rendus = railsDuJour(unSeul, jour).map((r) => r.slug);
+      expect(new Set(rendus).size).toBe(rendus.length);
+    }
   });
 
   it("sur 6 jours, les 12 rails passent tous exactement une fois", () => {

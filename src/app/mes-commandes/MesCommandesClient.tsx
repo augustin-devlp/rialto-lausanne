@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import SiteFooter from "@/components/home/SiteFooter";
 import { formatCHF } from "@/lib/format";
+import { cheminConfirmation, suffixeJeton } from "@/lib/orderAccessShared";
 import { readCustomerSession } from "@/lib/customerSession";
 import { addLinesToCart } from "@/lib/clientStore";
 import type { CartItem } from "@/lib/types";
@@ -23,11 +24,10 @@ type OrderRow = {
   access_token?: string | null;
 };
 
-/** Suffixe `?t=…` d'une commande, ou chaîne vide si le jeton manque. */
+/** Suffixe `?t=…` d'une commande, ou chaîne vide si le jeton manque.
+ *  Passe par la fabrique partagée : jamais le nom du paramètre en dur. */
 function qs(order: OrderRow): string {
-  return order.access_token
-    ? `?t=${encodeURIComponent(order.access_token)}`
-    : "";
+  return suffixeJeton(order.access_token);
 }
 
 /** Statuts pour lesquels un SUIVI a encore du sens. Une commande d'il y a
@@ -332,7 +332,10 @@ export default function MesCommandesClient() {
                             bouton, pas en lien gris tout en bas. */}
                         {enCours && (
                           <Link
-                            href={`/confirmation/${order.order_number}${qs(order)}`}
+                            href={cheminConfirmation(
+                              order.order_number,
+                              order.access_token,
+                            )}
                             className="mb-3 flex w-full items-center justify-center rounded-xl bg-rialto px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-rialto-dark"
                           >
                             Suivre ma commande

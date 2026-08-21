@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatCHF } from "@/lib/format";
+import { suffixeJeton } from "@/lib/orderAccessShared";
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { writeCustomerSession } from "@/lib/customerSession";
 import { useStampRule } from "@/lib/loyalty/useStampRule";
@@ -185,9 +186,7 @@ export default function ConfirmationClient({
   accessToken,
 }: Props) {
   /** Suffixe de requête portant le jeton, à coller aux appels gardés. */
-  const qsJeton = accessToken
-    ? `?t=${encodeURIComponent(accessToken)}`
-    : "";
+  const qsJeton = suffixeJeton(accessToken);
   const [order, setOrder] = useState<OrderData>(initialOrder);
   const [loyalty, setLoyalty] = useState<LoyaltyCardState>({ status: "idle" });
 

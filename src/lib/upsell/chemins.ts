@@ -12,11 +12,15 @@ import type { CartAnalysis, MenuItemFull } from "./types";
  * donc pas faire monter en gamme À L'INTÉRIEUR d'une catégorie — on ne peut
  * qu'AJOUTER UNE CATÉGORIE ABSENTE du panier.
  *
- * ⚠️ CE MODULE NE FILTRE PAS. Il propose des candidats DANS L'ORDRE DE
- * PRÉFÉRENCE ; les gardes dures (alcool, épuisé, déjà au panier, allergène,
- * régime, article déjà refusé) restent dans `scoring.ts`, qui est le seul
- * endroit où elles vivent. Un candidat rendu ici peut donc être écarté
- * ensuite — c'est voulu, et c'est pourquoi on en rend plusieurs.
+ * ⚠️ CE MODULE FILTRE LUI-MÊME LA DISPONIBILITÉ ET L'ALCOOL, à l'entrée.
+ * Il l'a d'abord délégué à l'appelant — c'était l'inversion littérale de la
+ * règle d'office du 21.08, donc la 5e occurrence programmée de la même
+ * classe de bug : `choisitChemin` est EXPORTÉ, et un second appelant
+ * hériterait d'un contrat qui dit « je ne filtre pas ».
+ * Double filtrage assumé : `passesHardFilters` reste en aval pour tout le
+ * reste (déjà au panier, allergène, régime, article refusé). C'est
+ * exactement ce que la règle demande de ne PAS « remonter en amont pour
+ * éviter un double filtrage ».
  *
  * ── CHEMINS IMPLÉMENTÉS ICI ─────────────────────────────────────────────
  *   P3 — plat sans boisson
@@ -33,7 +37,7 @@ import type { CartAnalysis, MenuItemFull } from "./types";
 /** Catégories, par id. Les noms ne sont PAS un discriminant fiable :
  *  « Entrées » mélange 3 accompagnements et 11 entrées, et « Plats viandes »
  *  contient un plat végétarien. On passe donc par les ids, avec une garde. */
-const CAT = {
+export const CAT = {
   PIZZA: "244cfb35-dc56-47e5-b251-862cb623e482",
   PATES: "d30e7b56-3df5-4a6a-95e3-abeeb85b3ebb",
   LASAGNE: "d59b5816-2f22-43d9-bc54-643c228ea87b",
@@ -46,7 +50,7 @@ const CAT = {
 /** Articles cités par la spec, par id (jamais par nom : les noms en base
  *  sont accentués et longs — « Mini Rösti », « Salade mêlée » — un lookup
  *  par la graphie de la spec renvoie zéro ligne). */
-const ART = {
+export const ART = {
   COCA_05: "63889d31-a920-4a73-b5a4-12bfcb6e1575", // Coca-Cola 0.5l · 3.50
   COCA_ZERO_05: "fe329962-741f-4e93-aadb-677a07db2cbd", // Zéro 0.5l · 3.50
   COCA_15: "1fad6b68-90c8-48ae-9aac-b648db8829f2", // Coca-Cola 1.5l · 8.50
@@ -180,7 +184,15 @@ function cheminP4(
   if (analysis.hasFriesIncluded) return null;
 
   const tablee = nbPlats(panier) >= SEUIL_TABLEE;
-  const plats = platsDuPanier(panier);
+  // ⚠️ LE DISPATCH INCLUT LES COMBOS, le compte de la tablée NON.
+  // `platsDuPanier` exclut les combos — juste pour compter une tablée (un
+  // combo porte déjà sa boisson). Mais s'en servir AUSSI pour le dispatch
+  // rendait P4 muet sur TOUS les paniers combo : `cats` était vide, aucune
+  // branche ne matchait. Or les combos ont leur propre rail, et P4 est
+  // « le vrai levier de marge ». Deux usages, deux listes.
+  const plats = panier.filter(
+    (i) => i.dish_role === "main" || i.dish_role === "combo",
+  );
   const cats = new Set(plats.map((p) => p.category_id));
 
   // Panier anatolien : le signal de cuisine prime sur la catégorie, parce
@@ -254,11 +266,42 @@ export function choisitChemin(
   analysis: CartAnalysis,
   catalogue: MenuItemFull[],
 ): ResultatChemin | null {
-  const get = parId(catalogue);
+  // Filtre d'entrée : jamais un épuisé, jamais un alcool. Même geste que
+  // `resoudCollections` pour les rails — la garde vit dans la fonction.
+  const sains = catalogue.filter(
+    (i) =>
+      i.is_available !== false &&
+      i.is_out_of_stock !== true &&
+      !i.contains_alcohol &&
+      (i.dish_role as string) !== "drink_alcohol",
+  );
+  const get = parId(sains);
   return (
     cheminP8(analysis) ??
     cheminP3(panier, analysis, get) ??
     cheminP4(panier, analysis, get) ??
     null
   );
+}
+
+/**
+ * ⚠️ INTERDICTION DURE — PIZZA ET FRITES NE VONT PAS ENSEMBLE.
+ *
+ * Elle était écrite en commentaire dans P4, et implémentée comme une simple
+ * ABSENCE de candidat. Ça ne tient pas : le repli sur le scoreur est un
+ * chemin NOMINAL, pas un cas d'erreur — il se déclenche dès qu'une rupture,
+ * un allergène, un régime ou un refus antérieur vide les candidats du
+ * chemin. Le scoreur reprend alors le menu entier, et « Frites Classique »
+ * y remonte sans rien pour l'arrêter. Le client lisait « des frites avec
+ * ça ? » sous une pizza.
+ *
+ * Une interdiction métier vit donc ICI, dans une fonction appelée par la
+ * garde dure — jamais dans le choix des candidats. Règle d'office du 21.08.
+ */
+export function interditAvecLePanier(
+  item: { id: string },
+  analysis: CartAnalysis,
+): boolean {
+  if (item.id !== ART.FRITES) return false;
+  return analysis.categoryIds.has(CAT.PIZZA);
 }

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { cheminConfirmation } from "./orderAccessShared";
 
 /**
  * JETON D'ACCÈS À UNE COMMANDE — HMAC dérivé, sans stockage (21.08.2026).
@@ -96,8 +97,7 @@ export function verifyOrderToken(
   return valide;
 }
 
-/** Nom du paramètre de requête qui porte le jeton. */
-export const PARAM_JETON = "t";
+export { PARAM_JETON, cheminConfirmation, suffixeJeton } from "./orderAccessShared";
 
 /**
  * ⚠️ L'UNIQUE FABRIQUE D'URL DE CONFIRMATION DU DÉPÔT.
@@ -114,10 +114,9 @@ export function buildConfirmationUrl(params: {
   orderNumber: string;
 }): string {
   const base = params.siteUrl.replace(/\/$/, "");
-  const chemin = `${base}/confirmation/${encodeURIComponent(params.orderNumber)}`;
   const jeton = signOrderToken(params.restaurantId, params.orderNumber);
   // Sans secret, on rend l'URL nue plutôt qu'une URL au jeton vide : elle
   // sera refusée à l'ouverture, ce qui est le comportement voulu, et le
   // fail-fast se voit dans les logs du point d'appel.
-  return jeton ? `${chemin}?${PARAM_JETON}=${jeton}` : chemin;
+  return `${base}${cheminConfirmation(params.orderNumber, jeton)}`;
 }

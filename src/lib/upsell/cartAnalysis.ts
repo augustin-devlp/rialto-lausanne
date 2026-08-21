@@ -18,7 +18,7 @@ export function analyzeCart(items: MenuItemFull[]): CartAnalysis {
     estimatedPax: 1, isSolo: false, isDuo: false, isFamily: false, isGroup: false,
     hasSpicyItem: false, hasSignatureItem: false, hasSeafood: false,
     isFullMeal: false, hasAnyDrink: false, hasFriesIncluded: false,
-    itemIds: new Set(), itemNames: [],
+    itemIds: new Set(), categoryIds: new Set(), itemNames: [],
     allUpsellTags: new Set(), expectedPairings: new Set(), forbiddenPairings: new Set()
   };
 
@@ -42,6 +42,8 @@ export function analyzeCart(items: MenuItemFull[]): CartAnalysis {
     a.maxHeatLevel = Math.max(a.maxHeatLevel, it.heat_level || 0);
     richSum += (it.richness_level || 2) * q;
     a.totalCaloricDensity += (it.caloric_density || 3) * q;
+
+    if (it.category_id) a.categoryIds.add(it.category_id);
 
     const cuisine = it.cuisine_style;
     a.cuisineDistribution[cuisine] = (a.cuisineDistribution[cuisine] || 0) + q;

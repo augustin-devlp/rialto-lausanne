@@ -1,4 +1,5 @@
 import type { CartAnalysis, MenuItemFull, UpsellContext, UpsellCandidate, DishRole } from './types';
+import { interditAvecLePanier } from './chemins';
 
 /**
  * Filtres durs (hard filters) — un plat qui ne passe pas est éliminé.
@@ -16,6 +17,12 @@ export function passesHardFilters(
   // pour la suite de la fonction, ce qui casse le filtre BUG #3 verbatim plus bas
   // qui compare encore item.dish_role à 'drink_alcohol'. Zéro effet runtime.
   if (item.contains_alcohol || (item.dish_role as string) === "drink_alcohol") return false;
+
+  // 0 bis. Interdictions liées à ce qu'il y a DÉJÀ au panier (pizza →
+  // jamais de frites). Elles vivent dans une fonction, appelée ici :
+  // écrites comme une simple absence de candidat dans `chemins.ts`, elles
+  // étaient perdues dès que le moteur retombait sur le scoreur.
+  if (interditAvecLePanier(item, analysis)) return false;
 
   // 1. Déjà au panier
   if (analysis.itemIds.has(item.id)) return false;

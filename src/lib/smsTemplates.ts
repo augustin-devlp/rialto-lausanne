@@ -98,11 +98,17 @@ export type TemplateContext = Partial<Record<TemplateVariableKey, string>>;
  * 19.08) : UN SEUL caractère hors alphabet GSM-7 (le « î » de Benoît, le
  * « ê » de Noémie…) bascule TOUT le SMS en UCS-2 — 70 caractères par
  * segment au lieu de 160, soit 2-3 segments FACTURÉS au lieu d'un, sur
- * chaque envoi, pour des milliers de clients. Les templates maison sont
- * déjà écrits désaccentués (« Felicitations ») ; cette passe couvre les
+ * chaque envoi, pour des milliers de clients. Cette passe couvre les
  * valeurs DYNAMIQUES (prénoms, libellés de lots). Uniformément ASCII
  * (é→e aussi, bien que é soit GSM-7 : la simplicité vaut mieux qu'une
  * table d'exceptions). Les URLs (déjà ASCII) ressortent inchangées.
+ *
+ * ⚠️ CORRECTION DU 21.08 : cet en-tête affirmait que « les templates maison
+ * sont déjà écrits désaccentués ». C'est vrai pour les ACCENTS, faux pour
+ * le COÛT — `referral_success` porte un 🎉 en dur, et `birthday_wish` en
+ * base porte 🎂 et 🍕. Le corps du template ne passe ni par cette fonction
+ * ni par son journal. `signaleContenuHorsGsm7` comble la moitié qu'on peut
+ * combler sans toucher à un texte éditorial : elle le SIGNALE.
  */
 /**
  * ⚠️ LES LETTRES QUE LA DÉCOMPOSITION UNICODE NE PEUT PAS ATTEINDRE.
@@ -176,10 +182,41 @@ function translittereGsm7(valeur: string): string {
   return out;
 }
 
+/**
+ * Signale les caractères hors GSM-7 présents dans le CORPS d'un template.
+ *
+ * ⚠️ `translittereGsm7` ne s'applique qu'aux VALEURS substituées. Le corps
+ * du template, lui, ne passait ni par le filtre ni par le journal — et il
+ * en contient : `referral_success` porte un 🎉 en dur. Le module se donnait
+ * donc du mal pour rattraper le « ı » d'Işık et laissait passer un emoji
+ * cinquante lignes plus haut, qui double le coût du même SMS.
+ * On ne MODIFIE pas le texte (c'est un choix éditorial, et la version en
+ * base fait foi) — on le SIGNALE, pour que le surcoût ne se découvre plus
+ * sur une facture.
+ */
+function signaleContenuHorsGsm7(content: string): void {
+  const rebelles = [...new Set([...content].filter((c) => !GSM7.includes(c)))];
+  if (rebelles.length > 0) {
+    console.warn(
+      "[sms] le TEXTE du template contient " +
+        rebelles.length +
+        " caractère(s) hors GSM-7 — ce SMS partira en UCS-2 (70 au lieu de " +
+        "160 par segment), quels que soient les prénoms : " +
+        rebelles
+          .map(
+            (c) =>
+              c + " (U+" + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0") + ")",
+          )
+          .join(", "),
+    );
+  }
+}
+
 export function renderTemplate(
   content: string,
   ctx: TemplateContext,
 ): string {
+  signaleContenuHorsGsm7(content);
   return content
     .replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_m, key: string) => {
       const k = key.toLowerCase() as TemplateVariableKey;

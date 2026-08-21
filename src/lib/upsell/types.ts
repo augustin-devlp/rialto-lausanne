@@ -74,6 +74,11 @@ export interface CartAnalysis {
   /** Phase 12 V3 — fries déjà incluses (hamburgers + side). */
   hasFriesIncluded: boolean;
   itemIds: Set<string>;
+  /** Catégories présentes au panier. Nécessaire aux interdictions dures qui
+   *  dépendent de ce qu'il y a DÉJÀ dans le panier (pizza → jamais de
+   *  frites) : `passesHardFilters` ne reçoit pas les articles, seulement
+   *  cette analyse. */
+  categoryIds: Set<string>;
   itemNames: string[];
   allUpsellTags: Set<string>;
   expectedPairings: Set<string>;

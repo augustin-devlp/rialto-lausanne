@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { renderTemplate } from "./smsTemplates";
+import { renderTemplate, TEMPLATE_META } from "./smsTemplates";
 
 /**
  * Ce que ces tests protègent : un SMS bascule en UCS-2 — 70 caractères par
@@ -90,5 +90,29 @@ describe("translittération GSM-7 des valeurs injectées", () => {
     const sortie = renderTemplate("Bonjour {{customer_name}} !", {});
     expect(sortie).not.toContain("customer_name");
     expect(sortie).not.toContain("{{");
+  });
+});
+
+
+describe("le CORPS du template, pas seulement les valeurs", () => {
+  it("signale un emoji en dur dans le texte — il double le coût quel que soit le prénom", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderTemplate(TEMPLATE_META.referral_success.defaultContent, {
+      customer_name: "Marc",
+      reward_label: "une pizza",
+      code: "ABC",
+    });
+    expect(warn).toHaveBeenCalled();
+    const messages = warn.mock.calls.map((c) => String(c[0])).join(" ");
+    expect(messages).toContain("TEXTE du template");
+  });
+
+  it("ne dit rien sur un template entièrement GSM-7", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderTemplate(TEMPLATE_META.loyalty_card_created.defaultContent, {
+      customer_name: "Marc",
+      card_url: "https://exemple.ch/c/ABCD1234",
+    });
+    expect(warn).not.toHaveBeenCalled();
   });
 });

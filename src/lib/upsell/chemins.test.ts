@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { analyzeCart } from "./cartAnalysis";
-import { choisitChemin, idsInconnus, SEUIL_TABLEE } from "./chemins";
+import {
+  choisitChemin,
+  idsInconnus,
+  interditAvecLePanier,
+  SEUIL_TABLEE,
+} from "./chemins";
 import type { MenuItemFull } from "./types";
 
 /**
@@ -246,5 +251,73 @@ describe("panier vide ou hors sujet", () => {
 
   it("ne dit rien sur une boisson seule", () => {
     expect(chemin([boisson()])).toBeNull();
+  });
+});
+
+
+describe("🔴 l'interdiction DURE pizza / frites", () => {
+  it("interdit les frites dès qu'une pizza est au panier", () => {
+    const a = analyzeCart([pizza()]);
+    expect(interditAvecLePanier({ id: ID.FRITES }, a)).toBe(true);
+  });
+
+  it("laisse passer les frites sans pizza", () => {
+    const a = analyzeCart([viande()]);
+    expect(interditAvecLePanier({ id: ID.FRITES }, a)).toBe(false);
+  });
+
+  it("n'interdit QUE les frites — la salade reste permise avec une pizza", () => {
+    const a = analyzeCart([pizza()]);
+    expect(interditAvecLePanier({ id: ID.SALADE }, a)).toBe(false);
+    expect(interditAvecLePanier({ id: ID.POTATOES }, a)).toBe(false);
+  });
+
+  it("tient même quand la pizza est noyée dans un gros panier", () => {
+    const a = analyzeCart([viande(), pates(), pizza(), boisson()]);
+    expect(interditAvecLePanier({ id: ID.FRITES }, a)).toBe(true);
+  });
+});
+
+describe("le filtre d'entrée du module (règle : la garde vit dans la fonction)", () => {
+  it("ne propose JAMAIS un article épuisé, même si le chemin le désigne", () => {
+    const casse = CATALOGUE.map((i) =>
+      i.id === ID.COCA_05 || i.id === ID.COCA_ZERO_05
+        ? { ...i, is_out_of_stock: true }
+        : i,
+    );
+    const panier = [pizza()];
+    const r = choisitChemin(panier, analyzeCart(panier), casse);
+    // P3 n'a plus de candidat → il passe la main à P4.
+    expect(r?.candidats.every((c) => !c.is_out_of_stock)).toBe(true);
+    expect(r?.chemin).not.toBe("P3");
+  });
+
+  it("ne propose JAMAIS un article alcoolisé", () => {
+    const casse = CATALOGUE.map((i) =>
+      i.id === ID.SALADE ? { ...i, contains_alcohol: true } : i,
+    );
+    const panier = [pizza(), boisson()];
+    const r = choisitChemin(panier, analyzeCart(panier), casse);
+    expect(r?.candidats.some((c) => c.id === ID.SALADE)).toBe(false);
+  });
+});
+
+describe("P4 sur un panier COMBO", () => {
+  const combo = () =>
+    art({ id: "combo-1", dish_role: "combo", price: 28, category_id: CAT.PIZZA });
+
+  it("n'est plus muet : un combo pizza reçoit bien une suggestion", () => {
+    // Un combo porte déjà sa boisson → P3 ne se déclenche pas.
+    const panier = [combo(), boisson()];
+    const r = choisitChemin(panier, analyzeCart(panier), CATALOGUE);
+    expect(r?.chemin).toBe("P4");
+    expect(r?.candidats.length).toBeGreaterThan(0);
+  });
+
+  it("et l'interdiction pizza/frites s'applique aussi au combo pizza", () => {
+    const panier = [combo(), boisson()];
+    const ids = choisitChemin(panier, analyzeCart(panier), CATALOGUE)
+      ?.candidats.map((c) => c.id) ?? [];
+    expect(ids).not.toContain(ID.FRITES);
   });
 });

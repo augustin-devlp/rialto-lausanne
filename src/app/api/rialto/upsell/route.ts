@@ -42,6 +42,17 @@ export async function POST(req: NextRequest) {
 
     const result = await generateUpsell(cart, context);
 
+    // ⚠️ ON JOURNALISE LE CHEMIN. Le champ `chemin` était écrit sur chaque
+    // suggestion avec le commentaire « c'est la seule chose qui rendra la
+    // correction possible dans trois mois » — et il n'était LU par personne.
+    // Il traversait le JSON et mourait dans le navigateur. Une garantie
+    // écrite sans la ligne qui la tient est un claim faux : la voici.
+    const premiere = result.suggestions?.[0];
+    console.log(
+      "[upsell] chemin=" + (premiere?.chemin ?? "scoreur") +
+        " panier=" + (body.cart_items?.length ?? 0) +
+        " suggestion=" + (premiere?.name ?? "aucune"),
+    );
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error('[upsell] route error', err);

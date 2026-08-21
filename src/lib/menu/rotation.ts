@@ -83,17 +83,35 @@ export function paireDuJour(jour: string): readonly [string, string] {
  * réafficher les douze le jour où quelqu'un ajoute une seconde surface.
  *
  * Un rail vidé par les filtres client (régime, allergène, épuisés) disparaît
- * naturellement : `resoudCollections` ne le renvoie déjà plus.
+ * naturellement : `resoudCollections` ne le renvoie déjà plus. Dans ce cas,
+ * on COMPLÈTE avec les jours suivants du cycle plutôt que de rendre une
+ * page à un seul rail — ou à zéro.
  */
 export function railsDuJour<T extends { slug: string }>(
   rails: T[],
   jour: string,
 ): T[] {
-  const [premier, second] = paireDuJour(jour);
   const parSlug = new Map(rails.map((r) => [r.slug, r]));
-  return [premier, second]
-    .map((slug) => parSlug.get(slug))
-    .filter((r): r is T => r !== undefined);
+  const index = indexDuCycle(jour);
+  const retenus: T[] = [];
+  const vus = new Set<string>();
+
+  // ⚠️ ON COMPLÈTE AVEC LES JOURS SUIVANTS DU CYCLE si la paire du jour ne
+  // rend pas deux rails. Avec 12 rails affichés, la probabilité que tout se
+  // vide était nulle ; avec 2, il suffit d'un filtre « végétarien » ou de
+  // quelques ruptures pour que la zone haute du menu soit VIDE — et elle
+  // l'était en silence. Passer de N à 2 transforme un cas impossible en cas
+  // courant. La réparation vit ici : c'est cette fonction qui connaît le
+  // cycle, pas l'appelant.
+  for (let d = 0; d < LONGUEUR_CYCLE && retenus.length < 2; d++) {
+    for (const slug of PAIRES[(index + d) % LONGUEUR_CYCLE]) {
+      if (retenus.length >= 2 || vus.has(slug)) continue;
+      vus.add(slug);
+      const rail = parSlug.get(slug);
+      if (rail) retenus.push(rail);
+    }
+  }
+  return retenus;
 }
 
 /**

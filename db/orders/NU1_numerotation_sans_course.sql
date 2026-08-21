@@ -137,6 +137,7 @@ declare
   v_slug  text;
   v_annee int := to_char(now(), 'YYYY')::int;
   v_rang  int;
+  v_txt   text;
 begin
   select upper(left(slug, 1)) into v_slug
     from public.restaurants where id = p_restaurant;
@@ -150,13 +151,29 @@ begin
        do update set dernier = public.order_counters.dernier + 1
     returning dernier into v_rang;
 
-  -- Format inchangé : lpad à 3, qui ne tronque pas au-delà de 999.
+  -- 🔴 LA LARGEUR EST UN PLANCHER, PAS UN PLAFOND (correctif NU1b, même
+  -- soir). Ce fichier écrivait `lpad(v_rang::text, 3, '0')` avec le
+  -- commentaire « qui ne tronque pas au-delà de 999 » : c'était FAUX.
+  -- `lpad('1000', 3, '0')` vaut '100' — vérifié en base. À la 1000e
+  -- commande, la fonction rendait un numéro DÉJÀ PRIS, l'index unique
+  -- refusait, et le site cessait de prendre des commandes.
+  v_txt := v_rang::text;
   return coalesce(v_slug, 'X') || '-' || v_annee::text || '-'
-         || lpad(v_rang::text, 3, '0');
+         || lpad(v_txt, greatest(3, length(v_txt)), '0');
 end;
 $function$;
 
+-- ⚠️ LES TROIS RÔLES SONT NOMMÉS, ET C'EST NÉCESSAIRE.
+-- `REVOKE … FROM public` ne suffit PAS : Supabase pose des grants
+-- NOMINATIFS sur `anon` et `authenticated` via ALTER DEFAULT PRIVILEGES,
+-- et `CREATE OR REPLACE FUNCTION` CONSERVE l'ACL existante.
+-- (Le SQL réellement exécuté le 22.08 portait bien les trois lignes ;
+--  ce fichier n'en avait qu'une — le rejouer aurait laissé le trou.)
+-- Enjeu : la fonction est devenue un ÉCRIVAIN. Avec la clé anon du bundle,
+-- n'importe qui pouvait brûler des rangs en boucle.
 REVOKE ALL ON FUNCTION public.generate_order_number(uuid) FROM public;
+REVOKE ALL ON FUNCTION public.generate_order_number(uuid) FROM anon;
+REVOKE ALL ON FUNCTION public.generate_order_number(uuid) FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.generate_order_number(uuid) TO service_role;
 
 -- ── CONTRÔLES, DANS LA MÊME TRANSACTION ───────────────────────────────

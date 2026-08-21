@@ -7,6 +7,7 @@ import { renderTemplate, TEMPLATE_META } from "@/lib/smsTemplates";
 import { sendSms } from "@/lib/brevo";
 
 import { journaliseErreurBase, estViolationUnicite } from "@/lib/apiErreurs";
+import { normaliseEmail } from "@/lib/lienConnexion";
 export const dynamic = "force-dynamic";
 
 /**
@@ -305,7 +306,7 @@ export async function POST(req: NextRequest) {
         first_name: body.first_name.trim(),
         last_name: body.last_name?.trim() || "",
         ...(body.email !== undefined
-          ? { email: body.email?.trim() || null }
+          ? { email: normaliseEmail(body.email ?? "") || null }
           : {}),
       })
       .eq("id", customerId);
@@ -322,7 +323,7 @@ export async function POST(req: NextRequest) {
           first_name: body.first_name.trim(),
           last_name: body.last_name?.trim() || "",
           ...(body.email !== undefined
-            ? { email: body.email?.trim() || null }
+            ? { email: normaliseEmail(body.email ?? "") || null }
             : {}),
         })
         .eq("id", customerId);
@@ -338,7 +339,7 @@ export async function POST(req: NextRequest) {
           first_name: body.first_name.trim(),
           last_name: body.last_name?.trim() || "",
           phone, // canonique E.164 avec "+"
-          email: body.email?.trim() || null,
+          email: normaliseEmail(body.email ?? "") || null,
         })
         .select("id")
         .single();
@@ -446,7 +447,7 @@ export async function POST(req: NextRequest) {
       first_name: body.first_name.trim(),
       last_name: body.last_name?.trim() || "",
       phone,
-      email: body.email?.trim() || null,
+      email: normaliseEmail(body.email ?? "") || null,
     },
     card: {
       id: cardId,

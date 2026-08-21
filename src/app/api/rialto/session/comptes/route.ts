@@ -3,6 +3,7 @@ import { supabaseService } from "@/lib/supabase";
 import { journaliseErreurBase } from "@/lib/apiErreurs";
 import { PARAM_LIEN, verifieLienConnexion } from "@/lib/lienConnexion";
 
+import { isSessionClientConfigured } from "@/lib/sessionClient";
 export const dynamic = "force-dynamic";
 
 /**
@@ -23,7 +24,10 @@ export const dynamic = "force-dynamic";
  */
 
 /**
- * Masque un numéro : `+41791234589` → `07• ••• •• 89`.
+ * Masque un numéro : `+41791234589` → `0•• ••• •• 89`.
+ * (Le commentaire annonçait `07• …` : faux, le code n'a jamais gardé le
+ * deuxième chiffre. Corrigé le 22.08 — sur une fonction dont le rôle est
+ * précisément de doser ce qui fuit, l'exemple doit être exact.)
  *
  * ⚠️ Deux derniers chiffres, pas plus. Assez pour que le membre du foyer
  * reconnaisse SON numéro, pas assez pour que quelqu'un qui a ouvert la
@@ -41,6 +45,14 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const email = url.searchParams.get("e") ?? "";
   const jeton = url.searchParams.get(PARAM_LIEN);
+
+  // Même garde qu'à l'entrée du parcours : les DEUX secrets.
+  if (!isSessionClientConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: "connexion_non_configuree" },
+      { status: 500 },
+    );
+  }
 
   const verdict = verifieLienConnexion(email, jeton);
   if (!verdict.ok) {

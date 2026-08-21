@@ -13,6 +13,7 @@ import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 import { ecartAuMinimum } from "@/lib/delivery/minimum";
 import { auDessus, estNul } from "@/lib/money";
+import { normaliseEmail } from "@/lib/lienConnexion";
 import {
   validatePromoCode,
   consumePromoCode,
@@ -120,8 +121,23 @@ export async function POST(req: NextRequest) {
   // sans validation runtime. Un POST portant `"customer_email": 42` faisait
   // jeter `.trim()` → 500 au lieu du 400 prévu. Même parade que le
   // `String(body.notes)` du bloc de neutralisation des notes.
-  const emailRecu =
-    typeof body.customer_email === "string" ? body.customer_email.trim() : "";
+  // 🔴 NORMALISÉ ICI, À L'ÉCRITURE — pas seulement à la lecture.
+  // Le défaut trouvé en relecture le 22.08 : `normaliseEmail` gouvernait
+  // les CINQ lectures du parcours de connexion et ZÉRO écriture. Or `=`
+  // sur `text` est SENSIBLE À LA CASSE en Postgres.
+  // Ce que ça donnait : un client tape « Jean.Dupont@Bluewin.CH » au
+  // checkout, la base garde cette graphie, il demande un lien de connexion
+  // avec la même adresse → la requête cherche « jean.dupont@bluewin.ch » →
+  // ZÉRO ligne → aucun e-mail ne part, et l'écran affiche quand même « le
+  // lien vient de partir ». Le client attend indéfiniment.
+  // ⚠️ AGGRAVANT : la garde anti-oracle rend ce bug INDIAGNOSTICABLE de
+  // l'extérieur. Aucun client ne peut le rapporter — l'écran ne peut, par
+  // construction, rien dire d'autre.
+  // La règle générale : dès qu'une fonction normalise une CLÉ DE RECHERCHE,
+  // elle doit gouverner l'ÉCRITURE aussi. Sinon les deux chemins divergent.
+  const emailRecu = normaliseEmail(
+    typeof body.customer_email === "string" ? body.customer_email : "",
+  );
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRecu)) {
     return NextResponse.json(
       { error: "Un email valide est requis pour suivre votre commande." },

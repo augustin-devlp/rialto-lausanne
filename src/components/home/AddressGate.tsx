@@ -165,6 +165,14 @@ export default function AddressGate({
               }}
               placeholder="Votre rue et numéro"
               className="w-full border-0 bg-transparent py-2 text-sm text-ink placeholder-mute outline-none sm:text-base"
+              // Les trois attributs que l'input d'origine portait, remis
+              // après la relecture du 22.08 : le `required` que le
+              // commentaire ci-dessus affirmait à tort, l'autofill du
+              // navigateur, et le marqueur dont `AddressRequiredToast` a
+              // besoin pour donner le focus.
+              required
+              autoComplete="street-address"
+              marqueurAdresse
             />
           </div>
         </div>

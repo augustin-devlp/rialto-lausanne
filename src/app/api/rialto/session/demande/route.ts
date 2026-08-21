@@ -11,6 +11,7 @@ import {
 import { sendEmail } from "@/lib/brevo";
 import { construitEmailConnexion } from "@/lib/loginEmail";
 
+import { isSessionClientConfigured } from "@/lib/sessionClient";
 export const dynamic = "force-dynamic";
 
 /**
@@ -104,7 +105,13 @@ function memeReponsePourTous() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!estConfigureLienConnexion()) {
+  // ⚠️ LES DEUX SECRETS, PAS UN. Cette route ne testait que celui du LIEN.
+  // Sans `CLIENT_SESSION_SECRET`, l'e-mail partait, l'écran de choix
+  // s'affichait, et c'est `session/ouvrir` qui rendait 500 — à la DERNIÈRE
+  // étape. Le client redemandait un lien, recommençait, et se faisait
+  // bloquer par la limite au bout de trois essais.
+  // La garde de configuration vit à l'ENTRÉE du parcours, pas à sa sortie.
+  if (!estConfigureLienConnexion() || !isSessionClientConfigured()) {
     // Panne de config : on ne fait PAS semblant d'avoir envoyé. Un client
     // qui attend un e-mail qui n'arrivera jamais est pire qu'une erreur.
     return NextResponse.json(

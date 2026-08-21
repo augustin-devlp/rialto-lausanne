@@ -94,7 +94,9 @@ export async function GET(req: NextRequest) {
     );
   }
   // Normalise en E.164 pour matcher quelle que soit la façon de saisir
-  const phone = normalizePhone(phoneRaw ?? "") ?? (phoneRaw ?? "");
+  // ⚠️ `phoneDemande` : ce que l'APPELANT a posté. Il ne fait PAS foi dès
+  // qu'une session existe — voir `phoneEffectif`, calculé après la carte.
+  const phoneDemande = normalizePhone(phoneRaw ?? "") ?? (phoneRaw ?? "");
 
   const admin = supabaseService();
 
@@ -110,10 +112,29 @@ export async function GET(req: NextRequest) {
     .eq("card_id", CARD_ID);
   const { data: cards } = await (clientDeSession
     ? requeteCarte.eq("customer_id", clientDeSession)
-    : requeteCarte.eq("customers.phone", phone)
+    : requeteCarte.eq("customers.phone", phoneDemande)
   ).limit(1);
 
   const card = Array.isArray(cards) && cards.length > 0 ? cards[0] : null;
+
+  // 🔴 LE TÉLÉPHONE QUI FAIT FOI POUR TOUT LE RESTE DE CETTE ROUTE.
+  // Défaut trouvé en relecture le 22.08 : l'en-tête promettait « quand une
+  // session est présente, le paramètre `phone` est IGNORÉ » — c'était vrai
+  // pour la CARTE et les COMMANDES, et FAUX pour la roue et la loterie,
+  // qui relisaient le `phone` de l'URL.
+  // Ce que ça donnait :
+  //   · un client connecté qui postait le numéro d'un TIERS lisait le
+  //     dernier lot gagné et la participation loterie DE CE TIERS ;
+  //   · le cas du foyer — tablette familiale, localStorage de B, session
+  //     de A — affichait les commandes de A avec la roue de B ;
+  //   · et une session SANS `phone` donnait `can_spin` toujours faux, donc
+  //     un client connecté ne pouvait jamais tourner la roue.
+  // La garde vit ICI, dans le calcul du téléphone — pas recopiée dans
+  // chacun des trois blocs qui le consomment.
+  const phoneEffectif = clientDeSession
+    ? ((card?.customers as unknown as { phone?: string } | undefined)?.phone ??
+      "")
+    : phoneDemande;
 
   // Seuil (stamps_required) + barème de fidélité (F0/M1, lu par F2).
   const { data: loyalty } = await admin
@@ -160,12 +181,15 @@ export async function GET(req: NextRequest) {
   // legacy inline). last_reward = reward_won de la dernière spin.
   let canSpin = false;
   let lastSpinReward: string | null = null;
-  if (wheel?.is_active && phone) {
+  // ⚠️ `phoneEffectif` et non `phone` : sur le chemin SESSION, `phone`
+  // n'existe plus. Le laisser ici sautait tout le bloc — un client
+  // connecté n'aurait JAMAIS pu tourner la roue.
+  if (wheel?.is_active && phoneEffectif) {
     const { data: entry } = await admin
       .from("spin_entries")
       .select("last_spin_at, reward_won")
       .eq("wheel_id", SPIN_WHEEL_ID)
-      .eq("phone", phone)
+      .eq("phone", phoneEffectif)
       .order("last_spin_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -173,7 +197,7 @@ export async function GET(req: NextRequest) {
 
     const availability = await computeSpinAvailability({
       wheelId: SPIN_WHEEL_ID,
-      phone,
+      phone: phoneEffectif,
       customerId: card ? (card.customer_id as string) : null,
     });
     canSpin = availability.can_spin;
@@ -219,7 +243,7 @@ export async function GET(req: NextRequest) {
       .from("lottery_participants")
       .select("id")
       .eq("lottery_id", LOTTERY_ID)
-      .eq("phone", phone)
+      .eq("phone", phoneEffectif)
       .eq("month", zurichMonthStart())
       .maybeSingle();
     if (aeErr && aeErr.code === "42703") {
@@ -227,7 +251,7 @@ export async function GET(req: NextRequest) {
         .from("lottery_participants")
         .select("id")
         .eq("lottery_id", LOTTERY_ID)
-        .eq("phone", phone)
+        .eq("phone", phoneEffectif)
         .maybeSingle());
     }
     alreadyEntered = !!existing;

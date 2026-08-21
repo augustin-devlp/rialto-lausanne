@@ -33,6 +33,8 @@ export default function ConnexionLienClient() {
   const [envoi, setEnvoi] = useState(false);
   const [ouverture, setOuverture] = useState<string | null>(null);
   const dejaVerifie = useRef(false);
+  /** Force une nouvelle vérification sans recharger la page. */
+  const [essai, setEssai] = useState(0);
 
   /**
    * ⚠️ ON NETTOIE L'URL DÈS QUE LE JETON EST LU.
@@ -87,7 +89,9 @@ export default function ConnexionLienClient() {
         });
       }
     })();
-  }, [email, jeton]);
+    // `essai` est dans les dépendances : c'est lui qui rejoue la
+    // vérification quand on clique « Réessayer ».
+  }, [email, jeton, essai]);
 
   /** Redemander un lien — en UN geste, sans retaper l'adresse. */
   const redemander = useCallback(async () => {
@@ -275,12 +279,37 @@ export default function ConnexionLienClient() {
           <>
             <h1 className="font-serif text-xl text-ink">Ça ne répond pas</h1>
             <p className="mt-2 text-sm text-mute">{etat.message}</p>
+            {/* 🔴 RELANCE EN MÉMOIRE, PAS `location.reload()`.
+                Le premier effet nettoie l'URL (`history.replaceState`) pour
+                que l'adresse et le jeton ne traînent ni dans l'historique
+                ni dans un `Referer`. Conséquence : recharger cette URL
+                nettoyée arrivait SANS `e` ni `c` → phase « invalide » →
+                l'écran affichait « Ce lien n'est pas lisible, il a
+                peut-être été coupé par votre messagerie ». Le site
+                accusait la messagerie du client d'un problème qu'il venait
+                de créer lui-même, et un jeton encore valide 15 minutes
+                devenait inatteignable.
+                Le jeton vit toujours dans ce composant : on rejoue l'effet. */}
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                dejaVerifie.current = false;
+                setEtat({ phase: "verification" });
+                setEssai((n) => n + 1);
+              }}
               className="mt-5 w-full rounded-xl bg-rialto py-3.5 font-semibold text-white transition-colors hover:bg-rialto-dark"
             >
               Réessayer
+            </button>
+            {/* Et une porte de sortie si le réseau ne revient pas : on peut
+                toujours redemander un lien, comme sur l'écran « périmé ». */}
+            <button
+              type="button"
+              onClick={() => void redemander()}
+              disabled={envoi}
+              className="mt-2 w-full rounded-xl border border-border py-3 text-sm font-semibold text-ink disabled:opacity-50"
+            >
+              {envoi ? "Envoi…" : "M'envoyer un nouveau lien"}
             </button>
           </>
         )}

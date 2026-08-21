@@ -36,6 +36,32 @@ interface Props {
   autoFocus?: boolean;
   /** Ajouté à la recherche pour la resserrer (ex. « Lausanne »). */
   contexte?: string;
+  /**
+   * ⚠️ CES QUATRE-LÀ NE SONT PAS DU CONFORT : ce sont les attributs que
+   * l'`<input>` d'origine portait et que le remplacement avait PERDUS
+   * (relecture du 22.08). Un composant qui remplace un input doit exposer
+   * TOUT ce que l'input exposait, sinon il défait en silence des décisions
+   * prises ailleurs.
+   */
+  required?: boolean;
+  /** Nom accessible. Sans lui, un lecteur d'écran annonce « zone de liste
+   *  modifiable » sans dire de quoi — WCAG 2.1 AA 4.1.2. */
+  ariaLabel?: string;
+  /** `autoComplete` du navigateur. `AddressGate` portait
+   *  `street-address` : le coder en dur à « off » désactivait l'autofill
+   *  d'adresse sur un site mobile-first. */
+  autoComplete?: string;
+  /**
+   * 🔴 `data-address-input` — l'attribut le plus important de la liste, et
+   * le moins visible. `AddressRequiredToast` fait
+   * `document.querySelector("[data-address-input]")` puis `scrollIntoView`
+   * + `focus` quand le client arrive avec `?reason=address_required`.
+   * C'était l'UNIQUE occurrence du dépôt, et c'était une correction
+   * marquée BLOQUANTE au 20.08. Le remplacement l'avait effacée : le toast
+   * s'ouvrait, ne trouvait rien, et sur mobile le client ne savait plus où
+   * taper.
+   */
+  marqueurAdresse?: boolean;
 }
 
 const DEBOUNCE_MS = 250;
@@ -49,6 +75,10 @@ export default function AutocompleteAdresse({
   id,
   autoFocus,
   contexte = "Lausanne",
+  required,
+  ariaLabel,
+  autoComplete = "off",
+  marqueurAdresse,
 }: Props) {
   const idListe = useId();
   const [suggestions, setSuggestions] = useState<SuggestionAdresse[]>([]);
@@ -161,7 +191,10 @@ export default function AutocompleteAdresse({
         placeholder={placeholder}
         className={className}
         autoFocus={autoFocus}
-        autoComplete="off"
+        required={required}
+        aria-label={ariaLabel}
+        autoComplete={autoComplete}
+        {...(marqueurAdresse ? { "data-address-input": true } : {})}
         role="combobox"
         aria-expanded={ouvert}
         aria-controls={idListe}

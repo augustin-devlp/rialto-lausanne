@@ -426,6 +426,13 @@ export default function AdresseLivraisonPopup({
                 }}
                 placeholder="Rue et numéro (ex: Av. de Béthusy 29)"
                 className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-[#C73E1D] focus:outline-none"
+                // `aria-label` remis : il avait disparu dans le
+                // remplacement, alors que ses huit champs voisins en ont
+                // tous un. Un `role="combobox"` sans nom accessible est une
+                // régression WCAG AA.
+                required
+                ariaLabel="Rue et numéro"
+                autoComplete="street-address"
               />
               <div className="grid grid-cols-3 gap-3">
                 <input

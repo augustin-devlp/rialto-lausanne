@@ -164,18 +164,48 @@ export default function MesCommandesClient() {
   }
 
   useEffect(() => {
-    const session = readCustomerSession();
-    if (!session) {
-      setAuthState("guest");
-      setLoading(false);
-      return;
-    }
-    setAuthState("logged_in");
-
+    // 🔴 DEUX SYSTÈMES DE SESSION COEXISTENT, et cet écran ne connaissait
+    // que l'ancien (relecture du 22.08).
+    //   · `customerSession.ts` — localStorage, exige phone + short_code.
+    //     Historique. C'est le TÉLÉPHONE comme mot de passe, le trou qu'on
+    //     ferme.
+    //   · `sessionClient.ts` — cookie HMAC httpOnly, porte un customer_id.
+    //     Posé par le lien e-mail.
+    // Le cookie étant httpOnly, il est ILLISIBLE en JS : il faut demander
+    // au serveur. Sans ce test, un client qui ouvrait son lien de connexion
+    // sur un TÉLÉPHONE NEUF — le cas exact où on a besoin d'un lien —
+    // arrivait ici avec une session serveur parfaitement valide et lisait
+    // « Pas de compte Rialto Club ». Le parcours ne marchait que pour
+    // quelqu'un déjà connecté par téléphone sur ce navigateur, c'est-à-dire
+    // pour quelqu'un qui n'avait pas besoin du lien.
+    // ⚠️ ORDRE VOULU : le COOKIE d'abord. C'est la preuve la plus forte, et
+    // c'est la seule qui fait émettre le jeton de suivi par `lookup`.
+    let annule = false;
     (async () => {
+      let parCookie = false;
+      try {
+        const test = await fetch("/api/rialto/session/ouvrir");
+        parCookie = test.ok;
+      } catch {
+        parCookie = false;
+      }
+      if (annule) return;
+
+      const session = readCustomerSession();
+      if (!parCookie && !session) {
+        setAuthState("guest");
+        setLoading(false);
+        return;
+      }
+      setAuthState("logged_in");
+
       try {
         const url = new URL("/api/rialto/loyalty/lookup", window.location.origin);
-        url.searchParams.set("phone", session.phone);
+        // ⚠️ On n'envoie le téléphone QUE s'il n'y a pas de cookie. La route
+        // ignore de toute façon le paramètre quand la session existe — mais
+        // ne pas l'envoyer évite de faire voyager un numéro pour rien, et
+        // rend le chemin lisible depuis les logs.
+        if (!parCookie && session) url.searchParams.set("phone", session.phone);
         const res = await fetch(url.toString());
         if (!res.ok) {
           setOrders([]);
@@ -189,6 +219,12 @@ export default function MesCommandesClient() {
         setLoading(false);
       }
     })();
+    // ⚠️ `annule` : le test de session est asynchrone. Sans cette garde, un
+    // démontage pendant l'attente ferait un `setState` sur un composant
+    // parti.
+    return () => {
+      annule = true;
+    };
   }, []);
 
   return (

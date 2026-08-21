@@ -1,4 +1,9 @@
-import type { CartAnalysis, MenuItemFull, PalierLivraison } from "./types";
+import type {
+  CartAnalysis,
+  EcartMinimum,
+  MenuItemFull,
+  PalierLivraison,
+} from "./types";
 
 /**
  * LES CHEMINS D'UPSELL — moteur à priorité (spec Augustin, 21.08.2026).
@@ -30,11 +35,11 @@ import type { CartAnalysis, MenuItemFull, PalierLivraison } from "./types";
  *
  * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
  *   P5 — le dessert (repas complet sans dessert)
+ *   P7 — le panier sous le minimum de zone (déblocage, pas upsell)
  *
  * ── NON IMPLÉMENTÉS, ET POURQUOI ────────────────────────────────────────
  *   P1 (combo)  → BLOQUÉ, trois raisons, voir `docs/UPSELL_MOTEUR.md`
  *   P2 (palier) → affiche des PRIX : traité à part, voir le même document
- *   P7 (minimum de zone) → spécifié, pas codé
  */
 
 /** Catégories, par id. Les noms ne sont PAS un discriminant fiable :
@@ -74,7 +79,7 @@ export const ART = {
   GLACE_COOKIE: "3598fbf8-f1f9-4431-bf79-24dca6f56e0f", // 17.00 · 3 pers.
 } as const;
 
-export type Chemin = "P2" | "P3" | "P4" | "P5" | "P8";
+export type Chemin = "P2" | "P3" | "P4" | "P5" | "P7" | "P8";
 
 export interface ResultatChemin {
   chemin: Chemin;
@@ -365,6 +370,45 @@ function cheminP5(
 }
 
 /**
+ * P7 — LE PANIER EST SOUS LE MINIMUM DE LA ZONE.
+ *
+ * ⚠️ CE N'EST PAS DE L'UPSELL, C'EST DU DÉBLOCAGE. Le client ne peut pas
+ * commander : sans ce complément, sa commande est REFUSÉE. La différence
+ * n'est pas cosmétique, elle commande deux choix :
+ *
+ *   · ON COMBLE VERS LE MINIMUM, PAS VERS LA GRATUITÉ. Proposer d'un coup
+ *     de quoi franchir le seuil de livraison offerte, à quelqu'un qui est
+ *     déjà bloqué, c'est lui demander beaucoup trop.
+ *   · LE MESSAGE DIT CE QUI DÉBLOQUE, PAS CE QU'ON GAGNE. « Ajoutez X pour
+ *     pouvoir commander », jamais « profitez de ». Le client n'est pas en
+ *     train de se faire plaisir, il est arrêté.
+ *
+ * Comme P2, on ne propose QUE des articles dont le prix couvre l'écart :
+ * en dessous, le panier reste bloqué et la suggestion n'a rien débloqué.
+ * Le moins cher d'abord, pour la même raison.
+ *
+ * ⚠️ P7 PASSE AVANT TOUT LE RESTE (sauf le silence) : tant que le panier
+ * est bloqué, aucune autre suggestion n'a de sens.
+ */
+function cheminP7(
+  analysis: CartAnalysis,
+  catalogue: MenuItemFull[],
+  ecart: EcartMinimum | null | undefined,
+): ResultatChemin | null {
+  if (!ecart) return null;
+  const manque = ecart.remaining;
+  if (!(manque > 0)) return null;
+
+  const candidats = catalogue
+    .filter((i) => i.price >= manque)
+    .filter((i) => !analysis.itemIds.has(i.id))
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 4);
+
+  return candidats.length > 0 ? { chemin: "P7", candidats } : null;
+}
+
+/**
  * P8 — LE SILENCE. Plat + boisson + accompagnement + dessert déjà là :
  * on ne dit rien. Ne rien dire est une réponse valable, et c'est même la
  * bonne quand le repas est complet — insister décrédibilise tout le reste.
@@ -392,6 +436,7 @@ export function choisitChemin(
   analysis: CartAnalysis,
   catalogue: MenuItemFull[],
   palier?: PalierLivraison | null,
+  ecartMinimum?: EcartMinimum | null,
 ): ResultatChemin | null {
   // Filtre d'entrée : jamais un épuisé, jamais un alcool. Même geste que
   // `resoudCollections` pour les rails — la garde vit dans la fonction.
@@ -405,6 +450,9 @@ export function choisitChemin(
   const get = parId(sains);
   return (
     cheminP8(analysis) ??
+    // P7 avant tout le reste : tant que le panier est SOUS LE MINIMUM, il
+    // est refusé au checkout — aucune autre suggestion n'a de sens.
+    cheminP7(analysis, sains, ecartMinimum) ??
     // P2 passe devant P3/P4/P5 : franchir un palier vaut mieux que combler
     // un trou de composition, parce qu'il fait BAISSER la facture.
     cheminP2(analysis, sains, palier) ??

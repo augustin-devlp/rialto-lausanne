@@ -5,7 +5,11 @@ import { toFreeDeliveryRule } from '@/lib/delivery/rule';
 import { generateUpsell } from '@/lib/upsell';
 import { buildContext } from '@/lib/upsell/contextBuilder';
 import { fetchFullMenu } from '@/lib/upsell/supabaseMenu';
-import type { MenuItemFull, PalierLivraison } from '@/lib/upsell/types';
+import type {
+  EcartMinimum,
+  MenuItemFull,
+  PalierLivraison,
+} from '@/lib/upsell/types';
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +59,7 @@ export async function POST(req: NextRequest) {
     // Null si : pas d'adresse, zone à frais nul, ou toggle coupé — le
     // chemin P2 se tait alors, et les autres chemins reprennent.
     let palierLivraison: PalierLivraison | null = null;
+    let ecartMinimum: EcartMinimum | null = null;
     if (body.postal_code) {
       const [zoneRes, restoRes] = await Promise.all([
         admin
@@ -87,11 +92,34 @@ export async function POST(req: NextRequest) {
           delivery_fee: zone.delivery_fee,
         };
       }
+      // Écart au MINIMUM de la zone (chemin P7). Rien à voir avec le
+      // palier de gratuité : ici la commande est REFUSÉE tant que le
+      // minimum n'est pas atteint. Arrondi au centime supérieur, comme
+      // `getFreeDeliveryMilestone` — un résidu flottant ne doit jamais
+      // afficher « ajoutez 0.00 ».
+      if (zone) {
+        const sousTotal = cart.reduce(
+          (n, i) => n + i.price * (i.quantity ?? 1),
+          0,
+        );
+        if (sousTotal < zone.min_order_amount) {
+          ecartMinimum = {
+            remaining: Math.max(
+              0.01,
+              Math.ceil(
+                Math.round((zone.min_order_amount - sousTotal) * 10000) / 100,
+              ) / 100,
+            ),
+            minimum: zone.min_order_amount,
+          };
+        }
+      }
     }
 
     const result = await generateUpsell(cart, {
       ...context,
       palierLivraison,
+      ecartMinimum,
     });
 
     // ⚠️ ON JOURNALISE LE CHEMIN. Le champ `chemin` était écrit sur chaque

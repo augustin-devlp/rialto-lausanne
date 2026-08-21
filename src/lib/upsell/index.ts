@@ -84,7 +84,14 @@ export async function generateUpsell(
   // font déjà 87, donc le mode le plus rentable du moteur était muet
   // exactement sur les tablées les plus chères.
   const estTablee = panierEstUneTablee(cart);
-  if (!estTablee && subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
+  // ⚠️ Un panier SOUS LE MINIMUM n'est jamais fait taire : il est refusé au
+  // checkout, et se taire laisserait le client bloqué sans rien lui dire.
+  // (Cas théorique aujourd'hui — le minimum le plus haut est 55 CHF, bien
+  // sous le plafond de 80 — mais la garde est écrite là où elle vit.)
+  const bloque = Boolean(
+    context.ecartMinimum && context.ecartMinimum.remaining > 0,
+  );
+  if (!estTablee && !bloque && subtotal > UPSELL_SILENCE_THRESHOLD_CHF) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
 
@@ -109,7 +116,13 @@ export async function generateUpsell(
   //
   // ⚠️ Les chemins ne filtrent PAS : leurs candidats repassent obligatoirement
   // par `passesHardFilters`, seul endroit où vivent les gardes dures.
-  const resultatChemin = choisitChemin(cart, analysis, menu, context.palierLivraison);
+  const resultatChemin = choisitChemin(
+    cart,
+    analysis,
+    menu,
+    context.palierLivraison,
+    context.ecartMinimum,
+  );
   let cheminRetenu: string | null = resultatChemin?.chemin ?? null;
 
   // P8 — le silence est une réponse valable.

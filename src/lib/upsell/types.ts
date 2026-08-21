@@ -96,6 +96,15 @@ export interface PalierLivraison {
   delivery_fee: number;
 }
 
+/** Écart au MINIMUM de commande de la zone, résolu côté serveur.
+ *  Ce n'est PAS un palier d'avantage : sans lui, la commande est REFUSÉE. */
+export interface EcartMinimum {
+  /** Reste à ajouter pour atteindre le minimum (> 0 : panier bloqué). */
+  remaining: number;
+  /** Le minimum de la zone, pour le message. */
+  minimum: number;
+}
+
 export interface UpsellContext {
   timeOfDay: TimeOfDay;
   season: Season;
@@ -113,6 +122,9 @@ export interface UpsellContext {
   /** Palier de livraison offerte, résolu SERVEUR depuis le code postal.
    *  `null` = pas d'adresse, zone à frais nul, ou toggle coupé. */
   palierLivraison?: PalierLivraison | null;
+  /** Écart au minimum de commande de la zone, résolu SERVEUR.
+   *  `null` = pas d'adresse, ou minimum déjà atteint. */
+  ecartMinimum?: EcartMinimum | null;
 }
 
 export interface UpsellCandidate {

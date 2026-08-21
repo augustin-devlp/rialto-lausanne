@@ -491,3 +491,49 @@ describe("🔴 le palier ne doit JAMAIS survivre au repli sur le scoreur", () =>
     }
   });
 });
+
+
+describe("P7 — le panier sous le minimum de zone (déblocage, pas upsell)", () => {
+  const p7 = (panier: MenuItemFull[], manque: number) =>
+    choisitChemin(panier, analyzeCart(panier), CATALOGUE, null, {
+      remaining: manque,
+      minimum: 45,
+    });
+
+  it("se déclenche quand le panier est sous le minimum", () => {
+    expect(p7([pizza()], 9)?.chemin).toBe("P7");
+  });
+
+  it("🔴 PASSE AVANT TOUT : tant que le panier est bloqué, rien d'autre n'a de sens", () => {
+    // Pizza seule : P2, P3 et P5 pourraient matcher. P7 doit gagner.
+    const r = choisitChemin([pizza()], analyzeCart([pizza()]), CATALOGUE,
+      { remaining: 7, delivery_fee: 5 },
+      { remaining: 9, minimum: 45 });
+    expect(r?.chemin).toBe("P7");
+  });
+
+  it("ne propose QUE des articles qui débloquent vraiment", () => {
+    const prix = p7([pizza()], 12)?.candidats.map((c) => c.price) ?? [];
+    expect(prix.length).toBeGreaterThan(0);
+    expect(Math.min(...prix)).toBeGreaterThanOrEqual(12);
+  });
+
+  it("propose le moins cher — on ne demande pas plus que nécessaire à quelqu'un de bloqué", () => {
+    const prix = p7([pizza()], 9)?.candidats.map((c) => c.price) ?? [];
+    expect(prix[0]).toBe(9);
+    expect(prix).toEqual([...prix].sort((a, b) => a - b));
+  });
+
+  it("se tait si le minimum est atteint", () => {
+    expect(p7([pizza()], 0)?.chemin).not.toBe("P7");
+  });
+
+  it("se tait sans zone connue", () => {
+    const r = choisitChemin([pizza()], analyzeCart([pizza()]), CATALOGUE, null, null);
+    expect(r?.chemin).not.toBe("P7");
+  });
+
+  it("ne porte JAMAIS d'économie de palier — ce n'est pas un avantage", () => {
+    expect(p7([pizza()], 9)?.palier).toBeUndefined();
+  });
+});

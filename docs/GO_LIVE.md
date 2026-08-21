@@ -185,6 +185,18 @@
 
 ## 🔴 BLOQUANT GO-LIVE — Planification des commandes (refonte UI 20.08)
 
+- [ ] 🔴 **POINT OBLIGATOIRE DE CE CHANTIER (trouvé le 21.08) : les
+      horaires ne sont bornés NULLE PART côté serveur pour une livraison
+      planifiée.** La validation ouverture / fermeture / temps de
+      préparation ne s'appliquait qu'au RETRAIT — or le site n'envoie que
+      « delivery ». **Ce contrôle n'a donc jamais tourné en production.**
+      Décision d'Augustin 21.08 : ne PAS poser la garde maintenant. Le
+      bouton « Planifié » se comporte aujourd'hui comme une commande
+      normale (`scheduled_for` n'est pas honoré), donc le trou est
+      théorique — et une garde posée maintenant refuserait des commandes
+      aujourd'hui acceptées, sans bénéfice. Elle se pose AVEC la
+      planification réelle, pas avant.
+
 - [ ] Le checkout affiche depuis le 20.08 une « Option de livraison :
       Standard / Planifié » (spec refonte Uber Eats). **« Planifié » ne
       planifie RIEN aujourd'hui** : l'heure part dans

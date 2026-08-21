@@ -27,19 +27,3 @@ export function minutesToHHMM(minutes: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-/**
- * Given a "HH:mm" Zurich time, return the UTC Date instant for that local
- * time on the soonest matching day (today if still in future, otherwise
- * tomorrow).
- */
-export function pickupFromZurichHHMM(hhmm: string, now: Date = new Date()): Date {
-  const todayZurich = toZurichDate(now);
-  let candidate = fromZonedTime(`${todayZurich} ${hhmm}:00`, TIMEZONE);
-  if (candidate.getTime() <= now.getTime()) {
-    const t = new Date(now);
-    t.setUTCDate(t.getUTCDate() + 1);
-    const tomorrowZurich = toZurichDate(t);
-    candidate = fromZonedTime(`${tomorrowZurich} ${hhmm}:00`, TIMEZONE);
-  }
-  return candidate;
-}

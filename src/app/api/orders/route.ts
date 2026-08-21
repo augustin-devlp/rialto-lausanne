@@ -49,7 +49,9 @@ type Payload = {
   notes: string | null;
   items: IncomingItem[];
   // Delivery fields
-  fulfillment_type?: "pickup" | "delivery";
+  // ⚠️ `fulfillment_type` a été RETIRÉ du payload le 21.08.2026. Le serveur
+  // ne le lit plus : Rialto est en livraison seulement, et le mode est
+  // imposé côté serveur. Le déclarer ici laisserait croire qu'il compte.
   delivery_address?: string | null;
   delivery_postal_code?: string | null;
   delivery_city?: string | null;
@@ -245,7 +247,21 @@ export async function POST(req: NextRequest) {
     // TypeError → 500 brut (relecture 20.08).
     body.notes = stripLotOffert(String(body.notes)).slice(0, 200) || null;
   }
-  const fulfillmentType: "pickup" | "delivery" = body.fulfillment_type ?? "pickup";
+  // ⚠️ RIALTO EST EN LIVRAISON SEULEMENT (décision Mehmet, actée 21.08.2026).
+  // Le retrait en magasin n'existe pas, et il ne doit pas pouvoir renaître.
+  //
+  // Ce qu'il y avait ici : `body.fulfillment_type ?? "pickup"`. Deux défauts
+  // alignés dans le MAUVAIS sens — le repli du code disait « pickup », et la
+  // colonne en base a `DEFAULT 'pickup'`. Un client qui omettait le champ
+  // (panier d'une vieille version, appel forgé) créait une commande de
+  // RETRAIT : la caisse imprimait alors un ticket SANS ADRESSE, et le
+  // livreur partait sans savoir où aller. Pas d'erreur, pas d'alerte — la
+  // caisse ne plante pas, elle ment.
+  //
+  // Le serveur ne croit plus le client sur ce point : il l'impose. Même
+  // principe que la re-dérivation des prix — on n'accepte du client que ce
+  // qu'on ne peut pas savoir soi-même, et le mode de remise, on le sait.
+  const fulfillmentType = "delivery" as const;
 
   // --- Validation delivery ---
   let deliveryFee = 0;
@@ -293,7 +309,12 @@ export async function POST(req: NextRequest) {
     if (!zone) {
       return NextResponse.json(
         {
-          error: `Nous ne livrons pas au ${body.delivery_postal_code.trim()}. Optez pour le retrait en magasin.`,
+          // ⚠️ Ce message envoyait le client vers « le retrait en magasin »,
+          // un service qui n'existe pas chez Rialto (livraison seulement).
+          // Une promesse écrite qu'on ne tient pas est un problème
+          // contractuel, pas un détail de formulation.
+          // Mots simples et une action possible : le téléphone du resto.
+          error: `Nous ne livrons pas au ${body.delivery_postal_code.trim()}. Appelez-nous au ${restaurant.phone} si vous pensez que c'est une erreur.`,
         },
         { status: 400 },
       );
@@ -445,58 +466,21 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-  } else if (fulfillmentType === "pickup") {
-    return NextResponse.json(
-      { error: "Heure de retrait requise." },
-      { status: 400 },
-    );
   }
 
-  // --- Validation horaires / prep time pour PICKUP uniquement ---
-  if (fulfillmentType === "pickup" && pickupISO) {
-    const pickupDate = new Date(pickupISO);
-    const now = new Date();
-    const pickupHHMM = toZurichHHMM(pickupDate);
-    const pickupDateZurich = toZurichDate(pickupDate);
-    const nowDateZurich = toZurichDate(now);
-    const earliestHHMM = toZurichHHMM(
-      new Date(now.getTime() + restaurant.prep_time_minutes * 60_000),
-    );
-    const openHHMM = String(restaurant.order_open_time).slice(0, 5);
-    const closeHHMM = String(restaurant.order_close_time).slice(0, 5);
-    const pickupMin = hhmmToMinutes(pickupHHMM);
-    const openMin = hhmmToMinutes(openHHMM);
-    const closeMin = hhmmToMinutes(closeHHMM);
-
-    if (pickupMin < openMin) {
-      return NextResponse.json(
-        {
-          error: `Les commandes sont acceptées à partir de ${openHHMM}.`,
-        },
-        { status: 400 },
-      );
-    }
-    if (pickupMin > closeMin) {
-      return NextResponse.json(
-        {
-          error: `Les commandes sont acceptées jusqu'à ${closeHHMM}.`,
-        },
-        { status: 400 },
-      );
-    }
-    if (pickupDateZurich === nowDateZurich) {
-      const earliestMin = hhmmToMinutes(earliestHHMM);
-      if (pickupMin < earliestMin) {
-        return NextResponse.json(
-          {
-            error: `Prévoyez au moins ${restaurant.prep_time_minutes} min. Plus tôt possible : ${earliestHHMM}.`,
-          },
-          { status: 400 },
-        );
-      }
-    }
-  }
-
+  // ⚠️ BLOC RETIRÉ LE 21.08.2026 — validation des horaires « pour PICKUP
+  // uniquement ». Rialto est en livraison seulement : cette branche ne
+  // pouvait plus jamais s'exécuter.
+  //
+  // 🔴 CE QUE SA SUPPRESSION REND VISIBLE, et qui n'est PAS corrigé ici :
+  // il validait l'heure demandée contre l'heure d'ouverture, l'heure de
+  // fermeture et le temps de préparation — mais SEULEMENT pour le retrait.
+  // Or le site n'envoie que « delivery » (CheckoutPageClient), donc ce
+  // contrôle n'a JAMAIS tourné en production : une livraison PLANIFIÉE
+  // n'est aujourd'hui bornée par aucun horaire côté serveur.
+  // L'étendre à la livraison changerait une règle métier — des commandes
+  // aujourd'hui acceptées seraient refusées. Ce n'est pas à moi de le
+  // décider : la question est posée à Augustin, la garde n'est pas posée.
   const { data: nbData, error: nbErr } = await sb.rpc("generate_order_number", {
     p_restaurant: body.restaurant_id,
   });

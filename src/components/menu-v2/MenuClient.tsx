@@ -761,7 +761,6 @@ export default function MenuClient({
             cart={cart}
             setCart={setCart}
             minOrderAmount={minAmount}
-            fulfillmentType={address ? "delivery" : "pickup"}
             zone={
               address
                 ? {

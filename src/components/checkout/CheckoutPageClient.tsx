@@ -565,7 +565,8 @@ export default function CheckoutPageClient({
           customer_phone: cleanPhone,
           customer_email: email.trim() || null,
           requested_pickup_time: pickupISO,
-          fulfillment_type: "delivery",
+          // `fulfillment_type` n'est plus envoyé (21.08) : le serveur
+          // l'impose, Rialto est en livraison seulement.
           delivery_address: street.trim(),
           // Source UNIQUE : l'adresse QUALIFIÉE (bug 20.08 — le repli
           // « state CP sinon adresse » mélangeait les sources et a envoyé

@@ -31,7 +31,6 @@ type Props = {
   cart: CartItem[];
   setCart: (cart: CartItem[]) => void;
   minOrderAmount: number;
-  fulfillmentType?: "pickup" | "delivery";
   /** Zone de l'adresse qualifiée — requise pour le palier « livraison
    * offerte » depuis la refonte par zone (18.08 : seuil = min + offset).
    * Absente = bandeau masqué (décision 9 : un seuil générique serait
@@ -44,7 +43,6 @@ export default function CartPanel({
   cart,
   setCart,
   minOrderAmount,
-  fulfillmentType = "pickup",
   zone = null,
   className = "",
 }: Props) {
@@ -169,8 +167,11 @@ export default function CartPanel({
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-base font-bold truncate">Mon panier</h2>
           <p className="text-[11px] text-mute truncate">
-            {count} {count > 1 ? "articles" : "article"} ·{" "}
-            {fulfillmentType === "delivery" ? "Livraison" : "Retrait"}
+            {/* Rialto est en LIVRAISON SEULEMENT (21.08). Ce badge affichait
+                « Retrait » tant que l'adresse n'était pas hydratée depuis le
+                localStorage — un mot que le client voyait au chargement pour
+                un service qui n'existe pas. */}
+            {count} {count > 1 ? "articles" : "article"} · Livraison
           </p>
         </div>
         <button

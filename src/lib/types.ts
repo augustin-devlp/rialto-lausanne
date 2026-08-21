@@ -19,8 +19,6 @@ export type Restaurant = {
   announcement_active?: boolean;
 };
 
-export type FulfillmentType = "pickup" | "delivery";
-
 /** Type de logement de l'adresse de livraison (pop-up partagé 20.08). */
 export type HousingType = "house" | "apartment";
 

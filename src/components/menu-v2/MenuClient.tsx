@@ -42,6 +42,7 @@ import {
 import { RIALTO_INFO } from "@/lib/rialto-data";
 import { track } from "@/lib/tracking";
 import { resoudCollections } from "@/lib/menu/collections";
+import { railsDuJour } from "@/lib/menu/rotation";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { comptePizzasPanier } from "@/lib/eta/pizzas";
 
@@ -50,6 +51,13 @@ type Props = {
   items: MenuItem[];
   options: MenuItemOption[];
   restaurantId: string;
+  /** Date Zurich du jour (yyyy-MM-dd), calculee PAR LE SERVEUR. Sert au
+   *  filtre de SAISON. Ne jamais la recalculer ici : l'horloge du navigateur
+   *  peut etre fausse, et `toISOString()` donne l'heure UTC, pas Zurich. */
+  jourCalendaire: string;
+  /** Jour de SERVICE (frontiere 05:00 Zurich), calcule PAR LE SERVEUR.
+   *  Sert a la ROTATION des carrousels. Meme frontiere que la cloture CL1. */
+  jourService: string;
 };
 
 import FilterModal, {
@@ -61,7 +69,14 @@ import FilterModal, {
   type FilterKey,
 } from "./FilterModal";
 
-export default function MenuClient({ categories, items, options, restaurantId }: Props) {
+export default function MenuClient({
+  categories,
+  items,
+  options,
+  restaurantId,
+  jourCalendaire,
+  jourService,
+}: Props) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string | null>(
     categories[0]?.id ?? null,
@@ -246,8 +261,9 @@ export default function MenuClient({ categories, items, options, restaurantId }:
 
   const itemsByCategory = useMemo(() => {
     const map: Record<string, MenuItem[]> = {};
-    const today = new Date();
-    const todayKey = today.toISOString().slice(0, 10);
+    // Date du SERVEUR (Zurich). Voir la prop `jourCalendaire` : l'ancienne
+    // ligne `new Date().toISOString()` donnait la date UTC de l'appareil.
+    const todayKey = jourCalendaire;
     const terme = normalise(recherche.trim());
     for (const it of items) {
       if (
@@ -286,14 +302,24 @@ export default function MenuClient({ categories, items, options, restaurantId }:
   // base et continue de porter le badge « Coup de cœur » sur les cartes —
   // elle ne pilote simplement plus aucun carrousel.
 
-  // Les 12 rails : résolus contre les articles DÉJÀ filtrés (zéro requête
+  // Les rails : résolus contre les articles DÉJÀ filtrés (zéro requête
   // réseau — la page a chargé le catalogue une fois). Régimes, allergènes,
   // saison et recherche sont appliqués ici ; LA DISPONIBILITÉ, elle, est
   // filtrée par `resoudCollections` elle-même — surtout ne pas la rajouter
   // ici en croyant bien faire, la garde doit rester à un seul endroit.
+  //
+  // Puis `railsDuJour` n'en garde que DEUX : les 12 restent définis, mais
+  // la page n'en montre qu'une paire, qui tourne sur 6 jours. La date vient
+  // du SERVEUR (`jourService`) — un calcul côté navigateur donnerait deux
+  // résultats différents entre le rendu serveur et l'hydratation, donc un
+  // clignotement de rails au chargement.
   const collections = useMemo(
-    () => resoudCollections(Object.values(itemsByCategory).flat()),
-    [itemsByCategory],
+    () =>
+      railsDuJour(
+        resoudCollections(Object.values(itemsByCategory).flat()),
+        jourService,
+      ),
+    [itemsByCategory, jourService],
   );
 
   // Scroll-spy REFONDU (É5, 20.08 — bug constaté par Augustin : catégorie
@@ -569,7 +595,10 @@ export default function MenuClient({ categories, items, options, restaurantId }:
         {/* Content principal */}
         <div className="min-w-0 flex-1 px-3 sm:px-4 md:px-5 pt-4 md:pt-5 lg:flex lg:gap-5">
           <div className="min-w-0 flex-1">
-      {/* ─── LES 12 RAILS THÉMATIQUES (21.08) ────────────────────
+      {/* ─── LES CARROUSELS DU JOUR (21.08) ──────────────────────
+          DEUX rails sur les 12, et la paire TOURNE chaque jour sur un cycle
+          de 6 (src/lib/menu/rotation.ts). Le contenu de chaque rail, lui,
+          ne bouge jamais tout seul — c'est le rail AFFICHÉ qui tourne.
           Composés à la main (src/lib/menu/collections.ts), ordre fixé.
           Alimentés par `itemsByCategory` (régimes, allergènes, saison),
           la disponibilité étant filtrée dans `resoudCollections` : un rail

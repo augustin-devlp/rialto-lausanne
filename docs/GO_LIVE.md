@@ -220,9 +220,14 @@ jamais détecté.
 
 - [ ] QA des phases intermédiaires : Augustin bascule une commande test
       `new` → `accepted` dans Supabase Studio (le trigger horodate) et la
-      page /confirmation doit dérouler TOUTE SEULE : Confirmée (≈2 min) →
-      En préparation (fenêtre cuisine) → En livraison → Livrée à l'ETA —
-      tick 30 s, zéro écriture. Vérifier aussi la fourchette live du
+      page /confirmation doit dérouler TOUTE SEULE : Commande confirmée
+      (≈2 min) → En préparation (fenêtre cuisine) → Votre commande arrive
+      — tick 30 s, zéro écriture. ⚠️ **4 étapes, pas 5** : l'étape
+      « Livrée » a été retirée le 21.08 (on n'affirme pas une livraison
+      qu'on ne constate pas). À l'ETA, la dernière étape passe à
+      « Livraison / Votre commande devrait être arrivée. » ; elle ne
+      devient « Commande arrivée / Votre commande est arrivée. » que si le
+      client a tapé le bouton de confirmation. Vérifier aussi la fourchette live du
       checkout (« 35–45 min ») et le repli figé (« ~40 min ») hors ligne.
 - [ ] Recalibrage septembre : toutes les constantes du moteur vivent dans
       `src/lib/eta/constants.ts` — modèle PAR RESSOURCE (18.08 : paliers

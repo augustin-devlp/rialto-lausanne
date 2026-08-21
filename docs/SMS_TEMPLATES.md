@@ -41,8 +41,9 @@
 | `order_preparing` | **INACTIF par décision** (moteur de statuts, 08.08.2026) | Le moteur livré DÉRIVE les phases à la lecture (`src/lib/eta/phase.ts`) — AUCUN SMS de statut, aucun cron, aucune écriture. Ne pas brancher. |
 | `order_ready` | **INACTIF par décision** (idem) | Idem. |
 
-Le moteur de statuts (Confirmée → En préparation → En livraison → Livrée)
-est 100 % dérivé côté lecture — décision produit du 08.08.2026 : AUCUN
+Le moteur de statuts (Commande confirmée → En préparation → Votre
+commande arrive — 4 étapes depuis le 21.08, l'étape « Livrée » ayant été
+retirée) est 100 % dérivé côté lecture — décision produit du 08.08.2026 : AUCUN
 SMS de statut n'est envoyé, ces deux templates restent en base à titre
 d'archive. Les rebrancher exigerait une nouvelle décision explicite.
 

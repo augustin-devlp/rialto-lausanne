@@ -97,6 +97,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
+  // ⚠️ L'E-MAIL EST OBLIGATOIRE, ET LA GARDE VIT ICI — pas seulement dans
+  // le formulaire (règle gravée : « une garde qui protège une règle métier
+  // vit DANS la fonction, jamais chez celui qui l'appelle »). Le 21.08 j'ai
+  // d'abord rendu le champ obligatoire dans `CheckoutPageClient.tsx:263`
+  // SEULEMENT, ce qui laissait la garantie fausse : n'importe quel POST
+  // direct créait encore un client sans adresse — exactement le trou par
+  // lequel les 5 clients déjà en base sont passés (le checkout ENVOYAIT
+  // l'e-mail, la route ne l'ÉCRIVAIT pas).
+  // Le format n'est pas validé plus finement qu'ici : un `@` et un point
+  // suffisent, comme au checkout. Le but n'est pas de prouver que l'adresse
+  // existe — c'est de refuser une commande sans moyen de recontact.
+  // ⚠️ CONSÉQUENCE ASSUMÉE : un client dont le navigateur garde en cache
+  // l'ANCIEN bundle du checkout (celui d'avant le 21.08, qui n'exigeait
+  // rien) verrait sa commande refusée. Fenêtre de quelques minutes après
+  // déploiement, et nulle aujourd'hui puisqu'il n'y a aucun client réel ;
+  // à re-vérifier si un correctif du checkout part le soir du go-live.
+  const emailRecu = body.customer_email?.trim() ?? "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRecu)) {
+    return NextResponse.json(
+      { error: "Un email valide est requis pour suivre votre commande." },
+      { status: 400 },
+    );
+  }
+
   // ⚠️ MÊME INVARIANT QUE `fulfillment_type` (voir plus bas) : le serveur
   // n'accepte du client que ce qu'il ne peut pas savoir lui-même — et le
   // restaurant, il le sait. Sans cette ligne, un POST portant un autre
@@ -813,8 +837,11 @@ export async function POST(req: NextRequest) {
   });
 
   // Email de confirmation au CLIENT (lot E1, 21.07.2026) — reçu digital
-  // envoyé à l'adresse saisie au checkout (optionnelle → pas d'email = pas
-  // d'envoi). Fire-and-forget : un échec Brevo ne bloque JAMAIS la commande.
+  // envoyé à l'adresse saisie au checkout. ⚠️ CE COMMENTAIRE DISAIT
+  // « optionnelle → pas d'email = pas d'envoi » : plus vrai depuis le
+  // 21.08, l'adresse est exigée à l'entrée de cette fonction (l.99-116) et
+  // une commande sans e-mail n'atteint jamais cette ligne.
+  // Fire-and-forget : un échec Brevo ne bloque JAMAIS la commande.
   // Remplace l'ancien email « nouvelle commande » au restaurateur, devenu
   // obsolète (la caisse sonne + affiche + imprime automatiquement).
   // ⚠️ ON COMPLÈTE UN E-MAIL MANQUANT, ON N'ÉCRASE JAMAIS UN E-MAIL EXISTANT.

@@ -26,6 +26,11 @@ type LoginResponse =
 export default function ConnexionClient() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
+  // Voie e-mail (22.08.2026) — la connexion qui PROUVE quelque chose.
+  const [emailLien, setEmailLien] = useState("");
+  const [envoiLien, setEnvoiLien] = useState(false);
+  const [lienEnvoye, setLienEnvoye] = useState(false);
+  const [erreurLien, setErreurLien] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -37,6 +42,39 @@ export default function ConnexionClient() {
       router.replace(`/c/${s.short_code}`);
     }
   }, [router]);
+
+  /**
+   * Demande d'un lien de connexion par e-mail.
+   * ⚠️ La réponse de la route est LA MÊME que l'adresse existe ou non —
+   * cet écran ne doit donc rien dire de plus qu'elle. Afficher « compte
+   * introuvable » ici annulerait la garde côté serveur.
+   */
+  async function demandeLien(e: React.FormEvent) {
+    e.preventDefault();
+    if (envoiLien) return;
+    setEnvoiLien(true);
+    setErreurLien(null);
+    try {
+      const res = await fetch("/api/rialto/session/demande", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: emailLien }),
+      });
+      if (res.ok) {
+        setLienEnvoye(true);
+        return;
+      }
+      if (res.status === 400) {
+        setErreurLien("Cette adresse n'est pas complète.");
+        return;
+      }
+      setErreurLien("L'envoi n'a pas marché. Réessayez dans un instant.");
+    } catch {
+      setErreurLien("Pas de réseau. Vérifiez votre connexion.");
+    } finally {
+      setEnvoiLien(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -228,9 +266,75 @@ export default function ConnexionClient() {
               </Link>
             </form>
 
+            {/* 🔴 LA VOIE E-MAIL (Augustin, 22.08.2026) — c'est la seule des
+                deux qui PROUVE quelque chose. Le numéro de téléphone n'est
+                pas un secret : c'est un identifiant, et quiconque le
+                connaît ouvrait le compte. Le lien e-mail prouve la
+                possession d'une boîte.
+                ⚠️ La voie téléphone est CONSERVÉE pour ne déconnecter
+                personne du jour au lendemain. Elle a vocation à disparaître :
+                c'est elle, le trou. */}
+            <div className="mt-6 border-t border-border pt-5">
+              {lienEnvoye ? (
+                <div aria-live="polite">
+                  <p className="text-sm font-semibold text-ink">
+                    C&apos;est envoyé.
+                  </p>
+                  {/* ⚠️ MÊME PHRASE QUE LA ROUTE, au conditionnel : elle ne
+                      dit pas si le compte existe. Le dire ici annulerait la
+                      garde du serveur. */}
+                  <p className="mt-1 text-sm text-mute">
+                    Si un compte existe avec cette adresse, le lien vient de
+                    partir. Regardez votre boîte mail — il marche 15 minutes.
+                  </p>
+                  <p className="mt-1 text-sm text-mute">
+                    Rien ne s&apos;affiche ? Regardez aussi dans les
+                    indésirables.
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={demandeLien} className="space-y-3">
+                  <label
+                    htmlFor="connexion-email"
+                    className="block text-sm font-semibold text-ink"
+                  >
+                    Recevoir un lien par email
+                  </label>
+                  <p className="text-[11px] text-mute">
+                    Plus sûr : personne ne peut ouvrir votre compte sans
+                    accéder à votre boîte mail.
+                  </p>
+                  <input
+                    id="connexion-email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="prenom@exemple.ch"
+                    value={emailLien}
+                    onChange={(ev) => setEmailLien(ev.target.value)}
+                    className="w-full rounded-xl border border-border px-4 py-3 text-base focus:border-rialto focus:outline-none"
+                  />
+                  {erreurLien && (
+                    <p role="alert" className="text-sm text-rialto">
+                      {erreurLien}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={envoiLien || !emailLien.trim()}
+                    className="w-full rounded-full border border-ink bg-white px-5 py-3 text-sm font-semibold text-ink transition hover:bg-cream disabled:opacity-50"
+                  >
+                    {envoiLien ? "Envoi…" : "M'envoyer un lien"}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* ⚠️ CETTE PHRASE DISAIT : « Pas de mot de passe à retenir.
+                Votre numéro de téléphone suffit. » Elle décrivait exactement
+                le problème — et elle le VENDAIT comme un avantage.
+                Retirée le 22.08 avec l'arrivée du lien e-mail. */}
             <p className="mt-4 text-center text-[11px] text-mute">
-              Pas de mot de passe à retenir. Votre numéro de téléphone
-              suffit.
+              Pas de mot de passe à retenir.
             </p>
           </div>
         </div>

@@ -19,6 +19,8 @@ import {
 } from "@/lib/loyalty/pending";
 import { settleForCard } from "@/lib/loyalty/settle";
 
+import { clientConnecte } from "@/lib/sessionClient";
+import { signOrderToken } from "@/lib/orderAccess";
 export const dynamic = "force-dynamic";
 
 /**
@@ -65,8 +67,21 @@ function sousLaLimite(cle: string): boolean {
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
+
+  // 🔴 LA SESSION SIGNÉE PASSE AVANT LE TÉLÉPHONE (22.08.2026).
+  // Le téléphone n'est pas un secret : c'est un identifiant. Tant qu'il
+  // sert de clé, cette route reste ouverte à qui connaît le numéro — la
+  // menace n'est pas l'énumération, c'est le CIBLAGE.
+  // Quand une session valide est présente, elle FAIT FOI et le paramètre
+  // `phone` est IGNORÉ : un client connecté ne peut lire que SES données,
+  // même s'il poste le numéro de quelqu'un d'autre.
+  // ⚠️ Le chemin `phone` reste ouvert pour ne pas déconnecter tout le monde
+  // d'un coup. Il ne le restera pas : c'est le trou à fermer, et sa
+  // fermeture est un geste séparé, une fois la session éprouvée.
+  const clientDeSession = clientConnecte(req);
+
   const phoneRaw = url.searchParams.get("phone")?.trim();
-  if (!phoneRaw) {
+  if (!clientDeSession && !phoneRaw) {
     return NextResponse.json({ error: "phone requis" }, { status: 400 });
   }
 
@@ -79,19 +94,24 @@ export async function GET(req: NextRequest) {
     );
   }
   // Normalise en E.164 pour matcher quelle que soit la façon de saisir
-  const phone = normalizePhone(phoneRaw) ?? phoneRaw;
+  const phone = normalizePhone(phoneRaw ?? "") ?? (phoneRaw ?? "");
 
   const admin = supabaseService();
 
-  // 1) Lookup carte client pour le programme Rialto
-  const { data: cards } = await admin
+  // 1) Lookup carte client pour le programme Rialto.
+  // ⚠️ DEUX CLÉS POSSIBLES, ET LA SESSION L'EMPORTE. On ne construit
+  // qu'UNE requête : la variante n'est que le filtre, pour qu'aucune
+  // divergence ne s'installe entre les deux chemins.
+  const requeteCarte = admin
     .from("customer_cards")
     .select(
       "id, customer_id, current_stamps, rewards_claimed, qr_code_value, short_code, customers!inner (id, first_name, last_name, phone, email)",
     )
-    .eq("card_id", CARD_ID)
-    .eq("customers.phone", phone)
-    .limit(1);
+    .eq("card_id", CARD_ID);
+  const { data: cards } = await (clientDeSession
+    ? requeteCarte.eq("customer_id", clientDeSession)
+    : requeteCarte.eq("customers.phone", phone)
+  ).limit(1);
 
   const card = Array.isArray(cards) && cards.length > 0 ? cards[0] : null;
 
@@ -322,9 +342,26 @@ export async function GET(req: NextRequest) {
     // par ses vrais canaux — email, redirection après commande — que
     // l'attaquant ne contrôle pas.
     //
-    // Le jour où une session client signée existera, c'est ELLE qui pourra
-    // le redonner ici. Pas avant.
-    orders: orders ?? [],
+    // ✅ CE JOUR EST ARRIVÉ (22.08.2026). Le jeton revient — mais
+    // EXCLUSIVEMENT quand la preuve vient de la SESSION SIGNÉE, jamais du
+    // téléphone. La règle est tenue : « un jeton ne s'émet jamais depuis
+    // une route moins authentifiée que la surface qu'il ouvre ».
+    // ⚠️ LA GARDE EST LE `clientDeSession ? … : …` CI-DESSOUS, pas le fait
+    // que l'appelant soit gentil. Sur le chemin téléphone, le champ est
+    // absent — pas vide, ABSENT : rien à lire, rien à deviner.
+    // C'est ce qui rend « Suivre ma commande » possible à nouveau dans
+    // `MesCommandesClient`, sans rouvrir le trou du 20.08.
+    orders: (orders ?? []).map((o) =>
+      clientDeSession
+        ? {
+            ...o,
+            access_token: signOrderToken(
+              RESTAURANT_ID,
+              String((o as { order_number?: unknown }).order_number ?? ""),
+            ),
+          }
+        : o,
+    ),
     review_gate: {
       place_id: RIALTO_PLACE_ID,
       active_claim: activeClaim,

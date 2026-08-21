@@ -16,15 +16,21 @@ type OrderRow = {
   status: string;
   total_amount: number;
   created_at: string;
+  /** Jeton d'accès à la page de suivi.
+   *  ⚠️ OPTIONNEL, ET C'EST LA GARDE : `loyalty/lookup` ne l'émet QUE
+   *  lorsque la preuve vient de la SESSION SIGNÉE. Sur le chemin
+   *  téléphone il est ABSENT — pas vide, absent. Le lien ci-dessous
+   *  n'apparaît donc jamais sans session, sans avoir à le tester
+   *  autrement. */
+  access_token?: string | null;
 };
 
-/** Statuts pour lesquels un SUIVI aurait du sens.
- *  ⚠️ AUCUN CODE NE LA LIT AUJOURD'HUI, et c'est volontaire : le lien
- *  « Suivre ma commande » a été retiré le 21.08 (voir le commentaire au
- *  point d'affichage, plus bas — le jeton n'a plus de source). La constante
- *  est CONSERVÉE pour son retour avec la session client signée.
- *  Une règle au présent sans code derrière serait un commentaire menteur :
- *  celui-ci dit explicitement qu'il décrit un état à venir. */
+/** Statuts pour lesquels un SUIVI a du sens : la commande est encore en
+ *  cours. Une commande terminée ou refusée n'a rien à suivre — l'y
+ *  envoyer serait promettre un écran vide.
+ *  ✅ REDEVENUE VIVANTE LE 22.08 : elle était conservée sans lecteur en
+ *  attendant la session client signée. La session existe, le lien revient
+ *  (voir le point d'affichage plus bas). */
 const STATUTS_EN_COURS = ["new", "accepted", "preparing", "ready"];
 
 type LigneDetail = {
@@ -320,22 +326,32 @@ export default function MesCommandesClient() {
                         id={`detail-${order.order_number}`}
                         className="border-t border-border px-4 py-3"
                       >
-                        {/* ⚠️ « SUIVRE MA COMMANDE » A ÉTÉ RETIRÉ LE 21.08,
-                            et ce n'est pas un oubli.
-                            La page de suivi exige un jeton d'accès. Ce jeton
-                            venait de `loyalty/lookup` — une route OUVERTE,
-                            dont la seule clé est un numéro de téléphone.
-                            Elle est donc devenue le distributeur des clés
-                            qu'on venait de poser : la garde était annulée par
-                            sa propre distribution. Le jeton en a été retiré.
-                            Il n'existe AUCUN chemin propre pour le redonner
-                            ici : toute route qui l'échangerait contre un
-                            téléphone recréerait exactement le trou qu'on
-                            vient de fermer.
-                            Le lien revient AVEC la session client signée, et
-                            pas avant. En attendant, le client garde ses deux
-                            vrais accès : la redirection après commande, et
-                            le lien de son e-mail de confirmation. */}
+                        {/* ✅ « SUIVRE MA COMMANDE » EST REVENU LE 22.08.
+                            Il avait été retiré le 21.08, et pour une bonne
+                            raison : la page de suivi exige un jeton, ce
+                            jeton venait de `loyalty/lookup` — une route
+                            OUVERTE dont la seule clé était un numéro de
+                            téléphone — et cette route était donc devenue le
+                            distributeur des clés qu'on venait de poser.
+                            CE QUI A CHANGÉ : `loyalty/lookup` n'émet le
+                            jeton QUE lorsque la preuve vient de la SESSION
+                            SIGNÉE. La règle tient toujours — « un jeton ne
+                            s'émet jamais depuis une route moins authentifiée
+                            que la surface qu'il ouvre » — c'est le niveau
+                            d'authentification de la route qui a monté.
+                            ⚠️ DEUX CONDITIONS, ET AUCUNE N'EST DÉCORATIVE :
+                            le jeton doit être là (donc session prouvée), ET
+                            la commande doit être en cours (sinon on envoie
+                            le client sur un écran qui n'a rien à lui dire). */}
+                        {order.access_token &&
+                          STATUTS_EN_COURS.includes(order.status) && (
+                            <a
+                              href={`/confirmation/${encodeURIComponent(order.order_number)}?t=${encodeURIComponent(order.access_token)}`}
+                              className="mb-3 block rounded-xl bg-rialto px-4 py-3 text-center text-sm font-semibold text-white transition-colors hover:bg-rialto-dark"
+                            >
+                              Suivre ma commande
+                            </a>
+                          )}
                         {(!etat || etat.statut === "chargement") && (
                           <p className="text-sm text-mute">Chargement…</p>
                         )}

@@ -68,6 +68,7 @@ import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 import { readAttribution } from "@/lib/attribution";
 import { cheminConfirmation, suffixeJeton } from "@/lib/orderAccessShared";
 
+import { ecartAuMinimum, minimumDeZone } from "@/lib/delivery/minimum";
 type Props = {
   restaurantId: string;
   accepting: boolean;
@@ -273,7 +274,12 @@ export default function CheckoutPageClient({
       ? effectiveDeliveryFee(
           subtotal,
           zoneFee,
-          Number(address.min_order_amount ?? 0),
+          // ⚠️ `minimumDeZone` : ce fichier portait DEUX replis
+          // contradictoires pour le MÊME champ absent — 0 ici et pour le
+          // palier, 25 pour le gate. Sur un snapshot amputé, le même écran
+          // bloquait à 25 et calculait la gratuité sur une base 0, donc
+          // annonçait « Livraison offerte ✓ » sur presque tout.
+          minimumDeZone(address),
           fdRule,
         )
       : zoneFee;
@@ -282,15 +288,17 @@ export default function CheckoutPageClient({
     subtotal,
     address
       ? {
-          min_order_amount: Number(address.min_order_amount ?? 0),
+          min_order_amount: minimumDeZone(address),
           delivery_fee: zoneFee,
         }
       : null,
     fdRule,
   );
   const promoDiscount = promo?.discount_amount ?? 0;
-  const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
-  const missing = Math.max(0, minAmount - subtotal);
+  // Dérivation unique — voir `src/lib/delivery/minimum.ts`.
+  const ecartMin = ecartAuMinimum(subtotal, address);
+  const minAmount = ecartMin.minimum;
+  const missing = ecartMin.remaining;
   const total = Math.max(0, subtotal + deliveryFee - promoDiscount);
 
   // Lot D → LS2 : begin_checkout à l'ENTRÉE du checkout, une seule fois
@@ -481,7 +489,10 @@ export default function CheckoutPageClient({
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const contactValid =
     firstName.trim().length >= 2 && phone.trim().length >= 8 && emailValid;
-  const amountValid = missing === 0;
+  // 🔴 `ecartMin.atteint` et non `missing === 0` : c'était une égalité
+  // flottante à zéro qui gardait le bouton « Commander » désactivé sur un
+  // panier pile au minimum, sous un message disant qu'il ne manque rien.
+  const amountValid = ecartMin.atteint;
   // Restauration du garde de l'ancien <input type=time required> (le
   // picker roues n'a pas de required natif) : en « Planifié » sans heure
   // posée (créneaux épuisés), pas de soumission (relecture 20.08).

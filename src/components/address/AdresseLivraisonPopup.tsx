@@ -31,6 +31,7 @@ import {
 } from "@/lib/clientStore";
 import { PictoImmeuble, PictoMaison } from "@/components/ui/Pictos";
 
+import { minimumDeZone } from "@/lib/delivery/minimum";
 /** Valeurs copiées dans le brouillon à l'ouverture. */
 export type GraineAdresse = {
   housingType: HousingType | null;
@@ -273,7 +274,8 @@ export default function AdresseLivraisonPopup({
         city: ville || null,
         zone_id: body.zone.id,
         delivery_fee: Number(body.zone.delivery_fee),
-        min_order_amount: Number(body.zone.min_order_amount),
+        // `minimumDeZone` : `Number(null)` vaut 0 — « aucun minimum ».
+        min_order_amount: minimumDeZone(body.zone),
         estimated_delivery_minutes:
           body.zone.estimated_delivery_minutes ?? 45,
       };

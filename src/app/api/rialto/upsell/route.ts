@@ -5,6 +5,7 @@ import { toFreeDeliveryRule } from '@/lib/delivery/rule';
 import { generateUpsell } from '@/lib/upsell';
 import { buildContext } from '@/lib/upsell/contextBuilder';
 import { fetchFullMenu } from '@/lib/upsell/supabaseMenu';
+import { ecartAuMinimum } from "@/lib/delivery/minimum";
 import type {
   EcartMinimum,
   MenuItemFull,
@@ -144,18 +145,17 @@ export async function POST(req: NextRequest) {
       // minimum n'est pas atteint. Arrondi au centime supérieur, comme
       // `getFreeDeliveryMilestone` — un résidu flottant ne doit jamais
       // afficher « ajoutez 0.00 ».
+      // ⚠️ DÉRIVATION UNIQUE (`src/lib/delivery/minimum.ts`, fonction
+      // `ecartAuMinimum`). Cette formule était RECOPIÉE ici, et `CartPanel`
+      // en avait une AUTRE — arrondi au plus proche contre arrondi au
+      // centime supérieur. Les deux montants s'affichent dans le même
+      // tiroir, à trente pixels l'un de l'autre.
+      // ⚠️ L'assiette reste `sousTotalReel` (extras d'options relus en
+      // base) : on unifie la FORMULE, jamais la MATIÈRE.
       if (zone) {
-        const sousTotal = sousTotalReel;
-        if (sousTotal < zone.min_order_amount) {
-          ecartMinimum = {
-            remaining: Math.max(
-              0.01,
-              Math.ceil(
-                Math.round((zone.min_order_amount - sousTotal) * 10000) / 100,
-              ) / 100,
-            ),
-            minimum: zone.min_order_amount,
-          };
+        const e = ecartAuMinimum(sousTotalReel, zone);
+        if (!e.atteint) {
+          ecartMinimum = { remaining: e.remaining, minimum: e.minimum };
         }
       }
     }

@@ -46,6 +46,7 @@ import { railsDuJour } from "@/lib/menu/rotation";
 import { useEtaRange } from "@/lib/eta/useEtaRange";
 import { comptePizzasPanier } from "@/lib/eta/pizzas";
 
+import { ecartAuMinimum, minimumDeZone } from "@/lib/delivery/minimum";
 type Props = {
   categories: MenuCategory[];
   items: MenuItem[];
@@ -206,7 +207,10 @@ export default function MenuClient({
             city: villeSeedable(body.zone.city),
             zone_id: body.zone.id,
             delivery_fee: Number(body.zone.delivery_fee),
-            min_order_amount: Number(body.zone.min_order_amount),
+            // ⚠️ `minimumDeZone` et non `Number(...)` : `Number(null)`
+            // vaut 0, c'est-à-dire « aucun minimum » écrit dans le snapshot.
+            // Trois écrivains faisaient ça ; un seul avait un repli.
+            min_order_amount: minimumDeZone(body.zone),
             estimated_delivery_minutes: body.zone.estimated_delivery_minutes,
           });
         } else {
@@ -443,9 +447,11 @@ export default function MenuClient({
 
   const subtotal = cartSubtotal(cart);
   const count = cartCount(cart);
-  const minAmount = address?.min_order_amount ?? RIALTO_INFO.minOrderCHF;
-  const missing = Math.max(0, minAmount - subtotal);
-  const canCheckout = count > 0 && missing === 0;
+  // Dérivation unique — voir `src/lib/delivery/minimum.ts`.
+  const ecartMin = ecartAuMinimum(subtotal, address);
+  const minAmount = ecartMin.minimum;
+  const missing = ecartMin.remaining;
+  const canCheckout = count > 0 && ecartMin.atteint;
 
   function handleSelectItem(item: MenuItem) {
     // Garde de dernier recours : un plat épuisé ne rentre pas au panier,
@@ -764,7 +770,7 @@ export default function MenuClient({
             zone={
               address
                 ? {
-                    min_order_amount: Number(address.min_order_amount ?? 0),
+                    min_order_amount: minimumDeZone(address),
                     delivery_fee: Number(address.delivery_fee ?? 0),
                   }
                 : null

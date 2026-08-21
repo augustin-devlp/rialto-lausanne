@@ -27,6 +27,7 @@ import UpsellPanel from "@/components/checkout/UpsellPanel";
 import { useFreeDeliveryRule } from "@/lib/delivery/useFreeDeliveryRule";
 import { getFreeDeliveryMilestone } from "@/lib/delivery/milestones";
 
+import { ecartAuMinimum } from "@/lib/delivery/minimum";
 type Props = {
   cart: CartItem[];
   setCart: (cart: CartItem[]) => void;
@@ -50,15 +51,37 @@ export default function CartPanel({
   const [desktopOpen, setDesktopOpen] = useState(false);
   const count = cartCount(cart);
   const subtotal = cartSubtotal(cart);
-  const missing = Math.max(0, minOrderAmount - subtotal);
-  const canCheckout = count > 0 && missing === 0;
+  // ⚠️ DÉRIVATION UNIQUE (`src/lib/delivery/minimum.ts`, fonction
+  // `ecartAuMinimum`). Ces deux lignes portaient LEUR PROPRE formule —
+  // `Math.max(0, minOrderAmount - subtotal)` — pendant que
+  // `api/rialto/upsell` en avait une autre, arrondie au centime supérieur.
+  // Les deux montants s'affichent à trente pixels l'un de l'autre dans ce
+  // même tiroir.
+  // 🔴 ET `canCheckout` TESTAIT `missing === 0`, UNE ÉGALITÉ FLOTTANTE
+  // À ZÉRO : un panier PILE au minimum dont la somme laisse un résidu de
+  // 3e-15 affichait « Encore 0.00 CHF » ET gardait le bouton désactivé.
+  // La tolérance d'un demi-centime vit maintenant DANS la fonction.
+  const ecartMin = ecartAuMinimum(subtotal, {
+    min_order_amount: minOrderAmount,
+  });
+  const missing = ecartMin.remaining;
+  const canCheckout = count > 0 && ecartMin.atteint;
   // LS2 : moteur « distance au palier » — n'affiche rien tant que la règle
   // n'est pas chargée, que le seuil est désactivé, que l'adresse n'est pas
   // qualifiée, ou que la zone est à frais nul (Chailly : rien à offrir).
   // Pas de requête tant que le panier est vide (rien ne s'afficherait).
   const fdRule = useFreeDeliveryRule(count > 0 && zone != null);
   const fdMilestone = getFreeDeliveryMilestone(subtotal, zone, fdRule);
-  const progressPct = Math.min(100, (subtotal / minOrderAmount) * 100);
+  // ⚠️ `ecartMin.minimum` et non `minOrderAmount` : c'est le SEUL
+  // consommateur qui met le minimum au DÉNOMINATEUR, et il n'avait aucune
+  // garde. Avec un minimum à 0 — exactement ce que trois écrivains du
+  // snapshot produisaient via `Number(null)` — un panier vide donnait
+  // 0/0 = NaN (`width: NaN%`) et un panier non vide donnait Infinity.
+  // `minimumDeZone` ne rend jamais 0.
+  const progressPct = Math.min(
+    100,
+    Math.max(0, (subtotal / ecartMin.minimum) * 100),
+  );
 
   // Ouverture par le caddie de l'AppHeader (event) et par /menu?panier=1.
   useEffect(() => {
@@ -315,7 +338,7 @@ export default function CartPanel({
             <>
               <div className="mb-1.5 text-xs text-ink/80">
                 Encore <strong>{formatCHF(missing)}</strong> pour atteindre le
-                minimum ({formatCHF(minOrderAmount)}).
+                minimum ({formatCHF(ecartMin.minimum)}).
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
                 <div

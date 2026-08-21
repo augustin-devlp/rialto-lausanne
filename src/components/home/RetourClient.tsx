@@ -20,6 +20,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearAddress, readAddress, writeAddress } from "@/lib/clientStore";
 
+import { minimumDeZone } from "@/lib/delivery/minimum";
 export default function RetourClient({
   restaurantId,
 }: {
@@ -74,7 +75,8 @@ export default function RetourClient({
             city: body.zone.city,
             zone_id: body.zone.id,
             delivery_fee: Number(body.zone.delivery_fee),
-            min_order_amount: Number(body.zone.min_order_amount),
+        // `minimumDeZone` : `Number(null)` vaut 0 — « aucun minimum ».
+        min_order_amount: minimumDeZone(body.zone),
             estimated_delivery_minutes: body.zone.estimated_delivery_minutes,
           });
           try {

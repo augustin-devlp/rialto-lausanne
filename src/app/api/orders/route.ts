@@ -11,6 +11,7 @@ import { toZurichDate, toZurichHHMM } from "@/lib/timezone";
 import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
+import { ecartAuMinimum } from "@/lib/delivery/minimum";
 import {
   validatePromoCode,
   consumePromoCode,
@@ -373,7 +374,18 @@ export async function POST(req: NextRequest) {
         { status: 409 },
       );
     }
-    if (subtotal < Number(zone.min_order_amount)) {
+    // ⚠️ MÊME DÉRIVATION QUE LES ÉCRANS (`src/lib/delivery/minimum.ts`,
+    // fonction `ecartAuMinimum`). C'était `subtotal < Number(...)`, une
+    // comparaison SANS TOLÉRANCE : un panier exactement au minimum dont la
+    // somme laisse un résidu flottant était refusé ici alors que l'écran
+    // affichait « il ne manque rien ». Le seuil de gratuité, lui, avait sa
+    // tolérance depuis toujours (`rule.ts`, le `- 0.005`).
+    // ⚠️ CE N'EST PAS UN ASSOUPLISSEMENT DE LA RÈGLE : la tolérance vaut un
+    // DEMI-CENTIME. Aucun panier réel ne tombe entre 44.995 et 45.00 —
+    // seuls les résidus d'addition flottante y tombent.
+    // ⚠️ L'ASSIETTE, ELLE, RESTE CELLE DU SERVEUR : `subtotal` est
+    // re-dérivé des prix du jour, jamais repris du client.
+    if (!ecartAuMinimum(subtotal, zone).atteint) {
       return NextResponse.json(
         {
           error: `Commande minimum pour la livraison : ${Number(

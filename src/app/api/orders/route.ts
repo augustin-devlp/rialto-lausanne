@@ -772,11 +772,19 @@ export async function POST(req: NextRequest) {
     // restaurateur — restait donc vide d'adresses, même après avoir rendu
     // le champ obligatoire. Constaté : 5 clients en base, 5 sans e-mail.
     //
-    // 🔴 ET C'EST CE MÊME AJOUT QUI A ARMÉ UN PIÈGE (trouvé et fermé le
-    // 21.08, index vérifié en base) : `customers_email_unique` existe —
-    // `UNIQUE (email) WHERE email IS NOT NULL`. Un FOYER qui commande à
-    // deux numéros depuis la MÊME adresse faisait donc échouer ce second
-    // insert. Et comme `error` n'était pas récupéré, l'échec était MUET :
+    // 🔴 CE MÊME AJOUT AVAIT ARMÉ UN PIÈGE — RÉGLÉ DEPUIS, MAIS L'HISTOIRE
+    // EXPLIQUE POURQUOI LA REPRISE CI-DESSOUS EXISTE ENCORE.
+    // ✅ `customers_email_unique` A ÉTÉ RETIRÉ LE 22.08.2026 (navette
+    // `db/clients/CU1_retrait_index_email.sql`, exécutée et prouvée) : un
+    // foyer peut désormais porter deux fiches sur une même adresse, ce qui
+    // est le cas NORMAL en restauration.
+    // ⚠️ NE PAS RETIRER LA REPRISE 23505 POUR AUTANT : elle reste
+    // nécessaire pour les collisions de TÉLÉPHONE — `customers_phone_unique`
+    // est toujours là, et c'est la clé d'identité.
+    // Pour mémoire, ce qui se passait avant CU1 : `UNIQUE (email) WHERE
+    // email IS NOT NULL`. Un FOYER qui commandait à deux numéros depuis la
+    // MÊME adresse faisait échouer ce second insert. Et comme `error`
+    // n'était pas récupéré, l'échec était MUET :
     // `customerId` restait null, `orders.customer_id` n'était jamais posé
     // (le `update({ customer_id })` qui suit ce bloc), la commande
     // n'apparaissait plus dans « Mes commandes »,
@@ -931,12 +939,12 @@ export async function POST(req: NextRequest) {
   // simultanées ne peuvent pas se marcher dessus, et un client qui a déjà
   // une adresse ne se la fait pas remplacer par une faute de frappe d'un
   // soir. (`signup` écrase, lui — c'est un défaut connu, pas un modèle.)
-  // ⚠️ MÊME PIÈGE D'UNICITÉ QUE L'INSERT `customers` plus haut : ce
-  // rattrapage peut
-  // échouer sur `customers_email_unique` si l'adresse appartient déjà à une
-  // autre fiche. C'est SANS GRAVITÉ — la commande est déjà créée et le reçu
-  // part quand même — mais l'échec ne doit pas être muet, sinon on croira la
-  // base clients complète alors qu'elle ne l'est pas.
+  // ⚠️ CE COMMENTAIRE DÉCRIVAIT UN PIÈGE D'UNICITÉ SUR L'E-MAIL. Il n'a
+  // plus lieu d'être depuis le retrait de `customers_email_unique`
+  // (CU1, 22.08.2026, exécutée). Le rattrapage peut encore échouer pour
+  // d'autres causes — RLS, panne — et son erreur ne doit pas être muette
+  // pour autant, sinon on croira la base clients complète alors qu'elle ne
+  // l'est pas.
   if (customerId && emailRecu) {
     const { error: erreurRattrapage } = await sb
       .from("customers")

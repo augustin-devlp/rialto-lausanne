@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseService } from '@/lib/supabase';
 
+import { journaliseErreurBase } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -62,7 +63,10 @@ export async function POST(req: NextRequest) {
           .eq('id', existing.id);
         if (upd.error) {
           console.error('[upsell/track] dismissal update failed', upd.error.message);
-          dismissalDebug = { upd_error: upd.error.message };
+          // Le message Postgres ne sort pas : `dismissalDebug` est
+          // renvoyé au client dans le corps de la réponse.
+          journaliseErreurBase("upsell/track: update dismissal", upd.error);
+          dismissalDebug = { upd_error: true };
         } else {
           dismissalDebug = { updated: true, count: Number(existing.count ?? 0) + 1 };
         }
@@ -76,7 +80,8 @@ export async function POST(req: NextRequest) {
           });
         if (ins.error) {
           console.error('[upsell/track] dismissal insert failed', ins.error.message);
-          dismissalDebug = { ins_error: ins.error.message };
+          journaliseErreurBase("upsell/track: insert dismissal", ins.error);
+          dismissalDebug = { ins_error: true };
         } else {
           dismissalDebug = { inserted: true, count: 1 };
         }

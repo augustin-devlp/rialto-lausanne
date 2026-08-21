@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { canonicalE164 } from "@/lib/phoneVariants";
 
+import { journaliseErreurBase } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
       );
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      journaliseErreurBase("push/subscribe: upsert", error);
+      return NextResponse.json({ error: "save_failed" }, { status: 500 });
     }
     return NextResponse.json({
       success: true,
@@ -137,7 +139,8 @@ export async function POST(req: NextRequest) {
     );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    journaliseErreurBase("push/subscribe: upsert", error);
+    return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true, mode: "card" });
@@ -176,7 +179,8 @@ export async function DELETE(req: NextRequest) {
     .eq("endpoint", endpoint);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    journaliseErreurBase("push/subscribe: upsert", error);
+    return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

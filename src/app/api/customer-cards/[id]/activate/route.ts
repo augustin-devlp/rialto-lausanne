@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService } from "@/lib/supabase";
 import { calculateAgeRange } from "@/lib/age";
 
+import { journaliseErreurBase } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -69,9 +70,11 @@ export async function POST(
     .eq("id", card.customer_id);
 
   if (custErr) {
-    console.error("[card/activate] customer update failed", custErr);
+    journaliseErreurBase("customer-cards/activate: update customers", custErr);
     return NextResponse.json(
-      { error: "update_failed", detail: custErr.message },
+      // `detail` retiré : il portait le message Postgres. Le code
+      // machine `update_failed` reste, c'est lui le contrat.
+      { error: "update_failed" },
       { status: 500 },
     );
   }
@@ -82,8 +85,9 @@ export async function POST(
     .eq("id", params.id);
 
   if (cardErr) {
+    journaliseErreurBase("customer-cards/activate: update customer_cards", cardErr);
     return NextResponse.json(
-      { error: "card_update_failed", detail: cardErr.message },
+      { error: "card_update_failed" },
       { status: 500 },
     );
   }

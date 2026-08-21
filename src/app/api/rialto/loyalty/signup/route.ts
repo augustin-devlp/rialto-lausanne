@@ -6,6 +6,7 @@ import { phoneLookupVariants } from "@/lib/phoneVariants";
 import { renderTemplate, TEMPLATE_META } from "@/lib/smsTemplates";
 import { sendSms } from "@/lib/brevo";
 
+import { journaliseErreurBase, estViolationUnicite } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -330,7 +331,8 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // Nouveau customer + nouvelle carte
-      const { data: newCustomer, error: custErr } = await admin
+      // eslint-disable-next-line prefer-const
+      let { data: newCustomer, error: custErr } = await admin
         .from("customers")
         .insert({
           first_name: body.first_name.trim(),
@@ -340,10 +342,47 @@ export async function POST(req: NextRequest) {
         })
         .select("id")
         .single();
+
+      // 🔴 REPRISE 23505, COMME SUR LA COMMANDE (Augustin, 22.08).
+      // `customers_email_unique` existe en base : un FOYER qui s'inscrit à
+      // deux numéros depuis la MÊME adresse faisait échouer ce second
+      // insert. Sur la commande, une reprise existait déjà ; ici il n'y en
+      // avait AUCUNE — le second membre du foyer ne pouvait tout
+      // simplement pas créer sa carte.
+      // Choix identique : la clé d'identité est le TÉLÉPHONE, pas l'e-mail.
+      // On recrée le client SANS e-mail plutôt que de le perdre.
+      // ⚠️ Reste utile APRÈS la navette CU1 : elle retire l'unicité de
+      // l'e-mail, pas celle du téléphone.
+      if (custErr && estViolationUnicite(custErr)) {
+        journaliseErreurBase("loyalty/signup: insert customer", custErr);
+        const secondEssai = await admin
+          .from("customers")
+          .insert({
+            first_name: body.first_name.trim(),
+            last_name: body.last_name?.trim() || "",
+            phone,
+            email: null,
+          })
+          .select("id")
+          .single();
+        newCustomer = secondEssai.data;
+        custErr = secondEssai.error;
+        if (!custErr) {
+          console.warn(
+            "[loyalty/signup] e-mail déjà pris par une autre fiche — client créé sans adresse",
+          );
+        }
+      }
+
       if (custErr || !newCustomer) {
-        console.error("[loyalty/signup] customer insert failed", custErr);
+        // 🔴 ON NE RENVOIE PLUS `custErr.message`. Il portait
+        // « duplicate key value violates unique constraint
+        // "customers_email_unique" » — et `JoinClient` fait
+        // `setError(body.error)`, donc ça s'affichait tel quel sur la page
+        // d'inscription au Rialto Club.
+        journaliseErreurBase("loyalty/signup: insert customer (2e essai)", custErr);
         return NextResponse.json(
-          { error: custErr?.message ?? "Création customer échouée" },
+          { error: "Impossible de créer votre carte pour le moment. Réessayez." },
           { status: 500 },
         );
       }
@@ -366,9 +405,9 @@ export async function POST(req: NextRequest) {
       .select("id, current_stamps, rewards_claimed, qr_code_value, short_code")
       .single();
     if (cardErr || !newCard) {
-      console.error("[loyalty/signup] card insert failed", cardErr);
+      journaliseErreurBase("loyalty/signup: insert customer_cards", cardErr);
       return NextResponse.json(
-        { error: cardErr?.message ?? "Création carte échouée" },
+        { error: "Impossible de créer votre carte pour le moment. Réessayez." },
         { status: 500 },
       );
     }

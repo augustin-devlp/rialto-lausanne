@@ -4,6 +4,7 @@ import { BUSINESS_ID, CARD_ID, LOTTERY_ID } from "@/lib/loyaltyConstants";
 import { normalizePhone } from "@/lib/phone";
 import { zurichMonthStart } from "@/lib/lotteryDraw";
 
+import { journaliseErreurBase } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -122,7 +123,17 @@ export async function POST(req: NextRequest) {
     if (legacyErr.code === "23505") {
       return NextResponse.json({ ok: true, already_entered: true });
     }
-    return NextResponse.json({ error: legacyErr.message }, { status: 500 });
+    // 🔴 `LotteryEntry` fait `setError(b.error)` : ce message part
+    // DROIT À L'ÉCRAN. Il portait le message Postgres.
+    journaliseErreurBase("lottery/enter: participation (legacy)", legacyErr);
+    return NextResponse.json(
+      { error: "Participation impossible pour le moment. Réessayez." },
+      { status: 500 },
+    );
   }
-  return NextResponse.json({ error: error.message }, { status: 500 });
+  journaliseErreurBase("lottery/enter: participation", error);
+  return NextResponse.json(
+    { error: "Participation impossible pour le moment. Réessayez." },
+    { status: 500 },
+  );
 }

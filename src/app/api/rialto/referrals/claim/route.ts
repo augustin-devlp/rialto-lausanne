@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseService, RESTAURANT_ID } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/phone";
 
+import { journaliseErreurBase } from "@/lib/apiErreurs";
 export const dynamic = "force-dynamic";
 
 /**
@@ -93,8 +94,10 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) {
+    journaliseErreurBase("referrals/claim: save", error);
     return NextResponse.json(
-      { error: "save_failed", detail: error.message },
+      // `detail` retiré : message Postgres. Le code machine suffit.
+      { error: "save_failed" },
       { status: 500 },
     );
   }

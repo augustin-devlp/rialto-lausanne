@@ -164,6 +164,7 @@ export async function POST(req: NextRequest) {
       ...context,
       palierLivraison,
       ecartMinimum,
+      sousTotalReel,
     });
 
     // ⚠️ ON JOURNALISE LE CHEMIN. Le champ `chemin` était écrit sur chaque

@@ -89,7 +89,8 @@ export async function POST(
   // taps implausibles (croiser avec accepted_at + cuisine estimée).
   // ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08, que l'uuid v4 seul était
   // « acceptable SANS auth ni rate limit ». RETIRÉ : c'est faux depuis
-  // que cette route exige un jeton HMAC (l.46-57 ci-dessus, garde
+  // que cette route exige un jeton HMAC (bloc `verifyOrderToken`
+  // ci-dessus, garde
   // `verifyOrderToken`), et laisser la phrase invitait le lecteur suivant
   // à retirer cette garde en croyant l'uuid suffisant.
   const { data: ecrit, error: maj } = await sb

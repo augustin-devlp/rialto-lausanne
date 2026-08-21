@@ -57,8 +57,25 @@ export async function generateUpsell(
     return { suggestions: [] };
   }
 
+  // ⚠️ « UN PANIER SOUS LE MINIMUM N'EST JAMAIS FAIT TAIRE » — la phrase
+  // était écrite 40 lignes plus bas, APRÈS trois sorties qui le faisaient
+  // taire quand même (relecture adversariale 21.08). Elle vit maintenant
+  // ICI, au-dessus de tout ce qui peut rendre le silence.
+  // Raison : un panier sous le minimum est REFUSÉ au checkout. Se taire
+  // laisse le client devant un bouton qui ne marche pas, sans lui dire
+  // pourquoi. C'est la seule situation où le moteur DOIT parler.
+  // Les trois sorties concernées : repas complet (ci-dessous), panier de
+  // 8 articles et plus, et le plafond de silence.
+  const bloque = Boolean(
+    context.ecartMinimum && context.ecartMinimum.remaining > 0,
+  );
+
   // Phase 12 V3 — F1 : repas complet → 0 suggestion (BUG #2)
-  if (analysis.isFullMeal) {
+  // ⚠️ Scénario réel qui a motivé la garde `!bloque` : entrée 6.00 + petite
+  // pizza 14.00 + Coca 3.50 + baklava 6.00 = 29.50, dans une zone à 45 de
+  // minimum. Le panier est « complet » ET refusé. Sans la garde, le tiroir
+  // ne disait rien et le client restait bloqué à 15.50 près.
+  if (!bloque && analysis.isFullMeal) {
     return {
       suggestions: [],
       debug: {
@@ -70,13 +87,23 @@ export async function generateUpsell(
   }
 
   // Phase 12 V3 — F2 : panier ULTRA gros (>=8 items) → 0
-  if (analysis.totalItems >= 8) {
+  // `!bloque` : 8 petits articles peuvent rester sous un minimum à 55.
+  if (!bloque && analysis.totalItems >= 8) {
     return { suggestions: [], debug: { analysis: { totalItems: analysis.totalItems }, context: {}, shortlist: [] } };
   }
 
   // v2 (D2) — garde-fou anti-lourdeur : sous-total > seuil CHF → silence total.
   // Au-delà, suggérer paraît cupide. S'ajoute au court-circuit >=8 items ci-dessus.
-  const subtotal = analysis.totalPrice; // déjà pondéré quantité (cartAnalysis)
+  // ⚠️ `sousTotalReel` D'ABORD, `analysis.totalPrice` seulement en repli.
+  // `totalPrice` ne compte que `price × qty` — il IGNORE les suppléments
+  // d'options, alors que le checkout et la facturation les comptent. Un
+  // panier à 78.00 de base + 8.00 d'extras s'affiche 86.00 au client et
+  // valait 78 ici : sous le plafond de 80, donc le moteur suggérait quand
+  // même sur une commande que le seuil devait faire taire. C'est le même
+  // bug que celui corrigé sur P2 et P7 il y a une heure, resté un niveau
+  // au-dessus. Repli sur `totalPrice` quand la route n'a pas fourni le
+  // montant (appel hors route, tests).
+  const subtotal = context.sousTotalReel ?? analysis.totalPrice;
 
   // ⚠️ LE MODE TABLÉE IGNORE CE SEUIL (décision Augustin 21.08).
   //
@@ -96,13 +123,8 @@ export async function generateUpsell(
   const plafondSilence = estTablee
     ? UPSELL_SILENCE_TABLEE_CHF
     : UPSELL_SILENCE_THRESHOLD_CHF;
-  // ⚠️ Un panier SOUS LE MINIMUM n'est jamais fait taire : il est refusé au
-  // checkout, et se taire laisserait le client bloqué sans rien lui dire.
-  // (Cas théorique aujourd'hui — le minimum le plus haut est 55 CHF, bien
-  // sous le plafond de 80 — mais la garde est écrite là où elle vit.)
-  const bloque = Boolean(
-    context.ecartMinimum && context.ecartMinimum.remaining > 0,
-  );
+  // `bloque` est calculé en tête de fonction, au-dessus de TOUTES les
+  // sorties silencieuses — c'est le sens de la garde.
   if (!bloque && subtotal > plafondSilence) {
     return { suggestions: [], debug: { analysis: { totalPrice: subtotal }, context: {}, shortlist: [] } };
   }
@@ -181,6 +203,34 @@ export async function generateUpsell(
   if (parChemin.length === 0) {
     cheminRetenu = null;
     cheminGagnant = null;
+  }
+
+  // 🔴 LA GARDE DU PANIER BLOQUÉ VIT ICI, APRÈS LES FILTRES DURS — PAS
+  // AVANT (relecture adversariale 21.08).
+  // Le court-circuit posé plus haut (celui qui teste `manqueSeul`) ne voit
+  // que le cas où P7
+  // n'a trouvé AUCUN candidat. Il rate celui où P7 en a trouvé un à quatre
+  // et où `passesHardFilters` les tue TOUS : `parChemin` est alors vide,
+  // le chemin est oublié juste au-dessus, et le SCOREUR reprend la main
+  // sur un panier qui ne peut pas commander.
+  // Aggravant : `cheminP7` trie par prix croissant et garde les 4 premiers
+  // — quatre candidats dans une bande de prix étroite, donc CORRÉLÉS. Un
+  // seul filtre dur les emporte d'un coup. Exemples réels : les quatre
+  // moins chers ≥ l'écart sont des bouteilles 1.5 l et le panier a déjà
+  // une boisson ; ou le panier est 100 % végétarien et les quatre sont
+  // carnés.
+  // Ce que ça donnait : le client ajoutait le dessert proposé par le
+  // scoreur, restait sous le minimum, se faisait refuser au checkout — et
+  // le panneau s'était fermé pour toute la session. Il n'a jamais su de
+  // combien il manquait.
+  // C'est la variante fine de la règle gravée : la garde ne vit pas là où
+  // le chemin est CHOISI, elle vit là où il est FILTRÉ.
+  if (bloque && parChemin.length === 0 && context.ecartMinimum) {
+    return {
+      suggestions: [],
+      blocage: { manque: context.ecartMinimum.remaining },
+      debug: { analysis: {}, context: {}, shortlist: [] },
+    };
   }
 
   // Filtres durs + scoring

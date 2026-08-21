@@ -304,13 +304,13 @@ function gaItems(items: TrackedItem[]) {
  * ⚠️ CE PARAGRAPHE CONCLUAIT, PLUS TÔT LE 21.08 : « le jeton part donc
  * encore chez Meta à chaque ouverture de la page de suivi ». CE N'EST
  * PLUS VRAI, et le laisser coûtait une panique pour rien. La fuite est
- * fermée autrement, plus haut dans CE fichier : `meta()` (l.83-86) sort
+ * fermée autrement, plus haut dans CE fichier : la fonction `meta()` sort
  * par `if (surPageDeSuivi()) return;` et TOUS les tirs Meta passent par
  * lui — les 5 `track.*`, le PageView d'injection et les deux signaux de
  * consentement. Prouvé en prod le 21.08 : 0 requête vers `/tr/` sur
  * /confirmation avec consentement accordé, 1 sur l'accueil.
  * Ce qui reste vrai, et qui est un choix : `fbevents.js` et `fbq('init')`
- * restent CHARGÉS sur /confirmation (l.174-180). Sans ça, un premier
+ * restent CHARGÉS sur /confirmation (bloc `if (META_PIXEL_ID)`). Sans ça, un premier
  * consentement donné sur la page de suivi laisserait le pixel mort pour
  * toute la session — le Purchase du checkout suivant ne partirait jamais.
  * On charge donc, et on se tait à l'émission.

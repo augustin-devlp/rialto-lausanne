@@ -215,7 +215,8 @@ function cheminP3(
  * pâtes, la branche PÂTES répond avant et propose une salade ». C'EST
  * FAUX, et c'est l'inverse de ce que fait le fichier : `hasFriesIncluded`
  * est calculé sur TOUT le panier (`cartAnalysis.ts:80`) et la garde est en
- * TÊTE de `cheminP4` (l.242 ci-dessous), donc AVANT le dispatch par
+ * TÊTE de `cheminP4` (première instruction de la fonction, ci-dessous),
+ * donc AVANT le dispatch par
  * catégorie. Un burger (qui vient avec ses frites) fait donc taire P4
  * pour le panier ENTIER, pâtes comprises : la branche PÂTES n'est jamais
  * atteinte, le client tombe sur P3 (boisson) ou P5 (dessert).
@@ -480,10 +481,17 @@ export function choisitChemin(
   );
   const get = parId(sains);
   return (
-    cheminP8(analysis) ??
-    // P7 avant tout le reste : tant que le panier est SOUS LE MINIMUM, il
-    // est refusé au checkout — aucune autre suggestion n'a de sens.
+    // ⚠️ P7 EST ÉVALUÉ EN PREMIER, ET C'EST VOLONTAIRE.
+    // Cette ligne était SOUS `cheminP8` jusqu'au 21.08, avec déjà le
+    // commentaire « P7 avant tout le reste » écrit au-dessus — la phrase
+    // était donc fausse au moment même où elle était écrite. Conséquence
+    // réelle : un panier composé (entrée + plat + boisson + dessert) mais
+    // SOUS LE MINIMUM de sa zone déclenchait P8, c'est-à-dire le SILENCE,
+    // et le client était refusé au checkout sans jamais savoir de combien
+    // il manquait. Tant que le panier est bloqué, se taire n'est pas une
+    // réponse valable.
     cheminP7(analysis, sains, ecartMinimum) ??
+    cheminP8(analysis) ??
     // P2 passe devant P3/P4/P5 : franchir un palier vaut mieux que combler
     // un trou de composition, parce qu'il fait BAISSER la facture.
     cheminP2(analysis, sains, palier) ??

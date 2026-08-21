@@ -36,11 +36,13 @@
  * ⚠️ LA PHRASE « TOUTE défaillance de collecte dégrade vers le PRUDENT »
  * ÉTAIT ÉCRITE ICI JUSQU'AU 21.08. Elle est FAUSSE sur le chemin le plus
  * probable, et c'est une garantie de ma main : l'échec de lecture des
- * commandes actives (l.167-175) renvoie `pizzas_en_cuisine_devant: 0` ET
+ * commandes actives (branche `if (erreurActives)`) renvoie
+ * `pizzas_en_cuisine_devant: 0` ET
  * `retour_livreur_minutes: 0` — les valeurs les plus OPTIMISTES. La seule
- * compensation est `degradee: true` → `poids` (l.469, l.506), qui ne
+ * compensation est `degradee: true` → les deux `const poids =
+ * charge.degradee ? …`, qui ne
  * nourrit que `poidsPrior` ; or `prior` vaut 0 hors des fenêtres de rush
- * (`eta.ts:133-137`). HORS RUSH, UNE PANNE TOTALE DONNE L'ETA LE PLUS
+ * (`eta.ts`, `const prior = estRush(input.now) ? … : 0`). HORS RUSH, UNE PANNE TOTALE DONNE L'ETA LE PLUS
  * COURT POSSIBLE — exactement ce que la relecture du 18.08 disait avoir
  * corrigé.
  * Ce qui reste VRAI : les défaillances PARTIELLES (items, historique,

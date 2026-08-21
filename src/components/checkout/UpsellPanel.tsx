@@ -106,7 +106,7 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
   // Clé stable, pour éviter un fetch inutile — MAIS elle doit contenir
   // TOUT ce qui change le prix, sinon la promesse faite plus bas (« une
   // carte qui affiche un prix ne survit jamais à un changement de son
-  // assiette », l.176-180) est fausse.
+  // assiette », commentaire du corps de l'effet de refetch) est fausse.
   // ⚠️ CORRIGÉ 21.08 : la clé ignorait les OPTIONS. Ajouter du fromage à
   // une pizza laisse `menu_item_id` et `quantity` identiques → aucun
   // refetch → la carte P2 et son « votre total ne monte que de 8.00 »

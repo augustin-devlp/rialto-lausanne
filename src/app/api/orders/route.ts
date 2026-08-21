@@ -100,7 +100,8 @@ export async function POST(req: NextRequest) {
   // ⚠️ L'E-MAIL EST OBLIGATOIRE, ET LA GARDE VIT ICI — pas seulement dans
   // le formulaire (règle gravée : « une garde qui protège une règle métier
   // vit DANS la fonction, jamais chez celui qui l'appelle »). Le 21.08 j'ai
-  // d'abord rendu le champ obligatoire dans `CheckoutPageClient.tsx:263`
+  // d'abord rendu le champ obligatoire dans `CheckoutPageClient.tsx`
+  // (const `emailValid`, repris dans `contactValid`)
   // SEULEMENT, ce qui laissait la garantie fausse : n'importe quel POST
   // direct créait encore un client sans adresse — exactement le trou par
   // lequel les 5 clients déjà en base sont passés (le checkout ENVOYAIT
@@ -113,7 +114,12 @@ export async function POST(req: NextRequest) {
   // rien) verrait sa commande refusée. Fenêtre de quelques minutes après
   // déploiement, et nulle aujourd'hui puisqu'il n'y a aucun client réel ;
   // à re-vérifier si un correctif du checkout part le soir du go-live.
-  const emailRecu = body.customer_email?.trim() ?? "";
+  // `typeof` et pas `?.trim()` : `body` est un cast brut de `req.json()`,
+  // sans validation runtime. Un POST portant `"customer_email": 42` faisait
+  // jeter `.trim()` → 500 au lieu du 400 prévu. Même parade que le
+  // `String(body.notes)` du bloc de neutralisation des notes.
+  const emailRecu =
+    typeof body.customer_email === "string" ? body.customer_email.trim() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRecu)) {
     return NextResponse.json(
       { error: "Un email valide est requis pour suivre votre commande." },
@@ -416,7 +422,8 @@ export async function POST(req: NextRequest) {
   // `restaurants.order_min_amount`). On le note pour qu'une future session
   // ne « restaure » pas la garde en croyant colmater un trou.
   // Conséquence : `restaurants.order_min_amount` n'est plus lu nulle part
-  // dans ce handler — il reste sélectionné ligne 122, c'est du transport
+  // dans ce handler — il reste sélectionné dans le SELECT ci-dessus,
+  // c'est du transport
   // inutile mais inoffensif.
 
   // --- Code promo : VALIDATION ici, CONSOMMATION juste avant l'INSERT ---
@@ -742,22 +749,76 @@ export async function POST(req: NextRequest) {
     });
   } else {
     // Nouveau customer + nouvelle carte
-    const { data: newCustomer } = await sb
+    // ⚠️ L'E-MAIL ÉTAIT PERDU ICI (corrigé 21.08). Le client le saisit au
+    // checkout, il partait dans `orders.customer_email`… et le dossier
+    // CLIENT se créait sans. La base clients — celle qu'on vend au
+    // restaurateur — restait donc vide d'adresses, même après avoir rendu
+    // le champ obligatoire. Constaté : 5 clients en base, 5 sans e-mail.
+    //
+    // 🔴 ET C'EST CE MÊME AJOUT QUI A ARMÉ UN PIÈGE (trouvé et fermé le
+    // 21.08, index vérifié en base) : `customers_email_unique` existe —
+    // `UNIQUE (email) WHERE email IS NOT NULL`. Un FOYER qui commande à
+    // deux numéros depuis la MÊME adresse faisait donc échouer ce second
+    // insert. Et comme `error` n'était pas récupéré, l'échec était MUET :
+    // `customerId` restait null, `orders.customer_id` n'était jamais posé
+    // (le `update({ customer_id })` qui suit ce bloc), la commande
+    // n'apparaissait plus dans « Mes commandes »,
+    // aucun tampon n'était crédité, et rien n'était journalisé.
+    // Avant ce soir l'e-mail n'était jamais écrit : l'index ne pouvait pas
+    // être touché. Il l'est maintenant à CHAQUE commande.
+    //
+    // Choix : la clé d'identité est le TÉLÉPHONE, pas l'e-mail. En cas de
+    // collision on recrée le client SANS e-mail plutôt que de le perdre —
+    // une fiche sans adresse vaut mieux qu'une commande orpheline. Le REÇU
+    // n'est pas concerné : il part à `body.customer_email` (const
+    // `customerEmail`, plus bas), pas à
+    // la fiche.
+    let { data: newCustomer, error: erreurClient } = await sb
       .from("customers")
       .insert({
         first_name: firstName || "Client",
         last_name: lastName,
         phone: body.customer_phone, // déjà normalisé E.164 avec "+" côté client
-        // ⚠️ L'E-MAIL ÉTAIT PERDU ICI (corrigé 21.08). Le client le saisit
-        // au checkout, il partait dans `orders.customer_email`… et le
-        // dossier CLIENT se créait sans. La base clients — celle qu'on
-        // vend au restaurateur — restait donc vide d'adresses, même après
-        // avoir rendu le champ obligatoire. Constaté : 5 clients en base,
-        // 5 sans e-mail.
-        email: body.customer_email?.trim() || null,
+        email: emailRecu,
       })
       .select("id")
       .single();
+
+    if (erreurClient) {
+      console.error("[orders] création client en échec", {
+        code: erreurClient.code,
+        message: erreurClient.message,
+      });
+      // 23505 = violation d'unicité. On retente sans l'e-mail : si c'est
+      // lui qui collisionne, le client est sauvé ; si c'est le TÉLÉPHONE,
+      // ce second essai échoue aussi et on le journalise — mais alors le
+      // client existe déjà et c'est la recherche par variantes, en amont,
+      // qui l'a manqué.
+      if (erreurClient.code === "23505") {
+        const secondEssai = await sb
+          .from("customers")
+          .insert({
+            first_name: firstName || "Client",
+            last_name: lastName,
+            phone: body.customer_phone,
+            email: null,
+          })
+          .select("id")
+          .single();
+        newCustomer = secondEssai.data;
+        if (secondEssai.error) {
+          console.error("[orders] création client SANS e-mail en échec aussi", {
+            code: secondEssai.error.code,
+            message: secondEssai.error.message,
+          });
+        } else {
+          console.warn(
+            "[orders] e-mail déjà pris par une autre fiche — client créé sans adresse",
+          );
+        }
+      }
+    }
+
     if (newCustomer) {
       customerId = newCustomer.id;
       await sb.from("customer_cards").insert({
@@ -839,7 +900,8 @@ export async function POST(req: NextRequest) {
   // Email de confirmation au CLIENT (lot E1, 21.07.2026) — reçu digital
   // envoyé à l'adresse saisie au checkout. ⚠️ CE COMMENTAIRE DISAIT
   // « optionnelle → pas d'email = pas d'envoi » : plus vrai depuis le
-  // 21.08, l'adresse est exigée à l'entrée de cette fonction (l.99-116) et
+  // 21.08, l'adresse est exigée à l'entrée de cette fonction (const
+  // `emailRecu` et le 400 qui suit, en tête du POST) et
   // une commande sans e-mail n'atteint jamais cette ligne.
   // Fire-and-forget : un échec Brevo ne bloque JAMAIS la commande.
   // Remplace l'ancien email « nouvelle commande » au restaurateur, devenu
@@ -852,13 +914,24 @@ export async function POST(req: NextRequest) {
   // simultanées ne peuvent pas se marcher dessus, et un client qui a déjà
   // une adresse ne se la fait pas remplacer par une faute de frappe d'un
   // soir. (`signup` écrase, lui — c'est un défaut connu, pas un modèle.)
-  const emailSaisi = body.customer_email?.trim();
-  if (customerId && emailSaisi) {
-    await sb
+  // ⚠️ MÊME PIÈGE D'UNICITÉ QUE L'INSERT `customers` plus haut : ce
+  // rattrapage peut
+  // échouer sur `customers_email_unique` si l'adresse appartient déjà à une
+  // autre fiche. C'est SANS GRAVITÉ — la commande est déjà créée et le reçu
+  // part quand même — mais l'échec ne doit pas être muet, sinon on croira la
+  // base clients complète alors qu'elle ne l'est pas.
+  if (customerId && emailRecu) {
+    const { error: erreurRattrapage } = await sb
       .from("customers")
-      .update({ email: emailSaisi })
+      .update({ email: emailRecu })
       .eq("id", customerId)
       .is("email", null);
+    if (erreurRattrapage) {
+      console.warn("[orders] rattrapage e-mail client sans effet", {
+        code: erreurRattrapage.code,
+        message: erreurRattrapage.message,
+      });
+    }
   }
 
   const customerEmail = body.customer_email?.trim();

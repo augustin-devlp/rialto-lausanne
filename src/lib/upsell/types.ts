@@ -125,6 +125,14 @@ export interface UpsellContext {
   /** Écart au minimum de commande de la zone, résolu SERVEUR.
    *  `null` = pas d'adresse, ou minimum déjà atteint. */
   ecartMinimum?: EcartMinimum | null;
+  /** Sous-total RÉEL du panier, suppléments d'options COMPRIS, relus en
+   *  base côté serveur (`api/rialto/upsell/route.ts:75`).
+   *  ⚠️ À utiliser partout où un MONTANT décide de quelque chose.
+   *  `analysis.totalPrice` ne compte QUE `price × qty` : il ignore les
+   *  extras, alors que le checkout et la facturation les comptent. Trois
+   *  assiettes coexistaient dans ce moteur le 21.08 ; c'est ce champ qui
+   *  fait foi. */
+  sousTotalReel?: number | null;
 }
 
 export interface UpsellCandidate {

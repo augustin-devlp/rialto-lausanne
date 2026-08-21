@@ -1080,8 +1080,15 @@ export default function CheckoutPageClient({
           )}
 
           {/* ───────────── SECTION 4 — COORDONNÉES ─────────────── */}
+          {/* ⚠️ LE TITRE DE CETTE SECTION ÉNUMÈRE LES CHAMPS QUI BLOQUENT LA
+              COMMANDE. Il disait « prénom et numéro de téléphone » alors que
+              l'e-mail est devenu bloquant le 21.08 dans le même commit : le
+              client lisait la liste des champs obligatoires et l'e-mail n'y
+              était pas. Si un champ entre ou sort de `contactValid`
+              (`CheckoutPageClient.tsx`, const `contactValid`), CE TITRE DOIT
+              SUIVRE. */}
           {housingType !== null && (
-            <Section title="Vos coordonnées — prénom et numéro de téléphone" step="4">
+            <Section title="Vos coordonnées — prénom, téléphone et email" step="4">
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -1130,12 +1137,47 @@ export default function CheckoutPageClient({
                     id="checkout-email"
                     type="email"
                     required
+                    aria-required="true"
+                    aria-invalid={email.trim().length > 0 && !emailValid}
+                    aria-describedby="checkout-email-aide"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     autoComplete="email"
                     placeholder="prenom@exemple.ch"
                     className="w-full px-4 py-3 rounded-xl border border-border focus:border-[#C73E1D] focus:outline-none text-base"
                   />
+                  {/* 🔴 SANS CE MESSAGE, LE CHAMP OBLIGATOIRE EST UN BOUTON
+                      MORT (relecture adversariale 21.08). Les trois boutons
+                      d'envoi sont `disabled={!canSubmit}` ; or un
+                      `<button type="submit" disabled>` N'ENVOIE JAMAIS le
+                      formulaire, donc la validation native du `required`
+                      ci-dessus ne s'exécute JAMAIS : pas de bulle, pas de
+                      focus, pas de message. Et le bandeau d'erreur du bas
+                      n'est alimenté que par les réponses SERVEUR, que
+                      `handleSubmit` n'atteint pas puisqu'il sort sur
+                      `!canSubmit`.
+                      Le client voyait donc un bouton gris et AUCUNE raison.
+                      Sur une commande prête à partir, c'est un abandon — et
+                      l'e-mail a été rendu obligatoire pour remplir la base
+                      clients, pas pour la vider.
+                      Mots courants et phrase courte (règle R4 : la clientèle
+                      de Rialto n'est pas un public à français soutenu). */}
+                  <p
+                    id="checkout-email-aide"
+                    aria-live="polite"
+                    className={
+                      "mt-1 text-xs " +
+                      (email.trim().length > 0 && !emailValid
+                        ? "text-[#C73E1D]"
+                        : "text-mute")
+                    }
+                  >
+                    {email.trim().length === 0
+                      ? "Il faut votre email pour commander."
+                      : !emailValid
+                        ? "Cet email n'est pas complet. Exemple : prenom@exemple.ch"
+                        : "Votre reçu partira à cette adresse."}
+                  </p>
                 </div>
               </div>
             </Section>

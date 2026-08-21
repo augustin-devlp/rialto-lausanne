@@ -20,7 +20,8 @@ export const dynamic = "force-dynamic";
  * de commande sont SÉQUENTIELS (R-2026-050 → R-2026-051), donc devinables.
  * ⚠️ CE PARAGRAPHE DISAIT, JUSQU'AU 21.08, que « la route sœur `reorder`
  * n'expose que des noms de plats et s'en accommode » — c'est-à-dire qu'elle
- * n'avait pas de vérification. C'est FAUX depuis : `reorder/route.ts:64-83`
+ * n'avait pas de vérification. C'est FAUX depuis : `reorder/route.ts`
+ * (bloc `phoneLookupVariants` + 404)
  * vérifie le propriétaire par le MÊME mécanisme (téléphone de session,
  * comparaison sur variantes, 404 jamais 403).
  * La seule différence qui reste entre les deux : `detail` renvoie les

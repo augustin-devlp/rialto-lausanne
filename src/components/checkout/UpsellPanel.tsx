@@ -160,6 +160,19 @@ export default function UpsellPanel({ cart, onAdd }: Props) {
             cart_items: cart.map((c) => ({
               menu_item_id: c.menu_item_id,
               quantity: c.quantity,
+              // ⚠️ LES OPTIONS SONT ENVOYÉES, et c'est indispensable depuis
+              // le 21.08. Sans elles, le serveur calculait l'assiette du
+              // palier en Σ prix × quantité — SANS les suppléments — alors
+              // que le checkout et la facturation les comptent. Un panier
+              // à 36 de base + 5 d'extras passait pour 36 : le message
+              // annonçait une livraison offerte à venir sur un panier qui
+              // l'avait DÉJÀ, à deux blocs d'un « Livraison offerte ✓ ».
+              // On n'envoie que le GROUPE et le NOM : le montant du
+              // supplément est relu en base côté serveur.
+              options: (c.options ?? []).map((o) => ({
+                group: o.group,
+                name: o.name,
+              })),
             })),
             customer_id: customerId,
             // Le SEUL montant qu'on envoie est… aucun. On envoie le code

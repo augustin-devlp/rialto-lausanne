@@ -141,23 +141,10 @@ export function grantTracking(): void {
 
     // ── Meta : stub fbq (équivalent du snippet officiel) + init ──
     //
-    // ⚠️ JAMAIS SUR /confirmation (décision Augustin 21.08).
-    //
-    // Cette page porte un JETON D'ACCÈS dans son URL. `fbevents.js`
-    // construit son paramètre `dl` à partir de `document.location.href`, et
-    // RIEN ne peut le surcharger : `page_location` et `page_path` sont des
-    // paramètres gtag, Meta ne les lit pas. Injecter le pixel ici
-    // publierait donc le secret chez un sous-traitant hors UE, à chaque
-    // ouverture du lien reçu par e-mail.
-    //
-    // On ne perd rien de la chaîne de conversion : le `Purchase` part du
-    // CHECKOUT au retour du POST (CheckoutPageClient), pendant que le
-    // navigateur est encore sur /checkout — la page de confirmation est
-    // rechargeable, donc elle a toujours été exclue pour éviter les
-    // doublons. Ce qu'on perd, c'est un PageView. C'est tout.
-    const surConfirmation =
-      window.location.pathname.startsWith("/confirmation/");
-    if (META_PIXEL_ID && !surConfirmation) {
+    // ⚠️ L'INJECTION EST INCONDITIONNELLE. La garde « aucun tir sur
+    // /confirmation » vit dans `meta()`, plus bas — donc AU POINT
+    // D'ÉMISSION. Voir son en-tête pour le pourquoi.
+    if (META_PIXEL_ID) {
       if (!window.fbq) {
         const fbq: NonNullable<Window["fbq"]> = (...args: unknown[]) => {
           if (fbq.callMethod) {
@@ -312,6 +299,39 @@ function urlSansSecret(): { href: string; path: string } {
   return { href: `${window.location.origin}${path}`, path };
 }
 
+/**
+ * ⚠️ TOUT APPEL À META PASSE PAR ICI, ET NULLE PART AILLEURS.
+ *
+ * La page `/confirmation/<numéro>` porte un JETON D'ACCÈS dans son URL, et
+ * `fbevents.js` construit son paramètre `dl` depuis
+ * `document.location.href` — rien ne peut le surcharger.
+ *
+ * 🔴 LA GARDE EST ICI, À L'ÉMISSION, PAS À L'INJECTION — correction de ma
+ * propre erreur du 21.08. Posée d'abord dans `grantTracking`, dans le bloc
+ * `if (!injected)`, elle ne couvrait QUE l'arrivée à froid depuis l'e-mail
+ * sans consentement préalable. Le cas MAJORITAIRE — consentement déjà donné
+ * sur /menu, puis navigation SPA du checkout vers la confirmation — passait
+ * à côté, et le jeton partait quand même chez Meta.
+ * C'est mot pour mot la règle du CLAUDE.md : une garde vit DANS la fonction
+ * qui agit, jamais chez celui qui l'appelle.
+ *
+ * Second bénéfice, qui était un BUG : l'injection redevient
+ * inconditionnelle. Un client qui donnait son PREMIER consentement sur
+ * /confirmation n'obtenait jamais `window.fbq` — tous ses événements
+ * suivants, `Purchase` COMPRIS, étaient des no-op silencieux.
+ */
+function surPageDeSuivi(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/confirmation/")
+  );
+}
+
+function meta(...args: unknown[]): void {
+  if (surPageDeSuivi()) return;
+  window.fbq?.(...args);
+}
+
 export const track = {
   /** Navigation SPA (l'initiale est couverte par config/snippet). NON bufferisé. */
   pageView(): void {
@@ -321,7 +341,7 @@ export const track = {
         page_location: href,
         page_path: path,
       });
-      window.fbq?.("track", "PageView");
+      meta("track", "PageView");
     }, false);
   },
 
@@ -332,7 +352,7 @@ export const track = {
         value: item.price,
         items: gaItems([item]),
       });
-      window.fbq?.("track", "ViewContent", {
+      meta("track", "ViewContent", {
         content_ids: [item.id],
         content_name: item.name,
         content_type: "product",
@@ -350,7 +370,7 @@ export const track = {
         value: item.price * qty,
         items: gaItems([item]),
       });
-      window.fbq?.("track", "AddToCart", {
+      meta("track", "AddToCart", {
         content_ids: [item.id],
         content_name: item.name,
         content_type: "product",
@@ -367,7 +387,7 @@ export const track = {
         value: payload.value,
         items: gaItems(payload.items),
       });
-      window.fbq?.("track", "InitiateCheckout", {
+      meta("track", "InitiateCheckout", {
         value: payload.value,
         currency: CURRENCY,
         num_items: payload.items.reduce((n, i) => n + (i.quantity ?? 1), 0),
@@ -393,7 +413,7 @@ export const track = {
         value: payload.value,
         items: gaItems(payload.items),
       });
-      window.fbq?.(
+      meta(
         "track",
         "Purchase",
         {

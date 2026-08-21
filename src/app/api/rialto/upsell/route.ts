@@ -22,7 +22,13 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as {
-      cart_items?: Array<{ menu_item_id: string; quantity: number }>;
+      cart_items?: Array<{
+        menu_item_id: string;
+        quantity: number;
+        /** Groupe + nom seulement — le MONTANT du supplément est relu en
+         *  base. On ne croit pas le client sur un montant. */
+        options?: Array<{ group?: string; name?: string }>;
+      }>;
       customer_id?: string;
       /** Code postal de l'adresse qualifiée. Sert UNIQUEMENT à résoudre la
        *  zone SERVEUR pour le chemin P2 (palier de livraison offerte).
@@ -37,6 +43,47 @@ export async function POST(req: NextRequest) {
 
     const menu = await fetchFullMenu();
     const menuById = new Map(menu.map((m) => [m.id, m]));
+
+    const admin0 = supabaseService();
+
+    // ═══ L'ASSIETTE DU PANIER, SUPPLÉMENTS COMPRIS ════════════════════
+    // ⚠️ CORRECTION DU 21.08 (relecture adversariale). Le calcul était
+    // `Σ prix × quantité` — l'assiette SANS les suppléments — alors que le
+    // checkout (`cartSubtotal`) et la facturation (`deriveOrderPricing`)
+    // les comptent. Conséquence : sur un panier avec options payantes,
+    // l'écart au seuil était SUR-ESTIMÉ. Inoffensif quand le seuil n'est
+    // pas franchi (on demande trop) ; MENSONGER quand il l'est déjà — le
+    // client lisait « livraison 0.00 au lieu de 5.00 » sur un écran qui
+    // affichait « Livraison offerte ✓ » deux blocs plus haut.
+    // Les montants des suppléments sont relus EN BASE, jamais reçus.
+    const idsPanier = [
+      ...new Set((body.cart_items ?? []).map((c) => c.menu_item_id)),
+    ];
+    const { data: optionsBase } = idsPanier.length
+      ? await admin0
+          .from("menu_item_options")
+          .select("item_id, option_group, option_name, extra_price")
+          .in("item_id", idsPanier)
+      : { data: [] as Array<Record<string, unknown>> };
+    const extraParCle = new Map<string, number>();
+    for (const o of optionsBase ?? []) {
+      extraParCle.set(
+        `${o.item_id}\u0000${String(o.option_group).trim()}\u0000${String(o.option_name).trim()}`,
+        Number(o.extra_price ?? 0),
+      );
+    }
+    const sousTotalReel = (body.cart_items ?? []).reduce((total, ci) => {
+      const base = menuById.get(ci.menu_item_id)?.price ?? 0;
+      const extras = (ci.options ?? []).reduce(
+        (n, o) =>
+          n +
+          (extraParCle.get(
+            `${ci.menu_item_id}\u0000${String(o.group ?? "").trim()}\u0000${String(o.name ?? "").trim()}`,
+          ) ?? 0),
+        0,
+      );
+      return total + (base + extras) * (ci.quantity || 1);
+    }, 0);
 
     // Hydrate cart items from menu full data
     const cart: MenuItemFull[] = [];
@@ -82,7 +129,7 @@ export async function POST(req: NextRequest) {
           }
         : null;
       const jalon = getFreeDeliveryMilestone(
-        cart.reduce((n, i) => n + i.price * (i.quantity ?? 1), 0),
+        sousTotalReel,
         zone,
         toFreeDeliveryRule(restoRes.data ?? null),
       );
@@ -98,10 +145,7 @@ export async function POST(req: NextRequest) {
       // `getFreeDeliveryMilestone` — un résidu flottant ne doit jamais
       // afficher « ajoutez 0.00 ».
       if (zone) {
-        const sousTotal = cart.reduce(
-          (n, i) => n + i.price * (i.quantity ?? 1),
-          0,
-        );
+        const sousTotal = sousTotalReel;
         if (sousTotal < zone.min_order_amount) {
           ecartMinimum = {
             remaining: Math.max(
